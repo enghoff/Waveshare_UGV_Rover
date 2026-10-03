@@ -78,8 +78,10 @@ alone.
 
 The popup has entity, map and observation views over one read-only data source.
 A search phrase filters all views together. Selecting an entity shows every
-stored observation used for it, including the source frame, measured box, pose,
-bearing, range and uncertainty where available.
+stored observation used for it: the source frame with the measured box drawn on
+it, and under it a table of every field stored with the look -- pose, bearing,
+OAK range or why there is none, uncertainty, the resolver's note -- plus how the
+look stands to the entity's settled position.
 
 The map draws one mark per placed entity and nothing else. Bearings, sight lines
 and names were removed on 2026-09-05: a room's worth of them hid the map they

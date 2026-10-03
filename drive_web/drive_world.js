@@ -84,8 +84,8 @@ let worldRows = new Map();
 // boxes it is drawn in are kept for as long as the same thing is chosen -- the
 // lower one being the scroller somebody is inside -- and the heading and each
 // look are rebuilt only when what they say has really changed, the way the
-// large view of a single look already is. Rebuilding a look throws away both
-// the picture the browser had fetched and any raw block opened under it.
+// large view of a single look already is. Rebuilding a look throws away the
+// picture the browser had fetched and any text selected in its fields.
 let worldDetailFor = "", worldDetailHead = "", worldDetailRows = new Map();
 // The observation stream, and it is the one thing in this popup that does not
 // come out of the fetched body. The body carries the newest forty looks and is
@@ -568,82 +568,56 @@ function wObservation(observation, options) {
     head.append(owner);
   }
   block.append(head);
-
-  if (observation.description) {
-    const described = document.createElement("div");
-    described.textContent = observation.description;
-    block.append(described);
-  }
-  if (observation.note) {
-    // The same field says two opposite things and they must not look alike: for
-    // an observation with no entity it is why none was made, which is a warning;
-    // for one with an entity it is the resolver's own sentence about why it
-    // belongs there, which is the answer to "why did it think that was the same
-    // chair" and is the reason this popup exists.
-    const note = document.createElement("div");
-    note.className = observation.entity_id ? "wbecause" : "wdup";
-    note.textContent = observation.entity_id
-        ? `why: ${observation.note}` : observation.note;
-    block.append(note);
-  }
-
-  const pose = observation.pose;
-  const meta = document.createElement("div");
-  meta.className = "wmeta mono";
-  const bits = [`source ${observation.source || "?"}`];
-  if (observation.location_hint) bits.push(`hint ${observation.location_hint}`);
-  bits.push(`pan ${observation.observer_pan_deg ?? "-"}°`,
-            `tilt ${observation.observer_tilt_deg ?? "-"}°`);
-  // Which way the thing itself lies from where the rover stood, worked out on
-  // the rover when the look was taken. For a look that belongs to no entity it
-  // is the only thing on the row that says where to go and find it, and that is
-  // the ordinary state of anything a search turns up that has been seen once.
-  if (observation.bearing_deg != null) {
-    bits.push(`bearing ${(+observation.bearing_deg).toFixed(1)}°`);
-  }
-  bits.push(pose ? `at (${pose.x_m}, ${pose.y_m}) m facing ${pose.heading_deg}°`
-                 : "no rover pose recorded");
-  bits.push(`map ${observation.map_session ?? "?"}`);
+  block.append(wShot(observation));
   // Where this look stands to the one position the thing has settled on. It is
   // the same test `resolve` applies when it attaches a look, so a row reading
-  // "off it" is a row that would not be attached today.
-  const relation = options && options.relations
-      ? options.relations[observation.id] : null;
-  if (relation) {
-    bits.push(`${relation.range_m} m away`,
-              `bearing ${relation.off_deg > 0 ? "+" : ""}${relation.off_deg}° `
-              + `of it, missing by ${relation.miss_m} m of the `
-              + `${relation.tolerance_m} m allowed`,
-              relation.agrees ? "on it" : "off it");
-  }
-  if (observation.bbox) {
-    bits.push(`box ${observation.bbox.map((n) => (+n).toFixed(2)).join(", ")}`);
-  } else {
-    bits.push("no usable box");
-  }
-  bits.push(observation.prompt_version
-      ? `${observation.model_id || "?"} / prompt ${observation.prompt_version}`
-      : `${observation.model_id || "?"}`);
-  meta.textContent = bits.join(" · ");
-  block.append(meta);
-
-  block.append(wShot(observation));
-
-  const raw = document.createElement("details");
-  const summary = document.createElement("summary");
-  summary.className = "wmeta";
-  // Two different things behind one field. A language model's inspection is
-  // words it chose; a look through the encoders is numbers that were measured,
-  // and calling those "what the model said" invites a reader to weigh them as
-  // an opinion.
-  summary.textContent = observation.prompt_version
-      ? "what the model actually said" : "what was measured";
-  const body = document.createElement("pre");
-  body.className = "wraw mono";
-  body.textContent = JSON.stringify(observation.raw, null, 2);
-  raw.append(summary, body);
-  block.append(raw);
+  // `agrees false` is a row that would not be attached today.
+  block.append(wFields(observation, options && options.relations
+      ? options.relations[observation.id] : null));
   return block;
+}
+
+// The stored JSON text behind three fields the rover also sends parsed, as
+// `bbox`, `pose` and `raw`. The same values a second time, as strings.
+const W_STORED_TEXT = new Set(["bbox_json", "observer_pose_json", "raw_json"]);
+// A value longer than this does not fit beside its name in one column.
+const W_FIELD_SHORT = 20;
+
+// Every field the rover stored with a look, as it sent them. Nested values are
+// spelt out one key at a time, and empty ones are left out. The short ones fill
+// as many columns as the pane is wide; the long ones -- the resolver's note, the
+// frame's path -- follow on lines of their own.
+function wFields(observation, relation) {
+  const grid = document.createElement("div");
+  grid.className = "wfields mono";
+  const long = [];
+  const add = (key, value) => {
+    if (value == null || value === "") return;
+    if (Array.isArray(value) && !value.some((one) => one && typeof one === "object")) {
+      value = value.join(", ");
+    } else if (typeof value === "object") {
+      for (const [inner, one] of Object.entries(value)) add(`${key}.${inner}`, one);
+      return;
+    }
+    const cell = document.createElement("div");
+    const name = document.createElement("span");
+    name.textContent = key;
+    const text = document.createElement("span");
+    text.textContent = String(value);
+    cell.append(name, text);
+    if (text.textContent.length > W_FIELD_SHORT) {
+      cell.className = "wlong";
+      long.push(cell);
+    } else {
+      grid.append(cell);
+    }
+  };
+  for (const [key, value] of Object.entries(observation)) {
+    if (!W_STORED_TEXT.has(key)) add(key, value);
+  }
+  if (relation) add("relation", relation);
+  grid.append(...long);
+  return grid;
 }
 
 function drawWorldDetail() {
@@ -741,8 +715,8 @@ function drawWorldHead(head, entity) {
 //
 // **A look is left exactly as it is unless what it says has changed**, which is
 // the whole of what makes this pane readable while the rover records. Each row
-// carries a picture the browser has fetched and a raw block somebody may have
-// opened, and both of those go with the row: rebuilding all nine of them because
+// carries a picture the browser has fetched and fields somebody may be
+// selecting, and both of those go with the row: rebuilding all nine of them because
 // a tenth arrived is what used to throw a reader back to the top of the list
 // with their pictures loading again. Only a look that has genuinely moved --
 // most often one the resolver has just attached, or re-measured against a

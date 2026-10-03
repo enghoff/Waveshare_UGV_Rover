@@ -294,7 +294,7 @@ def test_the_popup_can_be_read_while_the_rover_is_filling_it() -> None:
               "replaceChildren()" in drawn, False)
 
     # The chosen thing's pane is the one with something to lose: its rows carry
-    # the pictures and any raw block opened under them. So a look is only drawn
+    # the pictures the browser has fetched. So a look is only drawn
     # again when what it says has changed, and the boxes it lives in are only
     # replaced when a *different* thing is chosen.
     looks = body("drawWorldLooks")

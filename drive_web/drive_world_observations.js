@@ -180,8 +180,8 @@ function wObsFill() {
 // whole pane. The row it is showing may still be changing under it -- a look with
 // no entity gets one when the resolver next settles, and that is exactly the
 // change somebody watching this frame is waiting for -- so it is rebuilt when the
-// row really differs and left alone when it does not, which is what keeps an
-// opened `what was measured` open through a rover that is still recording.
+// row really differs and left alone when it does not, which is what keeps a
+// selection in its fields through a rover that is still recording.
 function drawWorldZoom() {
   const layer = $("wZoom"), body = $("wZoomBody");
   // The filter's own rows first: a match is a whole observation with a score on

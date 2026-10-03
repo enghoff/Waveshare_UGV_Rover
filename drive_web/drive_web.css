@@ -161,9 +161,6 @@
   .whead { display: flex; align-items: baseline; gap: 8px; }
   .wplaced { font-weight: 600; }
   .wunplaced { opacity: .75; }
-  /* The resolver's own sentence about why an observation belongs to a thing,
-     which reads as an explanation. */
-  .wbecause { opacity: .8; font-style: italic; }
   /* The selected entity's observations, and they scroll on their own rather than
      with the popup. Nothing names a thing any more, so the pictures *are* the
      identity: what a person does here is scroll the crops and decide whether
@@ -303,11 +300,20 @@
      percentages of the wrapper, so a wrapper wider than the picture inside it
      would put the box beside the object rather than round it. */
   #wZoomBody .wshot img { width: auto; max-width: 100%; max-height: 68vh; }
-  .wraw {
-    white-space: pre-wrap; word-break: break-word; background: var(--sunken);
-    border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;
-    font-size: 11px; max-height: 240px; overflow: auto;
+  /* Every field stored with a look, under its picture: name on the left, value on
+     the right, the short ones in as many columns as fit and the long ones across
+     the whole width below them. */
+  .wfields {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    column-gap: 16px; margin-top: 6px; font-size: 11px;
   }
+  .wfields > div {
+    display: flex; justify-content: space-between; gap: 8px;
+    border-bottom: 1px solid var(--line); padding: 1px 0;
+  }
+  .wfields > div > span:first-child { color: var(--dim); flex: 0 0 auto; }
+  .wfields > .wlong { grid-column: 1 / -1; justify-content: flex-start; }
+  .wfields > .wlong > span:last-child { word-break: break-word; }
   /* The picture is moved and magnified inside this frame so that the map fills
      it, so the frame keeps the rounded corner and clips what runs past it. */
   #wMapWrap {
