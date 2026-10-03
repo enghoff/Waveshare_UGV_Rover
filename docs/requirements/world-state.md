@@ -209,6 +209,12 @@ cause is not settled. Lifting this needs a look's heading checked since the last
 turn, which that entry describes two ways of doing, and then another driven
 recording.
 
+**That recording was taken on 2026-10-03, and what fails now is moving looks.**
+With headings checked on still looks and on the move, still looks pointed a median
+1.0 degree off the tape, and 79% fell inside twice their claim. Moving looks pointed
+3.2 degrees off while claiming 1.5, with 69% inside twice the claim, and they are
+eight looks in nine. See [the drive](../progress/2026-10-03-moving-looks-against-the-tape.md).
+
 <a id="r-ws-11"></a>
 ### R-WS-11 — A thing's height above the floor is known
 

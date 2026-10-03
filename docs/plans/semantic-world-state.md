@@ -70,7 +70,7 @@ does not hold up, and three requirements carry what is left:
 
 | Requirement | State | What has to happen |
 |---|---|---|
-| [R-WS-10](../requirements/world-state.md#r-ws-10) | `failing` | take a driven recording through the current envelope. The fisheye lens was refitted and the stored looks redrawn on 2026-09-30, and the OAK rides the gimbal, so neither the lens nor the mount waits on the servo any more. |
+| [R-WS-10](../requirements/world-state.md#r-ws-10) | `failing` | state moving looks at what they measure. The driven recording of [2026-10-03](../progress/2026-10-03-moving-looks-against-the-tape.md) found still looks close to their 1.5 degree claim and moving looks at 3.2; a look's stated bearing uncertainty needs separating from the resolver's matching tolerance first, as was done for placements. |
 | [R-WS-12](../requirements/world-state.md#r-ws-12) | `open` | refuse entities made of bare floor, so that something choosing where to look next cannot spend distance on them |
 | [R-WS-13](../requirements/world-state.md#r-ws-13) | `open` | show, for each identity-dependent action when it is proposed, that the identity evidence it accepts is good enough for what a mistake would cost ([2026-10-01](../decisions/identity-is-judged-action-by-action.md)); the proposed appearance-band/geometry remedy failed replay |
 

@@ -198,8 +198,8 @@ The six taped targets of 2026-10-01 and their wall frame are in
 temporary ones gone: the black cabinet, the painting above it and the landscape
 painting over the dining table are still where they were taped. Three more fixed
 paintings were chosen from the rover's own looks that day and taped by the owner;
-the six, and the fresh parking readings the drive still needs, are in
-`captures/2026-10-03-targets/TARGETS.txt`. The board method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
+the six are in `captures/2026-10-03-targets/TARGETS.txt`, and the drive past them is
+[2026-10-03's entry](../progress/2026-10-03-moving-looks-against-the-tape.md). The board method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
 checks the OAK's offset on the rail. A further calibration, such as the third tilt
 the closure suggests, follows the protocol below.
 
