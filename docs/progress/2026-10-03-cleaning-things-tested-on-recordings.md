@@ -82,7 +82,8 @@ building by the sea `object:383` and `object:400`.
 The owner went through the 19 unsure looks. Three belong to their thing: the cabinet
 photographed at night, and the same chair twice. None of the other 16 do. With that, the
 labels hold 46 odd looks and 366 right ones, with none unsure, and the odd ones include
-harder cases than before.
+harder cases than before. **Only those 19 carry the owner's verdict.** The other 393
+labels are still the coding agent's own and have not been reviewed.
 
 | Taken off when | Odd looks taken off (of 46) | Right looks taken off (of 366) |
 |---|---:|---:|
