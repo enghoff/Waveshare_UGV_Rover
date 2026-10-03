@@ -87,6 +87,13 @@ def test_the_things_that_would_stop_a_decision_are_named() -> None:
         ROOM, world={"last_status": "error", "last_detail": "the camera died"}))
     check("...and so is one whose last look failed",
           "world_state" in failing.health(), True)
+    # Found on 2026-10-03: the rover looks once a second, a look is written
+    # down as running before it is taken, and a run that read that as a
+    # failure sat idle for thirty seconds.
+    looking = situation_mod.Situation(a_situation(
+        ROOM, world={"last_status": "running"}))
+    check("...but not one whose look is still being taken",
+          "world_state" in looking.health(), False)
 
 
 def test_a_rover_off_the_floor_can_be_routed_from_nowhere() -> None:

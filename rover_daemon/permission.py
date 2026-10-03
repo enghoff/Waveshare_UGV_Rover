@@ -192,9 +192,10 @@ CONSOLE_BUDGET: dict[str, Any] = {
 #:   moved. The executive drives to one frontier viewpoint at a time instead,
 #:   which keeps every movement attributable to one goal and re-decides after
 #:   each.
-#: - Aiming the gimbal is left out because rest is the only pan angle this
-#:   rover's bearings are calibrated at, and the chassis heading that
-#:   `drive_to` already takes is what points the camera at the thing. A look
+#: - Aiming the gimbal is not an action of its own. The chassis heading that
+#:   `drive_to` takes is what points the camera at the thing, and a look may
+#:   name a place to aim at, which the daemon turns into a pan within the
+#:   twenty degrees either way the calibration covers. A look
 #:   may name a tilt, and only level or twenty up -- the two the calibration
 #:   covers -- because the depth camera sees nothing below the camera's own
 #:   height at twenty up, and an inspection of something on the floor needs it.

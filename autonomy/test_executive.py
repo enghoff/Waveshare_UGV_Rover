@@ -151,6 +151,20 @@ def test_one_turn_drives_looks_and_writes_down_what_changed():
     session.close()
 
 
+def test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it():
+    """Found on 2026-10-03: the drive carried no heading and the look no aim, so
+    most looks in runs 3 and 4 were taken with the thing off the picture."""
+    session = Session()
+    _arriving(session)
+    got = session.executive.once()
+    drive, look = session.calls(got["episode"])
+    check("the drive is told which way to face",
+          drive["params"].get("heading_deg") is not None, True)
+    check("...and the look is aimed at the thing",
+          look["params"].get("aim_at"), {"x_m": 1.2, "y_m": -0.4})
+    session.close()
+
+
 def test_every_movement_names_the_episode_and_the_action_that_asked_for_it():
     session = Session()
     _arriving(session)
@@ -530,6 +544,7 @@ def test_a_goal_that_got_nowhere_is_not_chosen_again():
 TESTS = (
     test_a_goal_that_got_nowhere_is_not_chosen_again,
     test_one_turn_drives_looks_and_writes_down_what_changed,
+    test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it,
     test_every_movement_names_the_episode_and_the_action_that_asked_for_it,
     test_a_turn_with_nothing_worth_doing_idles_without_acting,
     test_standing_still_is_not_mistaken_for_a_dead_executive,

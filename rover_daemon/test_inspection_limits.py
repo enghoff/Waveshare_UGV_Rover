@@ -257,6 +257,33 @@ def test_a_check_look_whose_depth_service_was_down_is_taken_once_more():
     check("an ordinary look is never retaken", len(taken), 1)
 
 
+def test_an_autonomous_look_waits_for_the_rovers_own_look():
+    """Found on 2026-10-03: six of nineteen geometry goals in runs 3 and 4 were
+    refused at the look, because the rover's own once-a-second look held the
+    camera at that instant, and each refusal counted as a failed goal. The
+    rover's own looking still never waits."""
+    from types import SimpleNamespace
+
+    import rover_autonomy
+    import rover_world
+
+    taken = []
+    rover = SimpleNamespace(
+        _world_ready=lambda: "",
+        _world_inspector=lambda: SimpleNamespace(
+            inspect=lambda **kwargs: taken.append(kwargs) or {"ok": True}),
+        centre_gimbal=lambda *a, **k: True,
+        _aim_pan=lambda aim: {"pan_deg": 0.0})
+    rover._tool_world_inspect = lambda arguments: (
+        rover_world.RoverWorld._tool_world_inspect(rover, arguments))
+    rover_autonomy.RoverAutonomy._autonomy_do(
+        rover, "world_inspect", {"settle": True}, "a#2", "episode:1")
+    check("a run's look waits for one already being taken",
+          taken[-1]["wait_s"] > 0.0, True)
+    rover._tool_world_inspect({"settle": False})
+    check("...and the rover's own looking does not", taken[-1]["wait_s"], 0.0)
+
+
 TESTS = (
     test_an_inspection_must_declare_finite_limits_under_the_ceilings,
     test_the_viewpoint_is_never_on_top_of_the_place_under_test,
@@ -268,4 +295,5 @@ TESTS = (
     test_a_look_may_be_taken_at_the_two_calibrated_tilts_only,
     test_a_check_look_is_aimed_from_the_measured_heading,
     test_a_check_look_whose_depth_service_was_down_is_taken_once_more,
+    test_an_autonomous_look_waits_for_the_rovers_own_look,
 )

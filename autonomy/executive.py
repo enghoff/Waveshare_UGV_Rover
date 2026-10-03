@@ -325,7 +325,14 @@ class Executive:
             drive["params"]["heading_deg"] = float(heading)
         steps = [drive]
         if candidate["type"] == "improve_geometry":
-            steps.append({"action": "world_inspect", "params": {"settle": True}})
+            look = {"settle": True}
+            # Aimed at the thing, which the daemon does from the heading it
+            # measures, so the arrival tolerance does not leave it off the
+            # picture. A record from before 2026-10-03 has no place to aim at.
+            aim = candidate["constraints"].get("look_at")
+            if isinstance(aim, dict):
+                look["aim_at"] = aim
+            steps.append({"action": "world_inspect", "params": look})
         if candidate["type"] == hypotheses.GOAL_TYPE:
             # Both steps carry the case and its limits, which is what lets the
             # daemon count them against the place rather than the goal, and stop

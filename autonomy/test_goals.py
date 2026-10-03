@@ -12,6 +12,7 @@ the frontier is in and the wall the viewpoint is behind.
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 
@@ -233,6 +234,24 @@ def test_two_viewpoints_are_offered_when_they_are_a_real_choice() -> None:
           len({round(one.travel_m, 2) for one in found}) > 1, True)
 
 
+def test_a_viewpoint_faces_the_thing_it_is_for() -> None:
+    """Found on 2026-10-03: runs 3 and 4 looked from each viewpoint facing
+    wherever the drive left the rover, and in 16 of 19 the thing was more than
+    30 degrees off the camera's axis, often behind it. The one goal that
+    improved anything happened to face its thing."""
+    here, _thing = _thing_and_room(90.0)
+    found = [one for one in goals.improve_geometry(here)
+             if one.target == "object:8"]
+    check("there is a viewpoint", bool(found), True)
+    for one in found:
+        goal = one.constraints["goal"]
+        toward = math.degrees(math.atan2(1.0 - goal["y_m"], 1.6 - goal["x_m"]))
+        check(f"{one.id} is driven to facing the thing",
+              round(goal.get("heading_deg", 999.0) - toward, 0), 0.0)
+        check("...and the look is aimed at it",
+              one.constraints.get("look_at"), {"x_m": 1.6, "y_m": 1.0})
+
+
 def test_the_height_it_cannot_predict_is_declared_rather_than_assumed() -> None:
     here, _thing = _thing_and_room(90.0, height_sigma_m=1.2)
     found = goals.improve_geometry(here)
@@ -263,6 +282,7 @@ TESTS = (
     test_a_thing_from_a_map_that_has_gone_is_not_driven_to,
     test_a_thing_shut_in_a_room_of_its_own_is_refused_out_loud,
     test_two_viewpoints_are_offered_when_they_are_a_real_choice,
+    test_a_viewpoint_faces_the_thing_it_is_for,
     test_the_height_it_cannot_predict_is_declared_rather_than_assumed,
     test_the_same_situation_produces_the_same_list_twice,
 )

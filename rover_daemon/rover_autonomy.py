@@ -359,12 +359,16 @@ class RoverAutonomy:
             # A look for a hypothesis check may ask for the other calibrated tilt,
             # a fresh picture and its depth kept; `permission.check` has already
             # held the tilt to the two the bearings are calibrated at.
+            # It waits for a look the rover's own looking is taking: on
+            # 2026-10-03 six goals in nineteen were refused at that instant,
+            # each counted as a failed goal.
             return self._tool_world_inspect({
                 "settle": params.get("settle", True),
                 "tilt_deg": params.get("tilt_deg"),
                 "aim_at": params.get("aim_at"),
                 "fresh": bool(params.get("fresh")),
-                "keep_depth": bool(params.get("keep_depth"))})
+                "keep_depth": bool(params.get("keep_depth")),
+                "wait": True})
 
         if action == "drive_to":
             if self.nav is None:

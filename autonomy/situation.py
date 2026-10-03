@@ -230,7 +230,10 @@ class Situation:
             wrong["map"] = ("the map has not settled since the last restart, so "
                             "map coordinates cannot be trusted yet")
         world = self.world
-        if world.get("last_status") not in (None, "", "ok"):
+        # "running" is a look being taken right now, written down before the
+        # shutter; the rover looks once a second, so it is often the newest.
+        # One that never finishes goes stale below.
+        if world.get("last_status") not in (None, "", "ok", "running"):
             wrong["world_state"] = ("the perception loop's last look failed: "
                                     f"{world.get('last_detail') or world['last_status']}")
         last_at = world.get("last_at")

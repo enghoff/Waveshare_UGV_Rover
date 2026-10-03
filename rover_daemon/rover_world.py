@@ -72,9 +72,9 @@ MAP_ASK_S = 8.0
 # A hypothesis check's look at another tilt waits this long for the servo and
 # the picture to settle; the pan approach inside `centre_gimbal` is separate.
 TILT_SETTLE_S = 1.0
-# How long a check look waits for a look already running to finish, and for the
-# depth camera to finish waking: four to six seconds of firmware upload on this
-# rover, measured, with room over.
+# How long a check look, or an autonomous run's look, waits for a look already
+# running to finish, and for the depth camera to finish waking: four to six
+# seconds of firmware upload on this rover, measured, with room over.
 CHECK_LOOK_WAIT_S = 5.0
 DEPTH_WAKE_WAIT_S = 10.0
 
@@ -1209,6 +1209,10 @@ class RoverWorld:
         settle = arguments.get("settle")
         tilt = arguments.get("tilt_deg")
         keep_depth = bool(arguments.get("keep_depth"))
+        # A check look, or any look an autonomous run asked for, waits for one
+        # already being taken rather than being refused; the rover's own looking
+        # never waits, because the next look is a second away.
+        wait = keep_depth or bool(arguments.get("wait"))
         # A look for a hypothesis check needs its depth, and the camera switches
         # itself off once the wheels have stood still for half a minute; it is
         # woken and waited for here, and held on for this look.
@@ -1235,7 +1239,7 @@ class RoverWorld:
                 return self._world_inspector().inspect(
                     settle=True if settle is None else bool(settle),
                     fresh=fresh, keep_depth=keep_depth,
-                    wait_s=CHECK_LOOK_WAIT_S if keep_depth else 0.0,
+                    wait_s=CHECK_LOOK_WAIT_S if wait else 0.0,
                     before=tilted if moves_gimbal else None)
             finally:
                 if moves_gimbal:

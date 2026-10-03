@@ -394,16 +394,25 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
     out = []
     for got, view_x, view_y, walk_m in keep:
         time_s = GOAL_OVERHEAD_S + walk_m / SPEED_MS + LOOK_S
+        # **Facing the thing, and the look aimed at it.** The camera sees what
+        # is in front of the chassis, and a drive with no heading leaves the
+        # rover facing wherever the route ended: in runs 3 and 4 of 2026-10-03
+        # the thing was more than 30 degrees off the camera's axis in 16 looks
+        # of 19, often behind it, and the prediction above was of a look that
+        # never saw it. The aim then takes up what the arrival tolerance left.
+        heading = math.degrees(math.atan2(y - view_y, x - view_x))
         out.append(Candidate(
             id=f"improve_geometry:{entity_id}@{view_x:.2f},{view_y:.2f}",
             type="improve_geometry", target=entity_id,
             refs=[refs.world(generation, entity_id)] if entity_id else (),
             why=got["why"],
-            expects=(f"a look from ({view_x:.2f}, {view_y:.2f}), "
-                     f"{got['range_m']:.1f} m from the thing, crossing the "
-                     f"present uncertainty at {got['crossing_deg']:.0f} degrees"),
+            expects=(f"a look from ({view_x:.2f}, {view_y:.2f}) facing "
+                     f"{heading:.0f} degrees, {got['range_m']:.1f} m from the "
+                     f"thing, crossing the present uncertainty at "
+                     f"{got['crossing_deg']:.0f} degrees"),
             action=[{"call": "drive_to", "params": {"x_m": round(view_x, 3),
-                                                    "y_m": round(view_y, 3)}},
+                                                    "y_m": round(view_y, 3),
+                                                    "heading_deg": round(heading, 1)}},
                     {"call": "look_at", "params": {"entity": entity_id}}],
             travel_m=walk_m, time_s=time_s,
             energy_wh=time_s * NOMINAL_DRAW_W / 3600.0,
@@ -422,7 +431,9 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
                                                <= BAND_FAR_M),
                          "tilt_unknown": got["tilt_unknown"],
                          "goal": {"x_m": round(view_x, 3),
-                                  "y_m": round(view_y, 3)}}))
+                                  "y_m": round(view_y, 3),
+                                  "heading_deg": round(heading, 1)},
+                         "look_at": {"x_m": round(x, 3), "y_m": round(y, 3)}}))
     return out
 
 
