@@ -193,11 +193,13 @@ R-SAFE-10 are settled. [R-WS-10](../requirements/world-state.md#r-ws-10) stays
 `failing`, and what is left of it is the [world-state plan](semantic-world-state.md)'s
 work rather than this one's.
 
-The six taped targets of 2026-10-01 -- the bucket, the cabinet, the painting above
-it, the landscape painting, the tissue box and the toolbox -- and their wall frame
-are in `captures/m0-2026-10-01/MANIFEST.txt`, and remain the reference for a driven
-acceptance run, which needs only fresh parking readings and the owner in the room.
-The board method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
+The six taped targets of 2026-10-01 and their wall frame are in
+`captures/m0-2026-10-01/MANIFEST.txt`. On 2026-10-03 the owner reported the
+temporary ones gone: only the black cabinet and the painting above it are still
+where they were taped, and the landscape painting has not been confirmed. Those two
+stand at the same point along the wall, so from any stop they lie in nearly the same
+direction, and a driven acceptance run needs fresh targets chosen from things that
+stay put, taped from the same two walls. The board method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
 checks the OAK's offset on the rail. A further calibration, such as the third tilt
 the closure suggests, follows the protocol below.
 
