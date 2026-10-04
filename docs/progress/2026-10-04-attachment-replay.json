@@ -1,0 +1,897 @@
+{
+  "independent_acceptance": false,
+  "production_changed": false,
+  "hardware_verification_of_candidate": false,
+  "source_revision": "50858c172d7bc78d832f7062a52969c57ba9e2db",
+  "new_recording_used_for_training": false,
+  "background_schedule_inferred": [
+    7,
+    13,
+    16,
+    22,
+    25,
+    27
+  ],
+  "schedule_basis": "Surviving final placement-update timestamps; background resolver events and per-inspection occupancy maps were not logged.",
+  "baseline": {
+    "before_sha256": "73b0887a531a32306dacd4d3f29bb006dd859a5e39e2fe7e15412404aa6be2f9",
+    "after_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+    "labels_sha256": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0",
+    "occupancy_map_sha256": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59",
+    "fresh_assignment_differences": 0,
+    "all_assignment_differences": 0,
+    "all_recorded_observations": 4026,
+    "exemplar_differences": 0,
+    "placement_differences": 0,
+    "note_differences": [
+      64657,
+      64661
+    ],
+    "target_decision": [
+      {
+        "observation_id": 64638,
+        "outcome": "match",
+        "entity_id": "object:415",
+        "why": "the bearing points at object:415 2.13 m away, appearance 0.56, and of the 11 regions in this look it is the one that fits it best, using 4% of what its bearing is allowed to be off by",
+        "candidates": [
+          {
+            "entity_id": "object:415",
+            "allowance_used": 0.044,
+            "appearance": 0.557,
+            "seen": 11
+          }
+        ]
+      }
+    ],
+    "background_after_frame_of_target": 16
+  },
+  "fresh_candidates": {
+    "none": {
+      "target_owner": "object:415",
+      "full_result_sha256": "5f08980993fa9c7db254122686aee4794841fa74fc0d261e9aa1eeacf1dbbf6e",
+      "gate_totals": {
+        "checks": 0,
+        "refusals": 0,
+        "missing": 0,
+        "updates_skipped": 0
+      },
+      "primary": {
+        "regions": 146,
+        "objects": 16,
+        "same_together": 284,
+        "same_apart": 572,
+        "different_together": 3,
+        "different_apart": 9726,
+        "waiting": 39,
+        "correct_pairs_regained": 0,
+        "correct_pairs_lost": 0,
+        "new_wrong_pairs": []
+      },
+      "tentative": {
+        "regions": 201,
+        "objects": 23,
+        "same_together": 407,
+        "same_apart": 749,
+        "different_together": 34,
+        "different_apart": 18910,
+        "waiting": 42,
+        "correct_pairs_regained": 0,
+        "correct_pairs_lost": 0,
+        "new_wrong_pairs": []
+      }
+    },
+    "evidence": {
+      "target_owner": "object:375",
+      "full_result_sha256": "dbc8f472aecb08d854ae2fdfef913132c6b4ee4bf5e767c76827231f9adee249",
+      "gate_totals": {
+        "checks": 12322,
+        "refusals": 10488,
+        "missing": 0,
+        "updates_skipped": 0
+      },
+      "primary": {
+        "regions": 146,
+        "objects": 16,
+        "same_together": 283,
+        "same_apart": 573,
+        "different_together": 0,
+        "different_apart": 9729,
+        "waiting": 42,
+        "correct_pairs_regained": 2,
+        "correct_pairs_lost": 3,
+        "new_wrong_pairs": []
+      },
+      "tentative": {
+        "regions": 201,
+        "objects": 23,
+        "same_together": 406,
+        "same_apart": 750,
+        "different_together": 27,
+        "different_apart": 18917,
+        "waiting": 45,
+        "correct_pairs_regained": 2,
+        "correct_pairs_lost": 3,
+        "new_wrong_pairs": []
+      }
+    },
+    "masked-floor": {
+      "target_owner": "object:375",
+      "full_result_sha256": "18b328b3b23e12beadcab5aefabf36c15a8055002fd3ae6cabd3cbdebc0f0a96",
+      "gate_totals": {
+        "checks": 12619,
+        "refusals": 11525,
+        "missing": 0,
+        "updates_skipped": 0
+      },
+      "primary": {
+        "regions": 146,
+        "objects": 16,
+        "same_together": 260,
+        "same_apart": 596,
+        "different_together": 0,
+        "different_apart": 9729,
+        "waiting": 45,
+        "correct_pairs_regained": 12,
+        "correct_pairs_lost": 36,
+        "new_wrong_pairs": []
+      },
+      "tentative": {
+        "regions": 201,
+        "objects": 23,
+        "same_together": 414,
+        "same_apart": 742,
+        "different_together": 40,
+        "different_apart": 18904,
+        "waiting": 48,
+        "correct_pairs_regained": 67,
+        "correct_pairs_lost": 60,
+        "new_wrong_pairs": [
+          [
+            64516,
+            64648
+          ],
+          [
+            64516,
+            64705
+          ],
+          [
+            64520,
+            64581
+          ],
+          [
+            64554,
+            64648
+          ],
+          [
+            64554,
+            64705
+          ],
+          [
+            64564,
+            64592
+          ],
+          [
+            64575,
+            64592
+          ],
+          [
+            64581,
+            64598
+          ],
+          [
+            64581,
+            64617
+          ],
+          [
+            64581,
+            64634
+          ],
+          [
+            64581,
+            64647
+          ],
+          [
+            64581,
+            64659
+          ],
+          [
+            64581,
+            64692
+          ],
+          [
+            64581,
+            64704
+          ],
+          [
+            64587,
+            64592
+          ],
+          [
+            64627,
+            64648
+          ],
+          [
+            64627,
+            64705
+          ],
+          [
+            64648,
+            64670
+          ],
+          [
+            64648,
+            64678
+          ],
+          [
+            64648,
+            64738
+          ],
+          [
+            64670,
+            64705
+          ],
+          [
+            64678,
+            64705
+          ],
+          [
+            64705,
+            64738
+          ]
+        ]
+      }
+    },
+    "trusted-updates": {
+      "target_owner": null,
+      "full_result_sha256": "2284d68aed5fcb3299e060c9f77a2d930f7ec13a23ca753cb0074b39103204fb",
+      "gate_totals": {
+        "checks": 0,
+        "refusals": 0,
+        "missing": 0,
+        "updates_skipped": 70
+      },
+      "primary": {
+        "regions": 146,
+        "objects": 16,
+        "same_together": 275,
+        "same_apart": 581,
+        "different_together": 10,
+        "different_apart": 9719,
+        "waiting": 37,
+        "correct_pairs_regained": 12,
+        "correct_pairs_lost": 21,
+        "new_wrong_pairs": [
+          [
+            64583,
+            64715
+          ],
+          [
+            64594,
+            64715
+          ],
+          [
+            64623,
+            64715
+          ],
+          [
+            64633,
+            64715
+          ],
+          [
+            64644,
+            64715
+          ],
+          [
+            64656,
+            64715
+          ],
+          [
+            64675,
+            64715
+          ],
+          [
+            64691,
+            64715
+          ],
+          [
+            64701,
+            64715
+          ],
+          [
+            64715,
+            64736
+          ]
+        ]
+      },
+      "tentative": {
+        "regions": 201,
+        "objects": 23,
+        "same_together": 384,
+        "same_apart": 772,
+        "different_together": 34,
+        "different_apart": 18910,
+        "waiting": 43,
+        "correct_pairs_regained": 17,
+        "correct_pairs_lost": 40,
+        "new_wrong_pairs": [
+          [
+            64556,
+            64685
+          ],
+          [
+            64564,
+            64648
+          ],
+          [
+            64575,
+            64648
+          ],
+          [
+            64581,
+            64626
+          ],
+          [
+            64581,
+            64685
+          ],
+          [
+            64583,
+            64715
+          ],
+          [
+            64587,
+            64648
+          ],
+          [
+            64592,
+            64626
+          ],
+          [
+            64592,
+            64685
+          ],
+          [
+            64594,
+            64715
+          ],
+          [
+            64598,
+            64648
+          ],
+          [
+            64617,
+            64648
+          ],
+          [
+            64623,
+            64715
+          ],
+          [
+            64626,
+            64685
+          ],
+          [
+            64626,
+            64735
+          ],
+          [
+            64633,
+            64715
+          ],
+          [
+            64644,
+            64715
+          ],
+          [
+            64647,
+            64664
+          ],
+          [
+            64647,
+            64710
+          ],
+          [
+            64648,
+            64659
+          ],
+          [
+            64648,
+            64704
+          ],
+          [
+            64656,
+            64715
+          ],
+          [
+            64675,
+            64715
+          ],
+          [
+            64685,
+            64735
+          ],
+          [
+            64691,
+            64715
+          ],
+          [
+            64701,
+            64715
+          ],
+          [
+            64715,
+            64736
+          ]
+        ]
+      }
+    }
+  },
+  "appearance_mechanism": {
+    "plain": 0.5569366912975903,
+    "masked": 0.4288974913239124,
+    "masked_drop": 0.128,
+    "existing_drop_refusal": 0.2,
+    "existing_plain_floor": 0.55,
+    "global_geometry_alternative_cost_increase": 0.06275581890277948,
+    "appearance_tie_threshold": 0.05,
+    "existing_appearance_score_for_target_and_current_table_exemplars": -0.21654687786472343,
+    "existing_appearance_score_floor": 0.0
+  },
+  "longer_recording": {
+    "label_policy": "Exclude disputed observation 61656; head and body one physical person.",
+    "folds": [
+      {
+        "fold": 0,
+        "model": {
+          "coef": [
+            9.25970903822949,
+            2.309252417388156,
+            13.68775887231196
+          ],
+          "offset": -16.921272206152466,
+          "training_pairs": 21126,
+          "training_same": 2519,
+          "held_out_objects": [
+            "object:242",
+            "object:247",
+            "object:259",
+            "object:276",
+            "object:307",
+            "object:335",
+            "object:350",
+            "object:377",
+            "object:387",
+            "object:407"
+          ]
+        },
+        "seconds": 479.45299999999406,
+        "database_sha256": "c2e78689dcaec2cef150f352d9a11cbbfd803acdb879d4a312a5ec505c6547e6",
+        "labels_sha256": "451daeca301a7940b3de1913752d4ca4741a20803d8ff4f4dacf2879eb8bcf75",
+        "full_result_sha256": "ab9e09fa3b469f64cfee17b51376be59040b31b03768c2372681cacffa26aee7",
+        "final": {
+          "same_together": 1171,
+          "same_apart": 622,
+          "different_together": 220,
+          "different_apart": 29660,
+          "precision": 0.8418404025880661,
+          "recall": 0.6530953708867819,
+          "f1": 0.7355527638190955,
+          "main_looks": 159,
+          "main_waiting": 1,
+          "odd_kept_in_original_home": 10,
+          "odd_count": 20,
+          "objects_scored": 8,
+          "objects_split": 1,
+          "macro_object_pair_recall": 0.8570700354609929
+        },
+        "new_wrong_pairs": [
+          [
+            62611,
+            63198
+          ]
+        ],
+        "correct_pairs_lost_count": 622,
+        "correct_pairs_regained_count": 0
+      },
+      {
+        "fold": 1,
+        "model": {
+          "coef": [
+            4.807851925514747,
+            5.462566863693885,
+            8.28032209689627
+          ],
+          "offset": -11.21926843077799,
+          "training_pairs": 12463,
+          "training_same": 1793,
+          "held_out_objects": [
+            "object:246",
+            "object:249",
+            "object:275",
+            "object:302",
+            "object:332",
+            "object:343",
+            "object:374",
+            "object:383",
+            "object:386",
+            "object:402",
+            "object:413"
+          ]
+        },
+        "seconds": 470.7030000000086,
+        "database_sha256": "c2e78689dcaec2cef150f352d9a11cbbfd803acdb879d4a312a5ec505c6547e6",
+        "labels_sha256": "451daeca301a7940b3de1913752d4ca4741a20803d8ff4f4dacf2879eb8bcf75",
+        "full_result_sha256": "7632070f060f4273e53ee118f4d62c8e67244df73e0a5e0eb9a8ee997138389b",
+        "final": {
+          "same_together": 1722,
+          "same_apart": 797,
+          "different_together": 242,
+          "different_apart": 31221,
+          "precision": 0.8767820773930753,
+          "recall": 0.6836046050019849,
+          "f1": 0.7682355565469552,
+          "main_looks": 206,
+          "main_waiting": 1,
+          "odd_kept_in_original_home": 17,
+          "odd_count": 26,
+          "objects_scored": 10,
+          "objects_split": 6,
+          "macro_object_pair_recall": 0.7198465708864191
+        },
+        "new_wrong_pairs": [
+          [
+            61582,
+            61598
+          ],
+          [
+            61582,
+            61762
+          ],
+          [
+            61582,
+            62256
+          ],
+          [
+            61582,
+            63439
+          ]
+        ],
+        "correct_pairs_lost_count": 259,
+        "correct_pairs_regained_count": 58
+      }
+    ],
+    "baseline": {
+      "same_together": 3716,
+      "same_apart": 596,
+      "different_together": 710,
+      "different_apart": 60633,
+      "precision": 0.8395842747401717,
+      "recall": 0.8617810760667903,
+      "f1": 0.8505378805218585,
+      "main_looks": 365,
+      "main_waiting": 0,
+      "odd_kept_in_original_home": 46,
+      "odd_count": 46,
+      "objects_scored": 18,
+      "objects_split": 4,
+      "macro_object_pair_recall": 0.9159786351816712,
+      "per_object": {
+        "object:242": {
+          "looks": 48,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:246": {
+          "looks": 25,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.52
+        },
+        "object:249": {
+          "looks": 51,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.8196078431372549
+        },
+        "object:259": {
+          "looks": 12,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:275": {
+          "looks": 9,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:276": {
+          "looks": 4,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:307": {
+          "looks": 6,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:332": {
+          "looks": 31,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.6774193548387096
+        },
+        "object:335": {
+          "looks": 29,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:343": {
+          "looks": 12,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:374": {
+          "looks": 6,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:377": {
+          "looks": 6,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:383": {
+          "looks": 17,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.47058823529411764
+        },
+        "object:386": {
+          "looks": 5,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:387": {
+          "looks": 17,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:402": {
+          "looks": 21,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:407": {
+          "looks": 7,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:413": {
+          "looks": 4,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        }
+      }
+    },
+    "training": "Existing development labels only; every physical object of the scored fold excluded from fitting; each pair assigned to one fold.",
+    "aggregate": {
+      "same_together": 2893,
+      "same_apart": 1419,
+      "different_together": 462,
+      "different_apart": 60881,
+      "new_wrong_pairs": 5,
+      "correct_pairs_lost": 881,
+      "correct_pairs_regained": 58
+    },
+    "checkpoints": {
+      "103": {
+        "baseline": {
+          "same_together": 124,
+          "different_together": 22
+        },
+        "candidate": {
+          "same_together": 124,
+          "different_together": 22
+        }
+      },
+      "206": {
+        "baseline": {
+          "same_together": 394,
+          "different_together": 120
+        },
+        "candidate": {
+          "same_together": 358,
+          "different_together": 113
+        }
+      },
+      "310": {
+        "baseline": {
+          "same_together": 1105,
+          "different_together": 247
+        },
+        "candidate": {
+          "same_together": 959,
+          "different_together": 194
+        }
+      },
+      "413": {
+        "baseline": {
+          "same_together": 2174,
+          "different_together": 472
+        },
+        "candidate": {
+          "same_together": 1717,
+          "different_together": 311
+        }
+      },
+      "516": {
+        "baseline": {
+          "same_together": 3716,
+          "different_together": 710
+        },
+        "candidate": {
+          "same_together": 2893,
+          "different_together": 462
+        }
+      }
+    },
+    "lost_pairs_by_object": [
+      {
+        "object": "object:242",
+        "pairs": 613,
+        "label": "the black cabinet with shelves"
+      },
+      {
+        "object": "object:246",
+        "pairs": 96,
+        "label": "the green landscape painting, chairs in front"
+      },
+      {
+        "object": "object:332",
+        "pairs": 68,
+        "label": "the owner, seated"
+      },
+      {
+        "object": "object:249",
+        "pairs": 45,
+        "label": "the cow painting"
+      },
+      {
+        "object": "object:402",
+        "pairs": 38,
+        "label": "the floor lamp"
+      },
+      {
+        "object": "object:374",
+        "pairs": 12,
+        "label": "a metal desk with a monitor"
+      },
+      {
+        "object": "object:377",
+        "pairs": 9,
+        "label": "the dark armchair, blurred"
+      }
+    ],
+    "new_wrong_pairs_with_labels": [
+      {
+        "ids": [
+          62611,
+          63198
+        ],
+        "labels": [
+          [
+            "object:242",
+            "main"
+          ],
+          [
+            "object:377",
+            "main"
+          ]
+        ],
+        "meaning": [
+          "the black cabinet with shelves",
+          "the dark armchair, blurred"
+        ]
+      },
+      {
+        "ids": [
+          61582,
+          61598
+        ],
+        "labels": [
+          [
+            "object:246",
+            "main"
+          ],
+          [
+            "object:350",
+            "main"
+          ]
+        ],
+        "meaning": [
+          "the green landscape painting, chairs in front",
+          "a dining chair"
+        ]
+      },
+      {
+        "ids": [
+          61582,
+          61762
+        ],
+        "labels": [
+          [
+            "object:246",
+            "main"
+          ],
+          [
+            "object:302",
+            "main"
+          ]
+        ],
+        "meaning": [
+          "the green landscape painting, chairs in front",
+          "a dining chair"
+        ]
+      },
+      {
+        "ids": [
+          61582,
+          62256
+        ],
+        "labels": [
+          [
+            "object:246",
+            "main"
+          ],
+          [
+            "object:350",
+            "main"
+          ]
+        ],
+        "meaning": [
+          "the green landscape painting, chairs in front",
+          "a dining chair"
+        ]
+      },
+      {
+        "ids": [
+          61582,
+          63439
+        ],
+        "labels": [
+          [
+            "object:246",
+            "main"
+          ],
+          [
+            "object:302",
+            "main"
+          ]
+        ],
+        "meaning": [
+          "the green landscape painting, chairs in front",
+          "a dining chair"
+        ]
+      }
+    ]
+  },
+  "decision": "Do not deploy any tested blanket attachment safeguard. Preserve reproduction and appearance diagnostics; prioritize joint mixed-history repair and partial-view diagnosis.",
+  "requirements_unchanged": [
+    "R-WS-13",
+    "R-WS-17",
+    "R-WS-18"
+  ]
+}

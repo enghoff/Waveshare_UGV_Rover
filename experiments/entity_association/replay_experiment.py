@@ -25,7 +25,7 @@ def digest(path):
 
 
 def run(source, output, fold, mode, geometric_gate=True, excluded=(), same_person=False,
-        trace_decisions=False, reader_module=False):
+        trace_decisions=False, reader_module=False, attachment_gate=False):
     sys.path.insert(0, str(source.resolve()))
     from world_state import merging, replay, resolve
     from world_state.store import WorldStore
@@ -34,6 +34,13 @@ def run(source, output, fold, mode, geometric_gate=True, excluded=(), same_perso
     model = evidence.fit(fold)
     merging.APPEARANCE_WEIGHTS = tuple(model["coef"])
     merging.APPEARANCE_OFFSET = model["offset"]
+    if attachment_gate:
+        # Load experiment tooling from here after the frozen world_state package
+        # is already imported; its __path__ continues to point at --source.
+        sys.path.insert(0, str(ROOT))
+        from experiments.entity_association.replay_attachment import AppearanceEvidence, experimental_gate
+        attachment_evidence = AppearanceEvidence(evidence.rows.values())
+    attachment_stats = Counter()
     real_propose = merging.propose
     gate_refusals = [0]
 
@@ -179,7 +186,12 @@ def run(source, output, fold, mode, geometric_gate=True, excluded=(), same_perso
                                 + ") VALUES(NULL," + ",".join("?" for _ in replay.COLUMNS) + ")",
                                 tuple(row.get(key) for key in replay.COLUMNS))
                             idmap[cursor.lastrowid] = row["id"]
-                    outcome = resolve.resolve(store, reach=reach)
+                    if attachment_gate:
+                        with experimental_gate(store, 'evidence', attachment_evidence) as gate_stats:
+                            outcome = resolve.resolve(store, reach=reach)
+                        attachment_stats.update(gate_stats)
+                    else:
+                        outcome = resolve.resolve(store, reach=reach)
                     now = max(row["observed_at"] for row in group)
                     if last_merge is None:
                         last_merge = now
@@ -220,6 +232,8 @@ def run(source, output, fold, mode, geometric_gate=True, excluded=(), same_perso
               "head_and_body_one_person": same_person,
               "trace_decisions": trace_decisions,
               "reader_module": reader_module,
+              "attachment_gate": attachment_gate,
+              "attachment_gate_stats": dict(attachment_stats),
               "source": str(source.resolve()), "model": model,
               "database_sha256": database_hash, "labels_sha256": digest(LABELS),
               "seconds": time.monotonic()-began, "entities": entities,
@@ -243,6 +257,7 @@ if __name__ == "__main__":
     parser.add_argument("--same-person", action="store_true")
     parser.add_argument("--trace", action="store_true")
     parser.add_argument("--reader-module", action="store_true")
+    parser.add_argument("--attachment-gate", action="store_true")
     args = parser.parse_args()
     run(args.source, args.output, args.fold, args.mode, not args.ungated, args.exclude_observation,
-        args.same_person, args.trace, args.reader_module)
+        args.same_person, args.trace, args.reader_module, args.attachment_gate)

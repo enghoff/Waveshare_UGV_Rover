@@ -193,7 +193,11 @@ the success predicate fixed here before the run.
    group, and score all 25 labelled things with weights fitted without them. It passes
    if wrong looks kept are no more than single-look removal keeps at the same cost of
    right looks, no more than 10% of right looks are let go outright, and no two labelled
-   objects end up in one thing.
+   objects end up in one thing. Prioritize cabinet partial views and painting/chair
+   overlaps identified by the [attachment replay](../progress/2026-10-04-attachment-replay.md).
+   Report new wrong relations and lost correct observations separately from net
+   pair totals; a few large objects can dominate those totals. Do not substitute
+   the tested blanket appearance attachment gate for this joint repair.
 4. **Does a look the rebuild lets go stay away?** Replay with a "not this thing"
    record written by the rebuild and consulted by the resolver. It passes if no look the
    rebuild took off its thing is later filed under that same thing again.
@@ -211,8 +215,9 @@ the success predicate fixed here before the run.
    without waiting for owner answers. This delegation does not make those labels
    independent. Expand object/viewpoint coverage and obtain independent scrutiny
    before acceptance; the short recording does not establish the minimum census.
-   Prioritize wrong-attachment replay alongside remaining split-object diagnosis:
-   grouping alone cannot remove a painting look already attached to a table.
+   Continue mixed-history and partial-view diagnosis alongside remaining
+   split-object diagnosis: grouping alone cannot remove a painting look already
+   attached to a table, and a blanket attachment gate can create more fragments.
 
 ### Implementation and integration
 

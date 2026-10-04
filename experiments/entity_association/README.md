@@ -130,3 +130,43 @@ the source snapshot hash and every label's provenance. No fitting or tuning take
 place. The preview still uses all prior history in the snapshot; this is not a
 clean-room replay or an independent acceptance result. Mixed regions, surfaces,
 unknown identities and missed objects do not become correct pairs by exclusion.
+
+## Replaying an attachment from before/after snapshots
+
+`replay_attachment.py` starts from the consistent before-snapshot and adds the
+later snapshot's measured observations with their original IDs and vectors. It
+captures the state immediately before a chosen observation is offered to placed
+entities, its candidate gates and decision, then saves full results and a
+disposable end store. `--recorded-schedule` honours which inferences actually
+settled identity. `--background-after` adds explicitly listed resolver passes;
+these are reconstructed events, not a claim that exact background timing was
+logged. A supplied occupancy map remains a frozen sensitivity. Check original
+memberships, exemplars and placements against the end snapshot before trusting
+the replay. Use a new output directory each time.
+
+For the fresh 27-frame recording, the surviving placement-update timestamps
+support background passes after frames 7, 13, 16, 22, 25 and 27. With the earlier
+saved map, that reconstruction reproduces all 4,026 assignments and every final
+exemplar and placement; two diagnostic notes differ. Resolving every frame
+immediately does not reproduce it. This distinction matters to attachment tests.
+
+```powershell
+python experiments/entity_association/replay_attachment.py --before captures/2026-10-04-reader-validation/before.db --after captures/2026-10-04-reader-validation/after.db --map captures/2026-10-04-association-likelihood/map.json --recorded-schedule --background-after 7,13,16,22,25,27 --labels captures/2026-10-04-reader-validation/owner-review/first-pass.json --output .cache/attachment-replay-new/baseline
+```
+
+Repeat with `--candidate evidence`, `masked-floor` or `trusted-updates`, each in
+a different output directory. These are temporary resolver hooks, outside the
+deployment manifest. `evidence` requires the existing merge appearance score to
+be positive over observation pairs with the entity's kept exemplars. Missing
+masked/semantic vectors, backend mismatch or conflicting exemplar provenance
+abstain. It uses the existing weights and zero threshold without new fitting.
+`masked-floor` reuses the plain gate's 0.55 for masked resemblance; `trusted-updates`
+reuses 0.70 to restrict exemplar updates. None is a production fix.
+
+For the longer development recording, add `--attachment-gate` to
+`replay_experiment.py --mode none` in each fold, with `--exclude-observation 61656
+--same-person`. Its appearance weights are fitted only on objects outside the
+test fold, as in the existing experiment. This tests the scoring rule under
+object holdout, not the default deployed weights or independent acceptance.
+Report newly added wrong pairs and lost correct pairs separately; net counts
+alone can hide replacement mistakes.
