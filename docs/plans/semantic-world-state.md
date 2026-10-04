@@ -4,8 +4,10 @@ Status: capture, storage, perception, placement, search and console inspection
 are deployed and their rules are settled requirements. Bearing accuracy is measured
 rather than required since [R-WS-10](../requirements/world-state.md#r-ws-10) retired on
 2026-10-03. The live work is [one thing per object](#one-thing-per-object-and-only-that-objects-looks):
-duplicates and wrong looks, in investigation, with a reviewed merge step on the rover
-and nothing applied automatically.
+duplicates and wrong looks, with a reviewed merge step on the rover and nothing
+applied automatically. The [evaluation audit](../progress/2026-10-04-entity-association-audit.md)
+found label and scoring problems and a promising reader-only grouping replay;
+identity policy and independent acceptance still stand between it and live use.
 Current operation is [`world_state/README.md`](../../world_state/README.md); the
 measurement that set this back is
 [the M0 baseline](../progress/2026-09-07-m0-semantic-world-state.md).
@@ -122,15 +124,22 @@ labelled objects are two things each, and 46 of 412 labelled looks are filed und
 wrong thing. The resolver causes both, by design: it decides each look once, when it
 arrives, and never compares two things it has placed with each other again.
 
-### What has been established
+### What the development measurements support
+
+These are results of particular implementations on development recordings, not
+rejections of whole algorithm families. The
+[2026-10-04 audit](../progress/2026-10-04-entity-association-audit.md) qualifies the
+earlier scores: old folds split a duplicate object, pairs were counted twice,
+one supposed same-picture duplicate is a disputed painting label, and head/body
+identity had not been defined. The historical progress entries remain unchanged.
 
 - **A single score for "is this the same object"** is a log-likelihood ratio with
   weights fitted by logistic regression, the established method. Among the things the
   resolver's tolerance admits, it puts nearly all the weight on appearance
   ([2026-10-04](../progress/2026-10-04-one-score-for-appearance-and-position.md)).
-- **Changing how the resolver files looks as they arrive does not help.** Ranking by
-  the score, or refusing below a threshold, trades wrong looks for split objects (same
-  entry).
+- **The tested changes to filing as looks arrive trade wrong looks for split objects.**
+  Ranking by the score, or refusing below a threshold, has not established a change
+  ready for deployment (same entry); the tradeoff does not rule out other revisions.
 - **Removing single wrong looks after the fact** gains nothing over the masked-crop
   rule: about 15 of 46 wrong looks for 8 of 366 right ones
   ([2026-10-03](../progress/2026-10-03-cleaning-things-tested-on-recordings.md)), and
@@ -138,11 +147,18 @@ arrives, and never compares two things it has placed with each other again.
   look is not a given thing.
 - **Re-solving a whole session at once by EM** loses too many things
   ([2026-10-03](../progress/2026-10-03-whole-session-em.md)).
-- **Joining duplicates by the score after the session works.** 216 more same-object
-  pairs end up together, with none of different objects. Joining them while the rover is
-  still looking makes things worse on every schedule tried
+- **Joining duplicates after the session improves the measured grouping.** The gain
+  of 216 same-object pairs survives the audited scoring. The tested schedules that
+  change the resolver's own entities reduce wrong pairings but also increase splits;
+  they are not ready to deploy
   ([2026-10-04](../progress/2026-10-04-merging-while-the-rover-looks.md)). A person can
-  review and apply the merges now ([the runbook](../runbooks/world-state-merge.md)).
+  review and apply the existing merges ([the runbook](../runbooks/world-state-merge.md)).
+- **Groups that the resolver never consumes preserve its memberships.** Their replay
+  passes all five development checkpoints when head/body detections count as one
+  person; all apparent extra wrong pairs under the old policy are that person/part
+  relation. This is conditional on an explicit identity policy and needs an
+  independent recording. The bench is documented in
+  [experiments/entity_association](../../experiments/entity_association/README.md).
 - **Rebuilding a few neighbouring things from their pooled looks** handles wrong looks
   best. With the dining chairs aside and weights fitted without the things scored, it
   keeps 7 of 37 wrong looks with their object, against 10 for single-look removal at
@@ -154,18 +170,24 @@ arrives, and never compares two things it has placed with each other again.
 Each question is answered by replay of map session 67 unless it says otherwise, with
 the success predicate fixed here before the run.
 
-1. **Does a grouping that the resolver never sees keep the gain throughout a session?**
-   "Same object as" groups would sit over the resolver's things, recomputed by the merge
-   rule every few minutes, while the resolver keeps working on its own things. Replay
-   with the groups recomputed every five minutes and score at five evenly spaced points
-   in the session. It passes if, at every point, same-object pairs together are at least
-   the resolver's own count at that point, different-object pairs together are no more
-   than the resolver's own, and at the end the counts match the pass after the last
-   look (3,937 and 710).
-2. **Is the two-boxes mechanism why merging during a session hurts?** In the replays
-   that merged every five minutes, count the things founded from a region whose picture
-   gave its other region to a merged thing. This is diagnosis only, with no predicate.
-   It decides whether merging the store itself is worth revisiting.
+1. **Does grouping preserve the gain under an agreed identity policy on fresh data?**
+   The five-checkpoint development replay passes under a one-person interpretation.
+   First settle whether parts are separate identities or views of a parent object,
+   review the disputed labels, and freeze truth before another trial. Repeat the
+   reader-only grouping test on an independently labelled recording, keeping every
+   record of one physical object in one fold and counting each pair once. At each
+   checkpoint same-object pairs together must be at least baseline's, different-object
+   pairs together no more, and final counts must match the end-only pass under the
+   same frozen labels, weights and geometric gate. Five points do not establish
+   continuous correctness, so inspect intermediate grouping changes too.
+2. **Which state changes cause live merging to reject a later correct look?** Two
+   immediate refusals are traced: the green painting fails visibility at its changed
+   placement, and the cow painting fails the current exemplar threshold. Neither
+   is blocked by another region in its picture. Isolate the preceding merge/refit/
+   attachment by controlled replay before trying a safeguard; require the affected
+   look to remain eligible without admitting a different object. Continue searching
+   for confirmed duplicate detections separately: the claimed cow example did not
+   survive inspection of its full frame. This is diagnosis, not a deployment gate.
 3. **Does the neighbourhood rebuild hold across the whole store?** Tile the store into
    groups of neighbouring things so that each look is decided once, rebuild every
    group, and score all 25 labelled things with weights fitted without them. It passes
@@ -176,9 +198,14 @@ the success predicate fixed here before the run.
    record written by the rebuild and consulted by the resolver. It passes if no look the
    rebuild took off its thing is later filed under that same thing again.
 5. **Do the answers hold on an independently labelled drive?** On a new driven
-   recording, the owner labels a random sample of at least 20 things, look by look, from
-   contact sheets, before any of the above is scored against it. This is item 3 of the
-   acceptance list above, and nothing here is called settled without it.
+   recording, label sampled frames and regions without exposing current entity
+   assignments; use stable physical-object identities across viewpoints. Include
+   pending regions, mixed regions and object/part relations, cover at least 20
+   distinguishable objects, and count unavailable evidence separately. The owner
+   or another independent reviewer fixes those labels before any result is scored.
+   Keep this recording out of training and tuning. This is item 3 of the acceptance
+   list above, and nothing here is called settled without it. The existing blinded
+   pilot pack is development evidence only.
 
 ### Implementation and integration
 

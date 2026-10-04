@@ -1,0 +1,17 @@
+{
+  "status": "analyst review; historical labels are preserved; owner confirmation outstanding",
+  "excluded_observations": [61656],
+  "findings": [
+    {
+      "observation": 61656,
+      "old_label": "main look of the cow painting, object:340 (duplicate of object:249)",
+      "reason": "The original full frame contains two distinct paintings. Observation 61654 covers the painting to the right of the cabinet; 61656 covers a different painting at the extreme right edge beyond the door. They cannot be duplicate detections of one physical painting.",
+      "frame": "20261003-091409-2e7688",
+      "other_observation": 61654,
+      "image": "captures/2026-10-03-targets/frames-2026-10-03-acceptance/20261003-091409-2e7688.jpg",
+      "bbox_61654": [0.6174, 0.2129, 0.7241, 0.3664],
+      "bbox_61656": [0.9566, 0.1075, 1.0, 0.3117],
+      "treatment": "Exclude 61656 from training and scoring in the sensitivity rerun; do not invent its true object label or overwrite the original labels. This also means object:340 is not established as a clean duplicate."
+    }
+  ]
+}
