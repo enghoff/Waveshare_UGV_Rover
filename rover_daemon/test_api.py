@@ -98,7 +98,7 @@ def test_schemas():
                # metres and words. See rover_recall.py, and
                # docs/plans/semantic-world-state.md under "Authority boundaries".
                "world_building", "world_inspect",
-               "world_state_clear", "world_state_rebuild", "world_state_consolidate",
+               "world_state_clear", "world_state_rebuild",
                "world_state_entities", "world_state_entity", "world_state_frame",
                "world_state_observations", "world_state_search",
                "world_state_summary",

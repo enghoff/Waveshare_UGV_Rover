@@ -1096,11 +1096,6 @@ class WorldStore:
             self.db.execute("DELETE FROM inferences")
             self.db.execute("DELETE FROM frames")
             self.db.execute("DELETE FROM counters")
-            # And what a consolidation would put back, which names things that
-            # have just stopped existing. See consolidate.py.
-            for journal in ("consolidations", "consolidation_entities",
-                            "consolidation_looks"):
-                self.db.execute(f"DELETE FROM {journal}")
             self.db.execute("REPLACE INTO meta(key, value) VALUES('generation', ?)",
                             (new_generation(),))
         # Everything in the directory rather than everything the table knew about,

@@ -1176,39 +1176,6 @@ class RoverWorld:
         return {"ok": True, "applied": True, "backup": backup, "rerange": ranged,
                 "rebuild": built}
 
-    def _tool_world_state_consolidate(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Re-solve this map session's things all at once by EM, or put the last one
-        back. A control call, and a person's act.
-
-        **Without `apply` or `rollback` it changes nothing** and answers what it would
-        do: things before and after, which would merge into which, which would go, and
-        how many looks would move. With `apply` it does that, journalling first every
-        thing and look it changes; with `rollback` it puts the last one applied back,
-        leaving looks recorded since where the resolver put them. Things keep their
-        numbers. `runs` lists what has been applied. See world_state/consolidate.py.
-
-        The rover's own looks and its resolver are held off while it works, which is
-        seconds: a session of 2,400 looks took 5 s at a desk.
-        """
-        why = self._world_ready()
-        if why:
-            return {"ok": False, "error": why}
-        store = self._world_store()
-        if arguments.get("runs"):
-            return {"ok": True, "runs": world_state.consolidate.runs(store)}
-        inspector = self._world_inspector()
-        with inspector.not_looking(CLEAR_WAIT_S) as idle:
-            if not idle:
-                return {"ok": False,
-                        "error": f"an inspection has been running for longer than "
-                                 f"{CLEAR_WAIT_S:.0f} s; nothing was changed"}
-            if arguments.get("rollback"):
-                return world_state.consolidate.rollback(store)
-            worked = world_state.consolidate.plan(store, reach=self._world_reach)
-            if not arguments.get("apply"):
-                return {"ok": True, "applied": False, **worked.summary()}
-            return world_state.consolidate.apply(store, worked)
-
     # There was a `world_map_session` control call here, and it is gone. It read
     # like a question -- which map session is this? -- and it was an instruction:
     # every call minted a new one, which is to say it told the rover that

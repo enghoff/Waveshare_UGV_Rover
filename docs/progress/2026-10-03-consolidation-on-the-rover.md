@@ -24,9 +24,18 @@ first. It took 17.9 s with the rover's looks held off, against 10 s at a desk.
 
 ## Rolling it back
 
-`world_state_consolidate {"rollback": true}` puts consolidation 1 back
-([the runbook](../runbooks/world-state-consolidate.md)). Rehearsed on a copy of the
+`world_state_consolidate {"rollback": true}` puts consolidation 1 back. Rehearsed on a copy of the
 rover's store taken at 15:38, applying took 0.5 s and rolling back 0.4 s. Afterwards every
 thing and every look's thing and note were byte-identical to the copy. Looks recorded
 after applying stay where the resolver puts them. Things the resolver founds from looks
 EM let go are removed by the rollback.
+
+## Addendum, 2026-10-04: rolled back, and the call removed
+
+The owner had both consolidations rolled back the same evening and the store rebuilt by
+the resolver from its looks, which gave 182 things. The per-look tests that followed
+([cleaning things up, tested on recordings](2026-10-03-cleaning-things-tested-on-recordings.md))
+found nothing that beats the resolver on this data, so the call, its journal and its
+rollback were taken out of the rover. The EM itself survives as the bench
+`world_state/bench_whole.py`. The rover's database still holds the two runs' journal
+tables, which nothing reads; the store never drops recorded history.

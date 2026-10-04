@@ -101,17 +101,6 @@ things move it:
   previous day learning.
 - **`world_state_clear` on its own empties the store and leaves the map alone**,
   which is what a repeatable experiment needs.
-- **The things of the current map session can be re-solved all at once, and put
-  back.** `world_state_consolidate` hands every look of the session to the
-  expectation-maximisation in [consolidate.py](consolidate.py), starting from the
-  things the resolver holds: it joins halves of one thing the resolver keeps apart,
-  such as the door founded on a picture with a chair in front of it, and it also
-  loses real things and re-splits neighbours that share pictures, which is why it
-  is a person's act and not a schedule. Applying it journals every thing and look it
-  changes, so `{"rollback": true}` restores those exactly and leaves looks recorded
-  since where the resolver put them. Things keep their numbers; each result carries
-  the name most of its looks had. See
-  [the runbook](../docs/runbooks/world-state-consolidate.md).
 
 The clear is refused while a look is in flight, after waiting `CLEAR_WAIT_S` for
 it. The console reports that as `not cleared` with the reason beside it, and the
