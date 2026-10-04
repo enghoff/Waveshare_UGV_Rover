@@ -231,4 +231,30 @@ SCHEMA = """
         width    INTEGER,
         height   INTEGER
     );
+    -- What a merge run joined, so that it can be put back: one row per run, both
+    -- things of every pair as they stood, and every look it moved with where that
+    -- look was before. See merging.py.
+    CREATE TABLE IF NOT EXISTS merge_runs (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        applied_at     REAL NOT NULL,
+        map_session    INTEGER NOT NULL,
+        generation     TEXT NOT NULL,
+        pairs_json     TEXT NOT NULL,
+        rolled_back_at REAL
+    );
+    CREATE TABLE IF NOT EXISTS merge_entities (
+        run_id          INTEGER NOT NULL,
+        entity_id       TEXT NOT NULL,
+        row_json        TEXT NOT NULL,
+        exemplars       BLOB,
+        exemplars_alone BLOB,
+        PRIMARY KEY (run_id, entity_id)
+    );
+    CREATE TABLE IF NOT EXISTS merge_looks (
+        run_id         INTEGER NOT NULL,
+        observation_id INTEGER NOT NULL,
+        entity_before  TEXT,
+        note_before    TEXT,
+        PRIMARY KEY (run_id, observation_id)
+    );
 """

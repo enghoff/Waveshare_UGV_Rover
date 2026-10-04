@@ -101,6 +101,15 @@ things move it:
   previous day learning.
 - **`world_state_clear` on its own empties the store and leaves the map alone**,
   which is what a repeatable experiment needs.
+- **Two things that are one object can be joined, once a person has looked.** The
+  resolver never compares two placed things with each other, so a thing founded twice
+  stays twice. `world_state_merge` scores every pair in the current map session by the
+  log-likelihood ratio that they are one object -- their crops, and their positions
+  compared by error ellipse -- and proposes the pairs that score above zero
+  ([merging.py](merging.py)). `merge_sheet.py` draws them, `{"apply": [[keep, gone],
+  ...]}` joins the accepted ones, journalling both things and every moved look, and
+  `{"rollback": true}` puts the last run back exactly. See
+  [the runbook](../docs/runbooks/world-state-merge.md).
 
 The clear is refused while a look is in flight, after waiting `CLEAR_WAIT_S` for
 it. The console reports that as `not cleared` with the reason beside it, and the
@@ -386,6 +395,9 @@ The daemon exposes control calls on TCP 8769 for the console and diagnostics:
 - `world_state_rebuild`: the kept looks read again under their outlines and every
   thing built again from them; without `apply` it only says what would change
   ([the runbook](../docs/runbooks/world-state-rebuild.md))
+- `world_state_merge`: which things look like one object, and joining the pairs a
+  person accepted, or putting the last joining back
+  ([the runbook](../docs/runbooks/world-state-merge.md))
 - `world_inspect`
 - `world_state_check`
 

@@ -39,6 +39,7 @@ from .inspector import Inspector
 from . import approach
 from . import depth_client
 from . import hypothesis_check
+from . import merging
 from . import oak
 from . import outline
 from . import rebuild

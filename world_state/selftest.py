@@ -37,6 +37,7 @@ from test_identity import TESTS as IDENTITY_TESTS
 from test_inspect import TESTS as INSPECT_TESTS
 from test_inspection_look import TESTS as INSPECTION_LOOK_TESTS
 from test_locate import TESTS as LOCATE_TESTS
+from test_merging import TESTS as MERGING_TESTS
 from test_oak import TESTS as OAK_TESTS
 from test_outline import TESTS as OUTLINE_TESTS
 from test_rebuild import TESTS as REBUILD_TESTS
@@ -52,7 +53,7 @@ TESTS = (*STORE_TESTS, *LOCATE_TESTS, *CLUSTER_TESTS, *PERCEIVE_TESTS,
          *INSPECT_TESTS, *HEADINGCHECK_TESTS, *RESOLVE_TESTS, *SEARCH_TESTS, *APPROACH_TESTS,
          *OAK_TESTS, *REANCHOR_TESTS, *IDENTITY_TESTS, *RELENS_TESTS, *TURNING_RANGES_TESTS,
          *HYPOTHESIS_CHECK_TESTS, *INSPECTION_LOOK_TESTS, *OUTLINE_TESTS,
-         *REBUILD_TESTS)
+         *REBUILD_TESTS, *MERGING_TESTS)
 
 
 def main() -> int:

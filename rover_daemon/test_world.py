@@ -456,6 +456,103 @@ def test_a_rebuild_asks_first_backs_up_and_waits_for_the_look_in_flight():
                     os.environ[name] = value
 
 
+def test_a_merge_asks_first_and_can_be_put_back():
+    """Joining things rewrites which thing looks belong to, so asking changes nothing,
+    joining says what it did, and the last joining can be undone on request."""
+    import json
+    import math
+    import struct
+    import tempfile
+    import threading
+    import time
+
+    import rover_daemon
+    import rover_world
+
+    def vector(width, wobble):
+        values = [0.0] * width
+        values[0], values[1] = 1.0, wobble
+        return struct.pack(f"<{width}f", *values)
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            store = rover._world_store()
+            inspector = rover._world_inspector()
+            session = store.map_session()
+            for entity_id, y_m in (("object:1", 0.2), ("object:2", -0.2)):
+                store.db.execute(
+                    "INSERT INTO entities(id, kind, label, canonical_description,"
+                    " created_at, last_seen_at, observation_count, placement_json,"
+                    " placement_map_session) VALUES(?, 'object', '', '', ?, ?, 2, ?, ?)",
+                    (entity_id, time.time(), time.time(),
+                     json.dumps({"x_m": 3.0, "y_m": y_m, "uncertainty_m": 0.2,
+                                 "error_major_m": 0.2, "extent_m": 0.3}), session))
+            places = ((0.0, 0.0), (0.0, 1.5), (0.5, -1.5), (1.0, 2.0))
+            for look, (x_m, y_m) in enumerate(places, start=1):
+                store.db.execute(
+                    "INSERT INTO observations(entity_id, inference_id, observed_at,"
+                    " source, observer_pose_json, map_session, bearing_deg, span_deg,"
+                    " dino_blob, dino_alone_blob, siglip_blob, vectors_from, note)"
+                    " VALUES(?, ?, ?, 'test', ?, ?, ?, 5.0, ?, ?, ?, 'tensorrt', 'was')",
+                    ("object:1" if look <= 2 else "object:2", look, time.time(),
+                     json.dumps({"x_m": x_m, "y_m": y_m, "heading_deg": 0.0}), session,
+                     math.degrees(math.atan2(-y_m, 3.0 - x_m)),
+                     vector(384, 0.01 * look), vector(384, 0.02 * look),
+                     vector(768, 0.01 * look)))
+            store.db.commit()
+
+            asked = rover.call("world_state_merge", {})
+            check("without apply it proposes the two halves and changes nothing",
+                  (asked["ok"], [(one["keep"], one["gone"]) for one in asked["proposals"]],
+                   store.db.execute("SELECT COUNT(*) FROM entities").fetchone()[0]),
+                  (True, [("object:1", "object:2")], 2))
+            done = rover.call("world_state_merge", {"apply": [["object:1", "object:2"]]})
+            check("with apply it joins them and numbers the run",
+                  (done["ok"], done["run"], store.db.execute(
+                      "SELECT COUNT(*) FROM entities").fetchone()[0]), (True, 1, 1))
+            check("...and lists it",
+                  [run["id"] for run in rover.call("world_state_merge",
+                                                   {"runs": True})["runs"]], [1])
+            undone = rover.call("world_state_merge", {"rollback": True})
+            check("rolled back, both are there again",
+                  (undone["ok"], store.db.execute(
+                      "SELECT COUNT(*) FROM entities").fetchone()[0]), (True, 2))
+
+            stuck, held = threading.Event(), threading.Event()
+
+            def wedged():
+                with inspector.not_looking(5.0) as idle:
+                    assert idle
+                    held.set()
+                    stuck.wait(10.0)
+
+            threading.Thread(target=wedged, daemon=True).start()
+            held.wait(5.0)
+            waiting = rover_world.CLEAR_WAIT_S
+            rover_world.CLEAR_WAIT_S = 0.2
+            try:
+                refused = rover.call("world_state_merge",
+                                     {"apply": [["object:1", "object:2"]]})
+                check("a look that will not end refuses the joining",
+                      (refused["ok"], "inspection" in refused["error"]), (False, True))
+                check("...but asking still answers",
+                      rover.call("world_state_merge", {})["ok"], True)
+            finally:
+                rover_world.CLEAR_WAIT_S = waiting
+                stuck.set()
+            rover.close_world()
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 def test_clearing_the_map_takes_the_world_state_with_it():
     """One button, and both ends of it answered for inside the rover.
 
@@ -1345,6 +1442,7 @@ TESTS = (
     test_the_camera_is_asked_twice_before_an_inspection_is_lost,
     test_a_clear_waits_for_the_look_in_flight_instead_of_refusing,
     test_a_rebuild_asks_first_backs_up_and_waits_for_the_look_in_flight,
+    test_a_merge_asks_first_and_can_be_put_back,
     test_clearing_the_map_takes_the_world_state_with_it,
     test_a_world_observation_takes_the_live_pose_and_no_other,
     test_how_far_the_rover_could_see_comes_off_its_own_map,

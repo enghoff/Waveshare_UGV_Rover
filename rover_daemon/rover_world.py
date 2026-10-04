@@ -1176,6 +1176,39 @@ class RoverWorld:
         return {"ok": True, "applied": True, "backup": backup, "rerange": ranged,
                 "rebuild": built}
 
+    def _tool_world_state_merge(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Join things the resolver split, or put the last joining back. A control
+        call, and a person's act.
+
+        **Without `apply` or `rollback` it changes nothing** and answers which pairs of
+        this map session's things look like one object, with the score of each and the
+        looks to judge it by. `{"apply": [[keep, gone], ...]}` joins the pairs a person
+        accepted, journalling both things and every moved look first; `{"rollback":
+        true}` puts the last run back, leaving looks recorded since where the resolver
+        put them. `{"runs": true}` lists what has been applied. See
+        world_state/merging.py.
+
+        The rover's own looks and its resolver are held off only while it writes.
+        """
+        why = self._world_ready()
+        if why:
+            return {"ok": False, "error": why}
+        store = self._world_store()
+        if arguments.get("runs"):
+            return {"ok": True, "runs": world_state.merging.runs(store)}
+        if not arguments.get("apply") and not arguments.get("rollback"):
+            return world_state.merging.propose(store)
+        inspector = self._world_inspector()
+        with inspector.not_looking(CLEAR_WAIT_S) as idle:
+            if not idle:
+                return {"ok": False,
+                        "error": f"an inspection has been running for longer than "
+                                 f"{CLEAR_WAIT_S:.0f} s; nothing was changed"}
+            if arguments.get("rollback"):
+                return world_state.merging.rollback(store)
+            return world_state.merging.apply(store, arguments["apply"],
+                                             reach=self._world_reach)
+
     # There was a `world_map_session` control call here, and it is gone. It read
     # like a question -- which map session is this? -- and it was an instruction:
     # every call minted a new one, which is to say it told the rover that

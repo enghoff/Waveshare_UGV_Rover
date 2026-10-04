@@ -67,6 +67,7 @@ HUMAN_MOVES = frozenset({
     "drive", "drive_to", "drive_to_map_point", "turn_in_place", "explore",
     "go_to_thing", "stop_driving", "run_script", "start_script",
     "clear_map", "refit_pose", "world_state_clear", "world_state_rebuild",
+    "world_state_merge",
 })
 
 #: What a human intervention is called in the record, so that a person reading
@@ -77,6 +78,7 @@ TAKEOVER = {
     "refit_pose": "somebody refitted the rover onto the map",
     "world_state_clear": "somebody emptied the world state",
     "world_state_rebuild": "somebody rebuilt the world state",
+    "world_state_merge": "somebody joined things in the world state",
 }
 
 

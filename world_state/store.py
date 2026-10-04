@@ -637,48 +637,61 @@ class WorldStore:
         the merge is refused rather than quietly breaking the rule the resolver
         relies on.
         """
+        with self._lock, self.db:
+            return self._merge_rows(keep_id, gone_id)
+
+    def _merge_rows(self, keep_id: str, gone_id: str) -> dict[str, Any]:
+        """`merge` without its lock and transaction, for a caller that holds both and
+        writes something else in the same transaction -- `merging.apply` journals
+        the two rows first, so that the merge and the record of it stand or fall
+        together."""
         if keep_id == gone_id:
             return {"ok": False, "why": "a thing cannot be merged with itself"}
-        with self._lock, self.db:
-            rows = self.db.execute(
-                "SELECT entity_id, inference_id FROM observations"
-                " WHERE entity_id IN (?, ?) AND inference_id IS NOT NULL",
-                (keep_id, gone_id)).fetchall()
-            frames: dict[Any, set] = {}
-            for row in rows:
-                frames.setdefault(row["inference_id"], set()).add(row["entity_id"])
-            shared = [frame for frame, who in frames.items() if len(who) > 1]
-            if shared:
-                return {"ok": False,
-                        "why": (f"{keep_id} and {gone_id} both have a region in "
-                                f"look {shared[0]}, so they are two things")}
-            gone = self.db.execute("SELECT * FROM entities WHERE id = ?",
-                                   (gone_id,)).fetchone()
-            keep = self.db.execute("SELECT * FROM entities WHERE id = ?",
-                                   (keep_id,)).fetchone()
-            if gone is None or keep is None:
-                return {"ok": False, "why": "one of them is no longer there"}
-            moved = self.db.execute(
-                "UPDATE observations SET entity_id = ? WHERE entity_id = ?",
-                (keep_id, gone_id)).rowcount
-            # The kept row's own exemplars first, so that what survives the
-            # window is what this thing has looked like most recently rather
-            # than whichever row happened to be second.
-            width = 1536
-            blobs = (gone["exemplars"] or b"") + (keep["exemplars"] or b"")
+        rows = self.db.execute(
+            "SELECT entity_id, inference_id FROM observations"
+            " WHERE entity_id IN (?, ?) AND inference_id IS NOT NULL",
+            (keep_id, gone_id)).fetchall()
+        frames: dict[Any, set] = {}
+        for row in rows:
+            frames.setdefault(row["inference_id"], set()).add(row["entity_id"])
+        shared = [frame for frame, who in frames.items() if len(who) > 1]
+        if shared:
+            return {"ok": False,
+                    "why": (f"{keep_id} and {gone_id} both have a region in "
+                            f"look {shared[0]}, so they are two things")}
+        gone = self.db.execute("SELECT * FROM entities WHERE id = ?",
+                               (gone_id,)).fetchone()
+        keep = self.db.execute("SELECT * FROM entities WHERE id = ?",
+                               (keep_id,)).fetchone()
+        if gone is None or keep is None:
+            return {"ok": False, "why": "one of them is no longer there"}
+        moved = self.db.execute(
+            "UPDATE observations SET entity_id = ? WHERE entity_id = ?",
+            (keep_id, gone_id)).rowcount
+        # The kept row's own exemplars first, so that what survives the window is
+        # what this thing has looked like most recently rather than whichever row
+        # happened to be second. Both columns, the masked crops as well as the
+        # plain ones: `resolve.collapsed` compares a new look against the masked
+        # ones, and a merged thing holding only one side's would refuse the other
+        # side's next look for collapsing.
+        width = 1536
+        merged = {}
+        for column in self.EXEMPLAR_COLUMNS.values():
+            blobs = (gone[column] or b"") + (keep[column] or b"")
             if len(blobs) % width:
-                blobs = keep["exemplars"] or b""
-            self.db.execute(
-                "UPDATE entities SET exemplars = ?,"
-                " observation_count = (SELECT COUNT(*) FROM observations"
-                "                       WHERE entity_id = ?),"
-                " created_at = MIN(created_at, ?),"
-                " last_seen_at = MAX(last_seen_at, ?)"
-                " WHERE id = ?",
-                (blobs[-width * EXEMPLARS:], keep_id,
-                 gone["created_at"] or keep["created_at"],
-                 gone["last_seen_at"] or keep["last_seen_at"], keep_id))
-            self.db.execute("DELETE FROM entities WHERE id = ?", (gone_id,))
+                blobs = keep[column] or b""
+            merged[column] = blobs[-width * EXEMPLARS:] or keep[column]
+        self.db.execute(
+            "UPDATE entities SET exemplars = ?, exemplars_alone = ?,"
+            " observation_count = (SELECT COUNT(*) FROM observations"
+            "                       WHERE entity_id = ?),"
+            " created_at = MIN(created_at, ?),"
+            " last_seen_at = MAX(last_seen_at, ?)"
+            " WHERE id = ?",
+            (merged["exemplars"], merged["exemplars_alone"], keep_id,
+             gone["created_at"] or keep["created_at"],
+             gone["last_seen_at"] or keep["last_seen_at"], keep_id))
+        self.db.execute("DELETE FROM entities WHERE id = ?", (gone_id,))
         return {"ok": True, "kept": keep_id, "gone": gone_id, "observations": moved}
 
     def create_entity(self, kind: str = "object") -> str:
@@ -1096,6 +1109,10 @@ class WorldStore:
             self.db.execute("DELETE FROM inferences")
             self.db.execute("DELETE FROM frames")
             self.db.execute("DELETE FROM counters")
+            # And what a merge run would put back, which names things that have
+            # just stopped existing. See merging.py.
+            for journal in ("merge_runs", "merge_entities", "merge_looks"):
+                self.db.execute(f"DELETE FROM {journal}")
             self.db.execute("REPLACE INTO meta(key, value) VALUES('generation', ?)",
                             (new_generation(),))
         # Everything in the directory rather than everything the table knew about,
