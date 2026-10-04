@@ -202,13 +202,17 @@ the success predicate fixed here before the run.
    assignments; use stable physical-object identities across viewpoints. Include
    pending regions, mixed regions and object/part relations, cover at least 20
    distinguishable objects, and count unavailable evidence separately. The owner
-   or another independent reviewer fixes those labels before any result is scored.
+   or another independent reviewer fixes those labels before acceptance is scored.
    Keep this recording out of training and tuning. This is item 3 of the acceptance
    list above, and nothing here is called settled without it. The existing blinded
-   pilot pack is development evidence only. Independently label the
-   [short fresh recording](../progress/2026-10-04-reader-validation-drive.md)
-   before scoring it; establish whether it covers the minimum number of objects,
-   and collect more viewpoints if needed.
+   pilot pack is development evidence only. The owner has delegated the fresh
+   recording's label judgments to the coding agent: development assessment may
+   proceed using clear drafts and a separate uncertain-label sensitivity check,
+   without waiting for owner answers. This delegation does not make those labels
+   independent. Expand object/viewpoint coverage and obtain independent scrutiny
+   before acceptance; the short recording does not establish the minimum census.
+   Prioritize wrong-attachment replay alongside remaining split-object diagnosis:
+   grouping alone cannot remove a painting look already attached to a table.
 
 ### Implementation and integration
 

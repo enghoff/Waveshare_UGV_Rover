@@ -1,0 +1,99 @@
+{
+  "source_database_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+  "labels_sha256": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0",
+  "after_observation_id": 64513,
+  "source_unchanged": true,
+  "independent_acceptance": false,
+  "training_or_tuning": false,
+  "label_author": "coding_agent_first_pass",
+  "fresh_regions": 232,
+  "preview_uses_prior_history": true,
+  "limitations": [
+    "Labels are analyst judgments, not owner-confirmed or independent truth.",
+    "Only fresh/fresh pairs count; old regions in the snapshot still influence grouping.",
+    "The same room and many physical objects were present in development.",
+    "Unknown/mixed/surface regions do not count as correct or incorrect pairs.",
+    "No missed-object census or placement accuracy is measured.",
+    "Tentative sensitivity deliberately includes uncertain identities; it is not truth."
+  ],
+  "production_source_revision": "50858c172d7bc78d832f7062a52969c57ba9e2db",
+  "full_result_sha256": "b13275c7816fcc044a2e5e764aebf7ae9ba303a7b32978b9820324b15a7da8e1",
+  "full_result_path": "captures/2026-10-04-reader-validation/owner-review/assessment.json",
+  "delegation": "Owner delegated assessment and judgment; no labels confirmed by owner.",
+  "working_policy": "Physical parent identity for person/table/painting parts; multi-fixture kitchen regions mixed; uncertain cross-view identities excluded from primary score.",
+  "labels_changed_after_scoring": false,
+  "primary_nonobject_clear_drafts_excluded": 7,
+  "owner_review_required_to_continue_development": false,
+  "snapshot_preview": {
+    "converged": true,
+    "stale": false,
+    "preview_only": true,
+    "accepted": false,
+    "geometry_limit2": 13.815510557964274,
+    "seconds": 5.86,
+    "groups": 20
+  },
+  "primary_clear_only": {
+    "added_same_pairs": 57,
+    "added_wrong_pairs": [],
+    "baseline": {
+      "regions": 146,
+      "objects": 16,
+      "waiting": 39,
+      "same_together": 284,
+      "same_apart": 572,
+      "different_together": 3,
+      "different_apart": 9726,
+      "split_objects_with_two_regions_per_piece": 5
+    },
+    "grouped": {
+      "regions": 146,
+      "objects": 16,
+      "waiting": 39,
+      "same_together": 341,
+      "same_apart": 515,
+      "different_together": 3,
+      "different_apart": 9726,
+      "split_objects_with_two_regions_per_piece": 4
+    }
+  },
+  "tentative_label_sensitivity": {
+    "added_same_pairs": 64,
+    "added_wrong_pairs": [],
+    "baseline": {
+      "regions": 201,
+      "objects": 23,
+      "waiting": 42,
+      "same_together": 407,
+      "same_apart": 749,
+      "different_together": 34,
+      "different_apart": 18910,
+      "split_objects_with_two_regions_per_piece": 8
+    },
+    "grouped": {
+      "regions": 201,
+      "objects": 23,
+      "waiting": 42,
+      "same_together": 471,
+      "same_apart": 685,
+      "different_together": 34,
+      "different_apart": 18910,
+      "split_objects_with_two_regions_per_piece": 7
+    }
+  },
+  "primary_wrong_pairs": [
+    [
+      64581,
+      64638
+    ],
+    [
+      64592,
+      64638
+    ],
+    [
+      64638,
+      64735
+    ]
+  ],
+  "next_step": "Reproduce painting 64638 attachment to table object:415 with pre-decision state before changing the resolver."
+}

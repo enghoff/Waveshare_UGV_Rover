@@ -118,3 +118,15 @@ It never reads existing entity assignments, edits labels or scores candidates.
 Reviewers can reply by question number or download their free-text answers.
 Unreviewed coding-agent labels do not become independent truth merely because
 the uncertain cases received owner review.
+
+When the owner delegates these judgments, proceed with analyst evaluation rather
+than waiting for owner answers. Keep the original draft frozen, exclude uncertain
+identities from the primary score, and report them separately as a sensitivity
+check. `assess_recording.py --database <snapshot.db> --draft <draft.json>
+--after-observation <last-id-before-drive> --output <assessment.json>` runs the
+unchanged grouping preview on a temporary copy using its default weights. It
+counts each fresh/fresh pair once, keeps waiting observations separate, and checks
+the source snapshot hash and every label's provenance. No fitting or tuning takes
+place. The preview still uses all prior history in the snapshot; this is not a
+clean-room replay or an independent acceptance result. Mixed regions, surfaces,
+unknown identities and missed objects do not become correct pairs by exclusion.
