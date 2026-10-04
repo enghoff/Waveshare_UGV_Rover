@@ -218,3 +218,32 @@ the masked crop. Three things stand between the rebuild and the rover:
 - **A look it lets go would be attached straight back.** The resolver attaches pending
   looks by its own rules, and the live store still has no record that a look is not a
   given thing.
+
+## Addendum, the same day: ranking inside the current checks, and merging afterwards
+
+Two more replays, scored the same way, with every weight fitted without the things being
+scored. The first keeps every check and refusal the resolver has and changes only how it
+ranks the candidates that pass: by the combined score instead of by how much of the
+bearing tolerance they use. The second runs the merge rule above over what a replay
+built, joining the best qualifying pair first and refitting the union, until none is left.
+
+| | Things | Wrong looks kept (of 46) | Right looks parted (of 366) | of them left waiting | Different labelled objects in one thing | Look-alike pairs within 0.5 m |
+|---|---:|---:|---:|---:|---:|---:|
+| deployed | 182 | 46 | 0 | 0 | 0 | 24 |
+| deployed, then merged | 155 and 159 | 46 | 0 | 0 | 0 and 0 | 1 and 1 |
+| ranked by the combined score | 171 and 168 | 11 | 114 | 8 | 0 and 0 | 18 and 18 |
+| ranked by the combined score, then merged | 150 and 152 | 13 | 81 | 8 | 0 and 0 | 4 and 2 |
+
+Ranked with a looser ambiguity margin (0.5 rather than 0.1), it kept 18 wrong looks and
+parted 125 right ones. Of the 114 right looks the tighter version parts, 102 sit in a
+second record of their own object, 4 went to a thing holding a different labelled object,
+and 8 were left waiting.
+
+- **Merging after the deployed resolver is a clean gain on duplicates.** It joined 23 and
+  27 pairs, took the look-alike pairs from 24 to 1, rejoined 3 of the 6 labelled duplicate
+  halves over the two runs, and put no two labelled objects together. It does nothing for
+  wrong looks.
+- **Ranking by the combined score swaps wrong looks for split objects**, and merging
+  afterwards rejoins only about a third of the split: 81 right looks still sit in a second
+  record that the merge rule does not join. Why it does not was not traced.
+
