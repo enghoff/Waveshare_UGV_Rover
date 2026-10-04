@@ -98,3 +98,12 @@ review. It samples frames independently of existing entities and reports missing
 frames. Its source is still the development drive, so it cannot close acceptance.
 Use that labeling format on a fresh recording, retain an untouched test session,
 and agree the proposed R-WS-17/R-WS-18 tolerances before judging deployment.
+
+For a separate recording, supply `prepare_review.py --database <snapshot.db>
+--frames-dir <saved-frames> --after-observation <last-id-before-drive>
+--frames <number> --output <new-review-directory>`. It opens the snapshot read-only,
+includes both assigned and pending regions, hides entity assignments and existing
+labels, and reports missing images and regions without bearings. The resulting
+CSV stays blank for an independent reviewer. This mode omits the development
+recording's disputed-label and head/body examples. A fresh but unlabelled recording
+is still marked as unaccepted.

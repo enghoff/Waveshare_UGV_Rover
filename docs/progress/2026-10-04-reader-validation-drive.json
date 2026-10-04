@@ -1,0 +1,32 @@
+{
+  "source_revision": "50858c172d7bc78d832f7062a52969c57ba9e2db",
+  "independent_acceptance": false,
+  "training_or_tuning_on_new_recording": false,
+  "candidate_scored_on_new_recording": false,
+  "after_observation_id": 64513,
+  "before_sha256": "73b0887a531a32306dacd4d3f29bb006dd859a5e39e2fe7e15412404aa6be2f9",
+  "after_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+  "new_regions": 232,
+  "frames": 27,
+  "with_bearings": 204,
+  "with_ranges": 82,
+  "without_bearing": 28,
+  "missing_frames": 0,
+  "turn_requested_deg": 45,
+  "turn_reported_deg": 64.6,
+  "outward_reported_path_m": 1.31,
+  "return_reported_path_m": 1.085,
+  "final_from_start_reported_m": 0.08509406559802006,
+  "final_heading_deg": 117.2,
+  "driving_final": false,
+  "speed_ms_final": 0.0,
+  "navigation_recorder": {
+    "seconds": 180,
+    "poses": 1800,
+    "costmaps": 359,
+    "plans": 0,
+    "commands": 0,
+    "covers_return": false
+  },
+  "review_labels": "blank; owner or independent reviewer required"
+}

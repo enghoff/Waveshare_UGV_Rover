@@ -205,7 +205,10 @@ the success predicate fixed here before the run.
    or another independent reviewer fixes those labels before any result is scored.
    Keep this recording out of training and tuning. This is item 3 of the acceptance
    list above, and nothing here is called settled without it. The existing blinded
-   pilot pack is development evidence only.
+   pilot pack is development evidence only. Independently label the
+   [short fresh recording](../progress/2026-10-04-reader-validation-drive.md)
+   before scoring it; establish whether it covers the minimum number of objects,
+   and collect more viewpoints if needed.
 
 ### Implementation and integration
 
