@@ -208,3 +208,55 @@ outside any serving process.
 The [first measurement](../../docs/progress/2026-10-04-bounded-identity-repair.md)
 shows substantial development improvement but confirmed fresh chair/table mistakes
 excluded from the clear-draft score. The prototype is not a production repair.
+
+## Appearance provenance and channel tests
+
+`repair_groups.py --appearance-columns 0 1`, `1`, or `0 1 2` refits the selected
+channels (plain DINO, masked DINO, SigLIP) on the original development labels.
+Omitted coefficients are zero. Use `--fold 0` and `--fold 1` for the longer
+recording; omit `--fold` to fit all development objects before evaluating the fresh
+recording. Fresh labels never enter fitting. An explicit three-channel refit is
+the control for the older default deployed coefficients. Geometry, linkage and
+thresholds are unchanged. Supply a new output path for every run.
+
+`probe_appearance.py` checks saved feature provenance and demonstrates the
+difference between the actual padded appearance mask and the clipped saved outline:
+
+```powershell
+python experiments/entity_association/probe_appearance.py --database captures/2026-10-04-reader-validation/after.db --frames captures/2026-10-04-reader-validation/frames --observations 64520 64692 64581 64592 64735 --output .cache/new-appearance/provenance.json
+```
+
+`probe_clipped_appearance.py` uses the model exports named in
+[the installer](../../world_state/install_perception.sh), plus a local ONNX Runtime
+installation. It first re-encodes each plain crop for comparison with its recorded
+vector, then blanks pixels outside the reconstructed saved outline and re-encodes
+that crop. It preserves a JSON fidelity report and NPZ vectors in a new directory:
+
+```powershell
+python experiments/entity_association/probe_clipped_appearance.py --database captures/2026-10-04-reader-validation/after.db --frames captures/2026-10-04-reader-validation/frames --model .cache/appearance-probe/dinov2-small-fp16.onnx --runtime .cache/appearance-probe/runtime --observations 64520 64692 64581 64592 64735 --output .cache/new-appearance/dino
+python experiments/entity_association/probe_clipped_appearance.py --database captures/2026-10-04-reader-validation/after.db --frames captures/2026-10-04-reader-validation/frames --model .cache/appearance-probe/siglip2-vision-fp16.onnx --runtime .cache/appearance-probe/runtime --kind semantic --observations 64520 64692 64581 64592 64735 --output .cache/new-appearance/semantic
+```
+
+The runtime can be installed in that private directory with `python -m pip install
+--no-deps --target .cache/appearance-probe/runtime onnxruntime==1.30.0` when its
+dependencies are already available. It is a workstation dependency, not a rover
+runtime change. Both probes check that the source database remains byte-identical.
+
+After encoding all observation IDs in the frozen draft, `assess_clipped_appearance.py
+--probe <output-directory> --draft <first-pass.json> --output <new-score.json>`
+reports pair-ranking AUC for clear and tentative drafts without fitting or choosing
+a threshold. It verifies snapshot, frame and observation-ID correspondence, and
+reports the re-encoded plain feature as a control alongside the stored reference.
+It refuses a partial set of draft observations.
+
+`stored_masked` in the DINO NPZ is the original masked DINO feature;
+`stored_semantic` in the semantic NPZ is the original **unmasked** semantic feature.
+The semantic mask channel is new and was not present in the original observations.
+Do not mix the diagnostic vectors into live histories or reuse existing fitted
+weights with a changed channel. Saved outlines have half resolution, rounded boxes
+and no information about masked pixels outside the detection box. CPU/plain-crop
+agreement measures part of that uncertainty; it does not remove it.
+
+The [measurement](../../docs/progress/2026-10-04-appearance-provenance.md) retains
+masked semantic evidence for a further development experiment. It does not approve
+any channel replacement or identity change on the rover.

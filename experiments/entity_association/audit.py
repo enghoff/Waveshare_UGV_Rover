@@ -117,8 +117,10 @@ class Evidence:
                                               / len(per_object) if per_object else None),
                 "per_object": per_object}
 
-    def fit(self, test_fold):
+    def fit(self, test_fold, columns=(0, 1, 2)):
         """Fit only on objects absent from the test fold, including duplicate halves."""
+        if not columns or len(set(columns)) != len(columns) or any(c not in (0, 1, 2) for c in columns):
+            raise ValueError('choose distinct appearance columns from 0, 1, 2')
         from sklearn.linear_model import LogisticRegression
         x, y = [], []
         for i, j, same, _, t, u in self.pairs:
@@ -144,9 +146,12 @@ class Evidence:
                 x.append(features)
                 y.append(int(same))
         y = np.asarray(y)
-        model = LogisticRegression(max_iter=2000).fit(np.asarray(x), y)
+        model = LogisticRegression(max_iter=2000).fit(np.asarray(x)[:, columns], y)
         prior = np.log(y.mean() / (1 - y.mean()))
-        return {"coef": model.coef_[0].tolist(),
+        coef = [0.0, 0.0, 0.0]
+        for c, weight in zip(columns, model.coef_[0]):
+            coef[c] = float(weight)
+        return {"coef": coef,
                 "offset": float(model.intercept_[0] - prior),
                 "training_pairs": len(y), "training_same": int(y.sum()),
                 "held_out_objects": sorted(o for o, f in self.fold_of.items() if f == test_fold)}

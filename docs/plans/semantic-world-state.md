@@ -193,9 +193,14 @@ the success predicate fixed here before the run.
    improves the longer recording, but adds confirmed chair/table relations in the
    fresh recording and leaves mixed records. The join trace shows that all six
    confirmed wrong pairs pass the existing appearance threshold, with geometry also
-   permitting the joins. Inspect selected-pixel versus shared-context evidence and
-   part/parent distinctions before changing linkage; test conflict abstention while
-   retaining the longer-recording gains.
+   permitting the joins. The [appearance probe](../progress/2026-10-04-appearance-provenance.md)
+   leaves masked semantic evidence as a candidate additional channel. Recover the
+   historical photos, encode that channel for the older development recording and
+   fit/test it with physical-object holdout before replaying joint repair. Retain
+   plain context separately and inspect partial-view losses and new wrong relations.
+   Do not fit on the fresh diagnostic labels to compensate for missing old photos.
+   Compare exact full-resolution mask clipping with the reconstructed-outline
+   diagnostic, and test conflict abstention while retaining the longer-recording gains.
    Continue using disjoint tiles, physical-object holdout, frozen drafts and separately
    reported uncertain evidence. It passes
    if wrong looks kept are no more than single-look removal keeps at the same cost of

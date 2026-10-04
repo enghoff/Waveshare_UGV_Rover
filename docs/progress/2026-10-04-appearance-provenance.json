@@ -1,0 +1,1523 @@
+{
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "independent_acceptance": false,
+  "rover_connection_attempt": "Read-only SSH request for a historical frame timed out during banner exchange; direct TCP port 22 connection was also unavailable; no authenticated connection.",
+  "rover_movement": false,
+  "draft_sha256": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0",
+  "provenance": {
+    "database_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+    "source_unchanged": true,
+    "observations": [
+      {
+        "id": 64520,
+        "frame_id": "20261004-153640-dbefbd",
+        "frame_size": [
+          640,
+          480
+        ],
+        "vectors_from": "tensorrt",
+        "bbox": [
+          0.3403,
+          0.443,
+          0.3932,
+          0.6433
+        ],
+        "appearance_window": [
+          204,
+          203,
+          264,
+          318
+        ],
+        "saved_outline_window": [
+          217,
+          212,
+          252,
+          309
+        ],
+        "padded_area": 6900,
+        "stored_mask_share": 0.504,
+        "approximate_saved_outline_selected_pixels": 2966,
+        "approximate_saved_pixels_over_padded_area": 0.42985507246376814,
+        "outline_is_exact_appearance_mask": false,
+        "plain_masked_self_cosine": 0.5627925267385041,
+        "vector_bytes": {
+          "dino_blob": 1536,
+          "dino_alone_blob": 1536,
+          "siglip_blob": 3072
+        },
+        "range_m": null,
+        "range_from": null
+      },
+      {
+        "id": 64692,
+        "frame_id": "20261004-153912-ed4878",
+        "frame_size": [
+          640,
+          480
+        ],
+        "vectors_from": "tensorrt",
+        "bbox": [
+          0.8228,
+          0.2869,
+          0.9318,
+          0.6611
+        ],
+        "appearance_window": [
+          513,
+          128,
+          609,
+          326
+        ],
+        "saved_outline_window": [
+          526,
+          137,
+          597,
+          318
+        ],
+        "padded_area": 19008,
+        "stored_mask_share": 0.456,
+        "approximate_saved_outline_selected_pixels": 7516,
+        "approximate_saved_pixels_over_padded_area": 0.39541245791245794,
+        "outline_is_exact_appearance_mask": false,
+        "plain_masked_self_cosine": 0.682225913351416,
+        "vector_bytes": {
+          "dino_blob": 1536,
+          "dino_alone_blob": 1536,
+          "siglip_blob": 3072
+        },
+        "range_m": null,
+        "range_from": null
+      },
+      {
+        "id": 64581,
+        "frame_id": "20261004-153806-0638c1",
+        "frame_size": [
+          640,
+          480
+        ],
+        "vectors_from": "tensorrt",
+        "bbox": [
+          0.3601,
+          0.4565,
+          0.6025,
+          0.6732
+        ],
+        "appearance_window": [
+          217,
+          209,
+          398,
+          332
+        ],
+        "saved_outline_window": [
+          230,
+          219,
+          386,
+          324
+        ],
+        "padded_area": 22263,
+        "stored_mask_share": 0.266,
+        "approximate_saved_outline_selected_pixels": 3750,
+        "approximate_saved_pixels_over_padded_area": 0.1684409109284463,
+        "outline_is_exact_appearance_mask": false,
+        "plain_masked_self_cosine": 0.6328944484757965,
+        "vector_bytes": {
+          "dino_blob": 1536,
+          "dino_alone_blob": 1536,
+          "siglip_blob": 3072
+        },
+        "range_m": 2.375,
+        "range_from": "outline"
+      },
+      {
+        "id": 64592,
+        "frame_id": "20261004-153807-af0066",
+        "frame_size": [
+          640,
+          480
+        ],
+        "vectors_from": "tensorrt",
+        "bbox": [
+          0.3665,
+          0.4585,
+          0.6036,
+          0.6789
+        ],
+        "appearance_window": [
+          221,
+          210,
+          399,
+          335
+        ],
+        "saved_outline_window": [
+          234,
+          220,
+          387,
+          326
+        ],
+        "padded_area": 22250,
+        "stored_mask_share": 0.171,
+        "approximate_saved_outline_selected_pixels": 2242,
+        "approximate_saved_pixels_over_padded_area": 0.10076404494382023,
+        "outline_is_exact_appearance_mask": false,
+        "plain_masked_self_cosine": 0.4419161142256863,
+        "vector_bytes": {
+          "dino_blob": 1536,
+          "dino_alone_blob": 1536,
+          "siglip_blob": 3072
+        },
+        "range_m": 2.363,
+        "range_from": "outline"
+      },
+      {
+        "id": 64735,
+        "frame_id": "20261004-153948-87234a",
+        "frame_size": [
+          640,
+          480
+        ],
+        "vectors_from": "tensorrt",
+        "bbox": [
+          0.345,
+          0.4883,
+          0.5426,
+          0.6566
+        ],
+        "appearance_window": [
+          207,
+          224,
+          360,
+          324
+        ],
+        "saved_outline_window": [
+          220,
+          234,
+          348,
+          316
+        ],
+        "padded_area": 15300,
+        "stored_mask_share": 0.244,
+        "approximate_saved_outline_selected_pixels": 2452,
+        "approximate_saved_pixels_over_padded_area": 0.16026143790849673,
+        "outline_is_exact_appearance_mask": false,
+        "plain_masked_self_cosine": 0.3863101554761498,
+        "vector_bytes": {
+          "dino_blob": 1536,
+          "dino_alone_blob": 1536,
+          "siglip_blob": 3072
+        },
+        "range_m": 3.226,
+        "range_from": "outline"
+      }
+    ],
+    "preprocessing_demonstration": {
+      "appearance_selected_pixels_outside_box": 164,
+      "saved_outline_window": [
+        30,
+        30,
+        70,
+        70
+      ],
+      "scope": "Synthetic preprocessing demonstration, not proof of the cause of a real attachment."
+    },
+    "limitations": [
+      "Rounded boxes and half-resolution outlines prevent exact appearance-mask recovery.",
+      "No model inference rerun: stored embeddings and source implementation were inspected.",
+      "The tensorrt backend name does not identify model artifact hashes."
+    ]
+  },
+  "ablations": {
+    "control": {
+      "model": {
+        "coef": [
+          5.798640187224526,
+          2.17721528048042,
+          16.565095355284782
+        ],
+        "offset": -17.149414880615023,
+        "training_pairs": 65522,
+        "training_same": 4312,
+        "held_out_objects": []
+      },
+      "clear": {
+        "before": {
+          "same_together": 284,
+          "different_together": 3,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16
+        },
+        "after": {
+          "same_together": 384,
+          "different_together": 0,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16
+        },
+        "grouped": {
+          "same_together": 475,
+          "different_together": 0,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16
+        }
+      },
+      "tentative": {
+        "before": {
+          "same_together": 407,
+          "different_together": 34,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23
+        },
+        "after": {
+          "same_together": 489,
+          "different_together": 72,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23
+        },
+        "grouped": {
+          "same_together": 587,
+          "different_together": 78,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23
+        }
+      },
+      "new_clear_wrong": [],
+      "confirmed_chair_table_remaining": [
+        [
+          64520,
+          64581
+        ],
+        [
+          64520,
+          64592
+        ],
+        [
+          64520,
+          64735
+        ],
+        [
+          64581,
+          64692
+        ],
+        [
+          64592,
+          64692
+        ],
+        [
+          64692,
+          64735
+        ]
+      ],
+      "new_tentative_wrong": [
+        [
+          64516,
+          64647
+        ],
+        [
+          64516,
+          64659
+        ],
+        [
+          64516,
+          64704
+        ],
+        [
+          64519,
+          64634
+        ],
+        [
+          64520,
+          64581
+        ],
+        [
+          64520,
+          64592
+        ],
+        [
+          64520,
+          64627
+        ],
+        [
+          64520,
+          64735
+        ],
+        [
+          64554,
+          64647
+        ],
+        [
+          64554,
+          64659
+        ],
+        [
+          64554,
+          64704
+        ],
+        [
+          64555,
+          64634
+        ],
+        [
+          64564,
+          64636
+        ],
+        [
+          64564,
+          64648
+        ],
+        [
+          64564,
+          64657
+        ],
+        [
+          64564,
+          64694
+        ],
+        [
+          64564,
+          64705
+        ],
+        [
+          64565,
+          64634
+        ],
+        [
+          64574,
+          64634
+        ],
+        [
+          64575,
+          64636
+        ],
+        [
+          64575,
+          64648
+        ],
+        [
+          64575,
+          64657
+        ],
+        [
+          64575,
+          64694
+        ],
+        [
+          64575,
+          64705
+        ],
+        [
+          64581,
+          64692
+        ],
+        [
+          64584,
+          64647
+        ],
+        [
+          64584,
+          64659
+        ],
+        [
+          64584,
+          64704
+        ],
+        [
+          64585,
+          64634
+        ],
+        [
+          64587,
+          64636
+        ],
+        [
+          64587,
+          64648
+        ],
+        [
+          64587,
+          64657
+        ],
+        [
+          64587,
+          64694
+        ],
+        [
+          64587,
+          64705
+        ],
+        [
+          64592,
+          64692
+        ],
+        [
+          64595,
+          64647
+        ],
+        [
+          64595,
+          64659
+        ],
+        [
+          64595,
+          64704
+        ],
+        [
+          64596,
+          64634
+        ],
+        [
+          64598,
+          64636
+        ],
+        [
+          64598,
+          64648
+        ],
+        [
+          64598,
+          64657
+        ],
+        [
+          64598,
+          64694
+        ],
+        [
+          64598,
+          64705
+        ],
+        [
+          64609,
+          64634
+        ],
+        [
+          64616,
+          64634
+        ],
+        [
+          64617,
+          64636
+        ],
+        [
+          64617,
+          64648
+        ],
+        [
+          64617,
+          64657
+        ],
+        [
+          64617,
+          64694
+        ],
+        [
+          64617,
+          64705
+        ],
+        [
+          64627,
+          64692
+        ],
+        [
+          64634,
+          64693
+        ],
+        [
+          64634,
+          64740
+        ],
+        [
+          64692,
+          64735
+        ]
+      ],
+      "development": {
+        "before": {
+          "same_together": 3716,
+          "different_together": 710,
+          "main_waiting": 0
+        },
+        "after": {
+          "same_together": 3390,
+          "different_together": 197,
+          "main_waiting": 9
+        },
+        "grouped": {
+          "same_together": 3658,
+          "different_together": 282,
+          "main_waiting": 9
+        }
+      },
+      "development_new_wrong": 0,
+      "fold_models": [
+        {
+          "coef": [
+            9.25970903822949,
+            2.309252417388156,
+            13.68775887231196
+          ],
+          "offset": -16.921272206152466,
+          "training_pairs": 21126,
+          "training_same": 2519,
+          "held_out_objects": [
+            "object:242",
+            "object:247",
+            "object:259",
+            "object:276",
+            "object:307",
+            "object:335",
+            "object:350",
+            "object:377",
+            "object:387",
+            "object:407"
+          ]
+        },
+        {
+          "coef": [
+            4.807851925514747,
+            5.462566863693885,
+            8.28032209689627
+          ],
+          "offset": -11.21926843077799,
+          "training_pairs": 12463,
+          "training_same": 1793,
+          "held_out_objects": [
+            "object:246",
+            "object:249",
+            "object:275",
+            "object:302",
+            "object:332",
+            "object:343",
+            "object:374",
+            "object:383",
+            "object:386",
+            "object:402",
+            "object:413"
+          ]
+        }
+      ]
+    },
+    "no-semantic": {
+      "model": {
+        "coef": [
+          7.92251098409714,
+          4.133147178043032,
+          0.0
+        ],
+        "offset": -5.967840001253002,
+        "training_pairs": 65522,
+        "training_same": 4312,
+        "held_out_objects": []
+      },
+      "clear": {
+        "before": {
+          "same_together": 284,
+          "different_together": 3,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16
+        },
+        "after": {
+          "same_together": 396,
+          "different_together": 0,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16
+        },
+        "grouped": {
+          "same_together": 478,
+          "different_together": 0,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16
+        }
+      },
+      "tentative": {
+        "before": {
+          "same_together": 407,
+          "different_together": 34,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23
+        },
+        "after": {
+          "same_together": 516,
+          "different_together": 53,
+          "waiting": 44,
+          "regions": 201,
+          "objects": 23
+        },
+        "grouped": {
+          "same_together": 607,
+          "different_together": 59,
+          "waiting": 44,
+          "regions": 201,
+          "objects": 23
+        }
+      },
+      "new_clear_wrong": [],
+      "confirmed_chair_table_remaining": [
+        [
+          64520,
+          64581
+        ],
+        [
+          64520,
+          64592
+        ],
+        [
+          64520,
+          64735
+        ],
+        [
+          64581,
+          64692
+        ],
+        [
+          64592,
+          64692
+        ],
+        [
+          64692,
+          64735
+        ]
+      ],
+      "new_tentative_wrong": [
+        [
+          64519,
+          64634
+        ],
+        [
+          64520,
+          64581
+        ],
+        [
+          64520,
+          64592
+        ],
+        [
+          64520,
+          64627
+        ],
+        [
+          64520,
+          64735
+        ],
+        [
+          64555,
+          64634
+        ],
+        [
+          64564,
+          64636
+        ],
+        [
+          64564,
+          64694
+        ],
+        [
+          64565,
+          64634
+        ],
+        [
+          64574,
+          64634
+        ],
+        [
+          64575,
+          64636
+        ],
+        [
+          64575,
+          64694
+        ],
+        [
+          64581,
+          64692
+        ],
+        [
+          64585,
+          64634
+        ],
+        [
+          64587,
+          64636
+        ],
+        [
+          64587,
+          64694
+        ],
+        [
+          64592,
+          64692
+        ],
+        [
+          64596,
+          64634
+        ],
+        [
+          64598,
+          64636
+        ],
+        [
+          64598,
+          64694
+        ],
+        [
+          64609,
+          64634
+        ],
+        [
+          64616,
+          64634
+        ],
+        [
+          64617,
+          64636
+        ],
+        [
+          64617,
+          64694
+        ],
+        [
+          64627,
+          64692
+        ],
+        [
+          64634,
+          64693
+        ],
+        [
+          64634,
+          64740
+        ],
+        [
+          64636,
+          64647
+        ],
+        [
+          64636,
+          64659
+        ],
+        [
+          64636,
+          64704
+        ],
+        [
+          64647,
+          64694
+        ],
+        [
+          64648,
+          64670
+        ],
+        [
+          64648,
+          64678
+        ],
+        [
+          64648,
+          64738
+        ],
+        [
+          64659,
+          64694
+        ],
+        [
+          64670,
+          64705
+        ],
+        [
+          64678,
+          64705
+        ],
+        [
+          64692,
+          64735
+        ],
+        [
+          64694,
+          64704
+        ],
+        [
+          64705,
+          64738
+        ]
+      ],
+      "development": {
+        "before": {
+          "same_together": 3716,
+          "different_together": 710,
+          "main_waiting": 0
+        },
+        "after": {
+          "same_together": 3294,
+          "different_together": 185,
+          "main_waiting": 8
+        },
+        "grouped": {
+          "same_together": 3585,
+          "different_together": 253,
+          "main_waiting": 8
+        }
+      },
+      "development_new_wrong": 0,
+      "fold_models": [
+        {
+          "coef": [
+            10.838249431153436,
+            4.028522606583707,
+            0.0
+          ],
+          "offset": -7.575244556790178,
+          "training_pairs": 21126,
+          "training_same": 2519,
+          "held_out_objects": [
+            "object:242",
+            "object:247",
+            "object:259",
+            "object:276",
+            "object:307",
+            "object:335",
+            "object:350",
+            "object:377",
+            "object:387",
+            "object:407"
+          ]
+        },
+        {
+          "coef": [
+            5.863166334248278,
+            6.937888100696816,
+            0.0
+          ],
+          "offset": -5.9177686572309165,
+          "training_pairs": 12463,
+          "training_same": 1793,
+          "held_out_objects": [
+            "object:246",
+            "object:249",
+            "object:275",
+            "object:302",
+            "object:332",
+            "object:343",
+            "object:374",
+            "object:383",
+            "object:386",
+            "object:402",
+            "object:413"
+          ]
+        }
+      ]
+    },
+    "masked": {
+      "model": {
+        "coef": [
+          0.0,
+          10.218931474351539,
+          0.0
+        ],
+        "offset": -4.759149745099142,
+        "training_pairs": 65522,
+        "training_same": 4312,
+        "held_out_objects": []
+      },
+      "clear": {
+        "before": {
+          "same_together": 284,
+          "different_together": 3,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16
+        },
+        "after": {
+          "same_together": 354,
+          "different_together": 0,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16
+        },
+        "grouped": {
+          "same_together": 431,
+          "different_together": 10,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16
+        }
+      },
+      "tentative": {
+        "before": {
+          "same_together": 407,
+          "different_together": 34,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23
+        },
+        "after": {
+          "same_together": 471,
+          "different_together": 43,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23
+        },
+        "grouped": {
+          "same_together": 562,
+          "different_together": 55,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23
+        }
+      },
+      "new_clear_wrong": [
+        [
+          64629,
+          64688
+        ],
+        [
+          64641,
+          64688
+        ],
+        [
+          64652,
+          64688
+        ],
+        [
+          64663,
+          64688
+        ],
+        [
+          64672,
+          64688
+        ],
+        [
+          64680,
+          64688
+        ],
+        [
+          64688,
+          64697
+        ],
+        [
+          64688,
+          64709
+        ],
+        [
+          64688,
+          64716
+        ],
+        [
+          64688,
+          64724
+        ]
+      ],
+      "confirmed_chair_table_remaining": [
+        [
+          64520,
+          64581
+        ],
+        [
+          64581,
+          64692
+        ]
+      ],
+      "new_tentative_wrong": [
+        [
+          64519,
+          64634
+        ],
+        [
+          64520,
+          64581
+        ],
+        [
+          64555,
+          64634
+        ],
+        [
+          64564,
+          64636
+        ],
+        [
+          64564,
+          64694
+        ],
+        [
+          64565,
+          64634
+        ],
+        [
+          64574,
+          64634
+        ],
+        [
+          64575,
+          64636
+        ],
+        [
+          64575,
+          64694
+        ],
+        [
+          64581,
+          64692
+        ],
+        [
+          64585,
+          64634
+        ],
+        [
+          64587,
+          64636
+        ],
+        [
+          64587,
+          64694
+        ],
+        [
+          64596,
+          64634
+        ],
+        [
+          64598,
+          64636
+        ],
+        [
+          64598,
+          64694
+        ],
+        [
+          64609,
+          64634
+        ],
+        [
+          64616,
+          64634
+        ],
+        [
+          64617,
+          64636
+        ],
+        [
+          64617,
+          64694
+        ],
+        [
+          64627,
+          64648
+        ],
+        [
+          64627,
+          64705
+        ],
+        [
+          64629,
+          64688
+        ],
+        [
+          64634,
+          64693
+        ],
+        [
+          64634,
+          64740
+        ],
+        [
+          64636,
+          64647
+        ],
+        [
+          64636,
+          64659
+        ],
+        [
+          64636,
+          64704
+        ],
+        [
+          64641,
+          64688
+        ],
+        [
+          64647,
+          64694
+        ],
+        [
+          64652,
+          64688
+        ],
+        [
+          64659,
+          64694
+        ],
+        [
+          64663,
+          64688
+        ],
+        [
+          64672,
+          64688
+        ],
+        [
+          64680,
+          64688
+        ],
+        [
+          64688,
+          64697
+        ],
+        [
+          64688,
+          64709
+        ],
+        [
+          64688,
+          64716
+        ],
+        [
+          64688,
+          64724
+        ],
+        [
+          64694,
+          64704
+        ]
+      ],
+      "development": {
+        "before": {
+          "same_together": 3716,
+          "different_together": 710,
+          "main_waiting": 0
+        },
+        "after": {
+          "same_together": 3005,
+          "different_together": 210,
+          "main_waiting": 18
+        },
+        "grouped": {
+          "same_together": 3319,
+          "different_together": 252,
+          "main_waiting": 18
+        }
+      },
+      "development_new_wrong": 33,
+      "fold_models": [
+        {
+          "coef": [
+            0.0,
+            10.914371053619057,
+            0.0
+          ],
+          "offset": -5.230896381251577,
+          "training_pairs": 21126,
+          "training_same": 2519,
+          "held_out_objects": [
+            "object:242",
+            "object:247",
+            "object:259",
+            "object:276",
+            "object:307",
+            "object:335",
+            "object:350",
+            "object:377",
+            "object:387",
+            "object:407"
+          ]
+        },
+        {
+          "coef": [
+            0.0,
+            12.03387551759221,
+            0.0
+          ],
+          "offset": -5.319060125780899,
+          "training_pairs": 12463,
+          "training_same": 1793,
+          "held_out_objects": [
+            "object:246",
+            "object:249",
+            "object:275",
+            "object:302",
+            "object:332",
+            "object:343",
+            "object:374",
+            "object:383",
+            "object:386",
+            "object:402",
+            "object:413"
+          ]
+        }
+      ]
+    }
+  },
+  "clipped_mask_probe": {
+    "observations": 232,
+    "plain_vs_recorded_cosine_min": 0.9871375813285431,
+    "plain_vs_recorded_cosine_median": 0.9999101468509481,
+    "plain_vs_recorded_below_099": 3,
+    "model_sha256": "16845e153bbaf3fd1ef8a2154c454940f901f6fe8a80dd4c6c319eaecdb4d2ee",
+    "runtime": "1.30.0",
+    "provider": "CPUExecutionProvider",
+    "pair_scores": {
+      "clear": {
+        "regions": 146,
+        "pairs": 10585,
+        "same_pairs": 856,
+        "recorded_masked_auc": 0.9503056187157963,
+        "clipped_masked_auc": 0.9499250962773401,
+        "reencoded_plain_auc": 0.951444964615856,
+        "mean_same_recorded": 0.7222575505109837,
+        "mean_same_clipped": 0.7357980960231518,
+        "mean_different_recorded": 0.3171083765462493,
+        "mean_different_clipped": 0.3285596537550607
+      },
+      "tentative": {
+        "regions": 201,
+        "pairs": 20100,
+        "same_pairs": 1156,
+        "recorded_masked_auc": 0.9663909709476994,
+        "clipped_masked_auc": 0.9660669874567475,
+        "reencoded_plain_auc": 0.9469959584029857,
+        "mean_same_recorded": 0.7222668408550545,
+        "mean_same_clipped": 0.7378043219395575,
+        "mean_different_recorded": 0.2940252548139686,
+        "mean_different_clipped": 0.29963920316603854
+      }
+    },
+    "six_confirmed_pairs": [
+      {
+        "observations": [
+          64520,
+          64581
+        ],
+        "old_masked_cosine": 0.5401375260394421,
+        "clipped_cosine": 0.5892553925514221
+      },
+      {
+        "observations": [
+          64520,
+          64592
+        ],
+        "old_masked_cosine": 0.4936843007223005,
+        "clipped_cosine": 0.377422571182251
+      },
+      {
+        "observations": [
+          64520,
+          64735
+        ],
+        "old_masked_cosine": 0.4516473978832249,
+        "clipped_cosine": 0.47678011655807495
+      },
+      {
+        "observations": [
+          64581,
+          64692
+        ],
+        "old_masked_cosine": 0.6251073251261838,
+        "clipped_cosine": 0.6400448083877563
+      },
+      {
+        "observations": [
+          64592,
+          64692
+        ],
+        "old_masked_cosine": 0.5548606530288753,
+        "clipped_cosine": 0.4072134494781494
+      },
+      {
+        "observations": [
+          64692,
+          64735
+        ],
+        "old_masked_cosine": 0.44201586305450646,
+        "clipped_cosine": 0.4268606901168823
+      }
+    ],
+    "limitations": [
+      "CPU rather than TensorRT execution; use plain-crop agreement to assess fidelity.",
+      "Saved outlines have half resolution and boxes are rounded.",
+      "The old appearance mask outside the box was not saved; clipping is confounded with mask reconstruction.",
+      "This diagnostic neither fits an association score nor accepts identity."
+    ]
+  },
+  "decision": "No production change. Retain masked semantic evidence for a properly fitted additional-channel experiment; weight removal and clipped DINO are not established fixes.",
+  "validation": {
+    "tests": 22,
+    "docs": "passed",
+    "registered_components_changed": false
+  },
+  "masked_semantic_probe": {
+    "model_sha256": "44fcd984cf4ac4baba5b4776192c0b141a120c6981df49732c681d4fe8ddc718",
+    "plain_vs_recorded_cosine_min": 0.9692440737261826,
+    "plain_vs_recorded_cosine_median": 0.9999988576075654,
+    "plain_vs_recorded_below_099": 12,
+    "pair_scores": {
+      "clear": {
+        "regions": 146,
+        "pairs": 10585,
+        "recorded_semantic_auc": 0.9409887627605299,
+        "reencoded_plain_semantic_auc": 0.941279047706875,
+        "clipped_semantic_auc": 0.9415927475713327
+      },
+      "tentative": {
+        "regions": 201,
+        "pairs": 20100,
+        "recorded_semantic_auc": 0.9503105675149631,
+        "reencoded_plain_semantic_auc": 0.9502768905840854,
+        "clipped_semantic_auc": 0.9530130327667634
+      }
+    },
+    "six_confirmed_pairs": [
+      {
+        "observations": [
+          64520,
+          64581
+        ],
+        "old_semantic_cosine": 0.845370977402782,
+        "masked_semantic_cosine": 0.7802319526672363
+      },
+      {
+        "observations": [
+          64520,
+          64592
+        ],
+        "old_semantic_cosine": 0.8299382469343906,
+        "masked_semantic_cosine": 0.7596354484558105
+      },
+      {
+        "observations": [
+          64520,
+          64735
+        ],
+        "old_semantic_cosine": 0.9084348911786032,
+        "masked_semantic_cosine": 0.7937595844268799
+      },
+      {
+        "observations": [
+          64581,
+          64692
+        ],
+        "old_semantic_cosine": 0.899552452728552,
+        "masked_semantic_cosine": 0.7806676626205444
+      },
+      {
+        "observations": [
+          64592,
+          64692
+        ],
+        "old_semantic_cosine": 0.8949857121760314,
+        "masked_semantic_cosine": 0.75732421875
+      },
+      {
+        "observations": [
+          64692,
+          64735
+        ],
+        "old_semantic_cosine": 0.8518014053495477,
+        "masked_semantic_cosine": 0.7846282720565796
+      }
+    ],
+    "same_table_pairs": [
+      {
+        "observations": [
+          64581,
+          64592
+        ],
+        "old_semantic_cosine": 0.9585495341598079,
+        "masked_semantic_cosine": 0.9428198337554932
+      },
+      {
+        "observations": [
+          64581,
+          64735
+        ],
+        "old_semantic_cosine": 0.8708066385340492,
+        "masked_semantic_cosine": 0.8744263052940369
+      },
+      {
+        "observations": [
+          64592,
+          64735
+        ],
+        "old_semantic_cosine": 0.8565447294175768,
+        "masked_semantic_cosine": 0.8889155983924866
+      }
+    ],
+    "acceptance": false,
+    "interpretation": "All six target similarities decrease; aggregate discrimination is roughly unchanged. Retain for development fitting as an additional channel, not a proven identity repair."
+  },
+  "available_development_photos": {
+    "local": 48,
+    "total": 516,
+    "labelled_regions_covered": 49,
+    "total_labelled_regions": 411
+  },
+  "artifacts": [
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/control-fresh.json",
+      "sha256": "d05b74349597b487fe29e28d710f27cca9ea3b05ea771a8576801a55168984e1"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/no-semantic-fresh.json",
+      "sha256": "96235ad6bddf4ad2f7b032d7199f43d4bec9298701b60d9f2a79101654c9965f"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/masked-fresh.json",
+      "sha256": "5233a0e6b70a5858e51d6b8e4eae6c6a6202bd1f865374e5ef9488ded4f9d253"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/no-semantic-0.json",
+      "sha256": "daa8aa1d164cb15777ae74a9181d4dfcf49febb25c425c21be7021b816736c13"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/no-semantic-1.json",
+      "sha256": "6863d4e08e17e9e32f3b630a74c971e77baf0dc4b042c8c74cf53cfe1ecc4467"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/masked-0.json",
+      "sha256": "737916d8c694873f75002d74e7488da0698a0f422e9911e81933615f734f67f1"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/masked-1.json",
+      "sha256": "d918fe9b37fa6c9b24dcd15f244def222d212527cc65e477d349c0168d77ac9a"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/provenance.json",
+      "sha256": "d9ed6ceeba506fd3119a2abcc444b325d8542b71223fe9ff8f858505c3d5af13"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/clipped-fresh/summary.json",
+      "sha256": "e0551e0b9644c0f94f570829c4c1a524741bf52c1165870468e6a13a0712b8ac"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/clipped-fresh/vectors.npz",
+      "sha256": "4cfd5298a7f82f7e50a376a507ebef97c029ef7709b9217fc1794defb617c4ed"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/semantic-fresh/summary.json",
+      "sha256": "9c0a5b6bf76c5d1067cf311bd4902bb3cb99c84fd0b2c01bb85c688d5e51357c"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/semantic-fresh/vectors.npz",
+      "sha256": "88a7c8bf094f2deee9586f5622dbb6c35019b4a633019447cc1c0a51821ed21a"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/local-frames.json",
+      "sha256": "cc1f807992c8c4b331f3733627f79903f2aaa9d3fed5781573effae62b38aeb4"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/clipped-score.json",
+      "sha256": "182afe67c81d2aaea08b57e13708a875e748545c84bd18e46295aaaaa601112e"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/appearance-probe/semantic-score.json",
+      "sha256": "febee17b053ef5982a934a80438ad57acc7f156832c84053079cdd1bf182b02f"
+    }
+  ]
+}

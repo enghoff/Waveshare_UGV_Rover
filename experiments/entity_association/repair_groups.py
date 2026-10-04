@@ -153,11 +153,13 @@ def regroup(database, looks, placed, owners, model, reach):
     return {i:aliases.get(owner,owner) for i,owner in owners.items()},result
 
 
-def run(database, map_path, output, fold, labels=None, second_stage=False, trace_ids=()):
+def run(database, map_path, output, fold, labels=None, second_stage=False, trace_ids=(), appearance_columns=None):
     if output.exists():raise ValueError('choose a new result path')
     digest=hashlib.sha256(database.read_bytes()).hexdigest()
     evidence=Evidence(excluded=[61656],same_person=True)
-    model=evidence.fit(fold) if fold is not None else {'coef':list(merging.APPEARANCE_WEIGHTS),'offset':merging.APPEARANCE_OFFSET}
+    model=(evidence.fit(fold,columns=appearance_columns) if appearance_columns is not None else
+           evidence.fit(fold) if fold is not None else
+           {'coef':list(merging.APPEARANCE_WEIGHTS),'offset':merging.APPEARANCE_OFFSET})
     reach=replay.reach_from(str(map_path));began=time.monotonic()
     with closing(sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True)) as con:
         con.row_factory=sqlite3.Row
@@ -207,6 +209,10 @@ def run(database, map_path, output, fold, labels=None, second_stage=False, trace
         grouped,preview=regroup(database,looks,placed,owners,model,reach)
         result['grouped_owners']=grouped;result['grouping_preview']=preview
     if trace_ids:result['join_trace']=join_trace;result['trace_ids']=list(trace_ids)
+    if appearance_columns is not None:
+        result['appearance_columns']=list(appearance_columns)
+        result['training_labels_sha256']=hashlib.sha256(LABELS.read_bytes()).hexdigest()
+        result['training_database_sha256']=hashlib.sha256(evidence.database.read_bytes()).hexdigest()
     result['source_unchanged']=hashlib.sha256(database.read_bytes()).hexdigest()==digest
     result['seconds']=time.monotonic()-began
     if fold is not None:
@@ -240,4 +246,6 @@ if __name__=='__main__':
     p.add_argument('--output',type=Path,required=True);p.add_argument('--fold',type=int,choices=[0,1]);p.add_argument('--labels',type=Path)
     p.add_argument('--second-stage',action='store_true')
     p.add_argument('--trace-observation',action='append',type=int,default=[])
-    args=p.parse_args();run(args.database,args.map,args.output,args.fold,args.labels,args.second_stage,args.trace_observation)
+    p.add_argument('--appearance-columns',type=int,nargs='+',choices=[0,1,2],
+                   help='refit selected channels on development labels (0 plain, 1 masked, 2 semantic); no fold fits all development objects')
+    args=p.parse_args();run(args.database,args.map,args.output,args.fold,args.labels,args.second_stage,args.trace_observation,args.appearance_columns)
