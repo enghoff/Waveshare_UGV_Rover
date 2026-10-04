@@ -107,3 +107,14 @@ labels, and reports missing images and regions without bearings. The resulting
 CSV stays blank for an independent reviewer. This mode omits the development
 recording's disputed-label and head/body examples. A fresh but unlabelled recording
 is still marked as unaccepted.
+
+An analyst first pass stays separate from that blank sheet. Store its judgments,
+confidence, review groups and explicit unconfirmed provenance in a draft JSON,
+then run `review_first_pass.py --draft <draft.json> --questions <questions.json>
+--database <snapshot.db> --frames-dir <saved-frames> --output <review.html>`.
+It checks the snapshot hash and every source observation/frame/box, and shows
+raw crops beside saved-outline selections for grouped reviewer questions.
+It never reads existing entity assignments, edits labels or scores candidates.
+Reviewers can reply by question number or download their free-text answers.
+Unreviewed coding-agent labels do not become independent truth merely because
+the uncertain cases received owner review.
