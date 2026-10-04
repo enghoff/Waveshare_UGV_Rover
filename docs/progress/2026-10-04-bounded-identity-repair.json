@@ -1,0 +1,863 @@
+{
+  "date": "2026-10-04",
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "decision": "Experimental direction retained; candidate fails and was not deployed.",
+  "independent_acceptance": false,
+  "rover_contact": false,
+  "rover_movement": false,
+  "artifacts": [
+    {
+      "path": "captures/2026-10-04-reader-validation/repair-evaluation/reported-0.json",
+      "sha256": "8f9160258dbe5f4989c5e8139f232ddef1e48e04d1c82d6a9a3b604caea83234",
+      "source_database_sha256": "c2e78689dcaec2cef150f352d9a11cbbfd803acdb879d4a312a5ec505c6547e6",
+      "source_unchanged": true,
+      "tiles": 58,
+      "oversize_tiles": [],
+      "assigned_processed": 2979,
+      "unscorable_unchanged": 0
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/repair-evaluation/reported-1.json",
+      "sha256": "e810f56297fae422c9c416a8ba61e3e5fe5d4c3208c79184fda6d15767ec5306",
+      "source_database_sha256": "c2e78689dcaec2cef150f352d9a11cbbfd803acdb879d4a312a5ec505c6547e6",
+      "source_unchanged": true,
+      "tiles": 58,
+      "oversize_tiles": [],
+      "assigned_processed": 2979,
+      "unscorable_unchanged": 0
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/repair-evaluation/traced-fresh.json",
+      "sha256": "9ad8fd8004c09628ca516291cb36ac61aba9636703e10c71ba4de9fd3d43026b",
+      "source_database_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+      "source_unchanged": true,
+      "tiles": 58,
+      "oversize_tiles": [],
+      "assigned_processed": 3276,
+      "unscorable_unchanged": 0
+    }
+  ],
+  "map_sha256": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59",
+  "labels_sha256": "451daeca301a7940b3de1913752d4ca4741a20803d8ff4f4dacf2879eb8bcf75",
+  "fresh_draft_sha256": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0",
+  "folds": [
+    {
+      "fold": 0,
+      "model": {
+        "coef": [
+          9.25970903822949,
+          2.309252417388156,
+          13.68775887231196
+        ],
+        "offset": -16.921272206152466,
+        "training_pairs": 21126,
+        "training_same": 2519,
+        "held_out_objects": [
+          "object:242",
+          "object:247",
+          "object:259",
+          "object:276",
+          "object:307",
+          "object:335",
+          "object:350",
+          "object:377",
+          "object:387",
+          "object:407"
+        ]
+      },
+      "before": {
+        "same_together": 1793,
+        "same_apart": 0,
+        "different_together": 357,
+        "different_apart": 29523,
+        "main_looks": 159,
+        "main_waiting": 0,
+        "odd_kept_in_original_home": 20,
+        "objects_scored": 8,
+        "objects_split": 0,
+        "macro_object_pair_recall": 1.0
+      },
+      "after": {
+        "same_together": 1478,
+        "same_apart": 315,
+        "different_together": 89,
+        "different_apart": 29791,
+        "main_looks": 159,
+        "main_waiting": 5,
+        "odd_kept_in_original_home": 5,
+        "objects_scored": 8,
+        "objects_split": 1,
+        "macro_object_pair_recall": 0.9038760134047616
+      },
+      "grouped": {
+        "same_together": 1619,
+        "same_apart": 174,
+        "different_together": 153,
+        "different_apart": 29727,
+        "main_looks": 159,
+        "main_waiting": 5,
+        "odd_kept_in_original_home": 8,
+        "objects_scored": 8,
+        "objects_split": 1,
+        "macro_object_pair_recall": 0.9303396527856791
+      },
+      "new_wrong_after": [],
+      "new_wrong_grouped": [],
+      "wrong_restored_by_grouping": 64
+    },
+    {
+      "fold": 1,
+      "model": {
+        "coef": [
+          4.807851925514747,
+          5.462566863693885,
+          8.28032209689627
+        ],
+        "offset": -11.21926843077799,
+        "training_pairs": 12463,
+        "training_same": 1793,
+        "held_out_objects": [
+          "object:246",
+          "object:249",
+          "object:275",
+          "object:302",
+          "object:332",
+          "object:343",
+          "object:374",
+          "object:383",
+          "object:386",
+          "object:402",
+          "object:413"
+        ]
+      },
+      "before": {
+        "same_together": 1923,
+        "same_apart": 596,
+        "different_together": 353,
+        "different_apart": 31110,
+        "main_looks": 206,
+        "main_waiting": 0,
+        "odd_kept_in_original_home": 26,
+        "objects_scored": 10,
+        "objects_split": 4,
+        "macro_object_pair_recall": 0.8487615433270083
+      },
+      "after": {
+        "same_together": 1912,
+        "same_apart": 607,
+        "different_together": 108,
+        "different_apart": 31355,
+        "main_looks": 206,
+        "main_waiting": 4,
+        "odd_kept_in_original_home": 3,
+        "objects_scored": 10,
+        "objects_split": 4,
+        "macro_object_pair_recall": 0.8197325546054198
+      },
+      "grouped": {
+        "same_together": 2039,
+        "same_apart": 480,
+        "different_together": 129,
+        "different_apart": 31334,
+        "main_looks": 206,
+        "main_waiting": 4,
+        "odd_kept_in_original_home": 5,
+        "objects_scored": 10,
+        "objects_split": 3,
+        "macro_object_pair_recall": 0.8999031683054455
+      },
+      "new_wrong_after": [],
+      "new_wrong_grouped": [],
+      "wrong_restored_by_grouping": 21
+    }
+  ],
+  "combined_development": {
+    "before": {
+      "same_together": 3716,
+      "different_together": 710,
+      "main_waiting": 0
+    },
+    "after": {
+      "same_together": 3390,
+      "different_together": 197,
+      "main_waiting": 9
+    },
+    "grouped": {
+      "same_together": 3658,
+      "different_together": 282,
+      "main_waiting": 9
+    }
+  },
+  "fresh_clear": {
+    "before": {
+      "same_together": 284,
+      "same_apart": 572,
+      "different_together": 3,
+      "different_apart": 9726,
+      "regions": 146,
+      "objects": 16,
+      "waiting": 39
+    },
+    "after": {
+      "same_together": 384,
+      "same_apart": 472,
+      "different_together": 0,
+      "different_apart": 9729,
+      "regions": 146,
+      "objects": 16,
+      "waiting": 42
+    },
+    "grouped": {
+      "same_together": 439,
+      "same_apart": 417,
+      "different_together": 0,
+      "different_apart": 9729,
+      "regions": 146,
+      "objects": 16,
+      "waiting": 42
+    }
+  },
+  "fresh_tentative": {
+    "before": {
+      "same_together": 407,
+      "same_apart": 749,
+      "different_together": 34,
+      "different_apart": 18910,
+      "regions": 201,
+      "objects": 23,
+      "waiting": 42
+    },
+    "after": {
+      "same_together": 487,
+      "same_apart": 669,
+      "different_together": 72,
+      "different_apart": 18872,
+      "regions": 201,
+      "objects": 23,
+      "waiting": 45
+    },
+    "grouped": {
+      "same_together": 548,
+      "same_apart": 608,
+      "different_together": 78,
+      "different_apart": 18866,
+      "regions": 201,
+      "objects": 23,
+      "waiting": 45
+    }
+  },
+  "new_wrong_tentative": [
+    [
+      64516,
+      64647
+    ],
+    [
+      64516,
+      64659
+    ],
+    [
+      64516,
+      64704
+    ],
+    [
+      64519,
+      64634
+    ],
+    [
+      64520,
+      64581
+    ],
+    [
+      64520,
+      64592
+    ],
+    [
+      64520,
+      64627
+    ],
+    [
+      64520,
+      64735
+    ],
+    [
+      64554,
+      64647
+    ],
+    [
+      64554,
+      64659
+    ],
+    [
+      64554,
+      64704
+    ],
+    [
+      64555,
+      64634
+    ],
+    [
+      64564,
+      64636
+    ],
+    [
+      64564,
+      64648
+    ],
+    [
+      64564,
+      64657
+    ],
+    [
+      64564,
+      64694
+    ],
+    [
+      64564,
+      64705
+    ],
+    [
+      64565,
+      64634
+    ],
+    [
+      64574,
+      64634
+    ],
+    [
+      64575,
+      64636
+    ],
+    [
+      64575,
+      64648
+    ],
+    [
+      64575,
+      64657
+    ],
+    [
+      64575,
+      64694
+    ],
+    [
+      64575,
+      64705
+    ],
+    [
+      64581,
+      64692
+    ],
+    [
+      64584,
+      64647
+    ],
+    [
+      64584,
+      64659
+    ],
+    [
+      64584,
+      64704
+    ],
+    [
+      64585,
+      64634
+    ],
+    [
+      64587,
+      64636
+    ],
+    [
+      64587,
+      64648
+    ],
+    [
+      64587,
+      64657
+    ],
+    [
+      64587,
+      64694
+    ],
+    [
+      64587,
+      64705
+    ],
+    [
+      64592,
+      64692
+    ],
+    [
+      64595,
+      64647
+    ],
+    [
+      64595,
+      64659
+    ],
+    [
+      64595,
+      64704
+    ],
+    [
+      64596,
+      64634
+    ],
+    [
+      64598,
+      64636
+    ],
+    [
+      64598,
+      64648
+    ],
+    [
+      64598,
+      64657
+    ],
+    [
+      64598,
+      64694
+    ],
+    [
+      64598,
+      64705
+    ],
+    [
+      64609,
+      64634
+    ],
+    [
+      64616,
+      64634
+    ],
+    [
+      64617,
+      64636
+    ],
+    [
+      64617,
+      64648
+    ],
+    [
+      64617,
+      64657
+    ],
+    [
+      64617,
+      64694
+    ],
+    [
+      64617,
+      64705
+    ],
+    [
+      64627,
+      64692
+    ],
+    [
+      64634,
+      64693
+    ],
+    [
+      64634,
+      64740
+    ],
+    [
+      64692,
+      64735
+    ]
+  ],
+  "new_wrong_tentative_categories": [
+    {
+      "identities": [
+        "brown_door_behind_dining_set",
+        "dining_chair_front_left"
+      ],
+      "pairs": 29
+    },
+    {
+      "identities": [
+        "dining_chair_front_left",
+        "dining_chair_front_right"
+      ],
+      "pairs": 10
+    },
+    {
+      "identities": [
+        "dining_chair_front_left",
+        "dining_table"
+      ],
+      "pairs": 6
+    },
+    {
+      "identities": [
+        "dining_chair_at_left_end_of_table",
+        "dining_chair_front_left"
+      ],
+      "pairs": 10
+    }
+  ],
+  "post_score_analyst_audit": {
+    "draft_unchanged": true,
+    "independent": false,
+    "confirmed_new_chair_table_pairs": [
+      [
+        64520,
+        64581
+      ],
+      [
+        64520,
+        64592
+      ],
+      [
+        64520,
+        64735
+      ],
+      [
+        64692,
+        64581
+      ],
+      [
+        64692,
+        64592
+      ],
+      [
+        64692,
+        64735
+      ]
+    ],
+    "evidence": "Saved selected-pixel masks distinguish chairs from table structure; exact chair identity unnecessary.",
+    "remaining_uncertainty": "20 similar-chair and 29 overlapping doorway/chair pairs remain tentative.",
+    "join_trace": [
+      {
+        "left": [
+          61078,
+          62591,
+          61523,
+          61599,
+          61618,
+          62638,
+          62648,
+          62875,
+          62885,
+          62905,
+          62950,
+          63012,
+          63026,
+          62959,
+          62974,
+          62967,
+          62913,
+          62942,
+          63415,
+          62753,
+          62668,
+          62741,
+          62596,
+          62714,
+          62657,
+          62604,
+          62239,
+          64285,
+          62398,
+          64088,
+          62224,
+          62025,
+          62014,
+          62190,
+          62559,
+          61946,
+          64295,
+          64057,
+          64066,
+          61591,
+          64255,
+          64244,
+          64077,
+          64692,
+          64130,
+          64099,
+          62725,
+          64142,
+          64450,
+          64441,
+          64459,
+          64432,
+          62379,
+          64520,
+          64510,
+          64492,
+          62373,
+          64556,
+          61316,
+          61069,
+          63838,
+          63483,
+          63502,
+          61225,
+          61245,
+          63928
+        ],
+        "right": [
+          64735
+        ],
+        "appearance_mean": 2.3441339080614068,
+        "appearance_min": 0.9087327687426345,
+        "appearance_max": 3.379471574281027,
+        "fraction_below_threshold": 0.015151515151515152,
+        "small_side_geometry_median": 1.899369711132752,
+        "small_side_geometry_max": 1.899369711132752,
+        "index": 25
+      },
+      {
+        "left": [
+          61078,
+          62591,
+          61523,
+          61599,
+          61618,
+          62638,
+          62648,
+          62875,
+          62885,
+          62905,
+          62950,
+          63012,
+          63026,
+          62959,
+          62974,
+          62967,
+          62913,
+          62942,
+          63415,
+          62753,
+          62668,
+          62741,
+          62596,
+          62714,
+          62657,
+          62604,
+          62239,
+          64285,
+          62398,
+          64088,
+          62224,
+          62025,
+          62014,
+          62190,
+          62559,
+          61946,
+          64295,
+          64057,
+          64066,
+          61591,
+          64255,
+          64244,
+          64077,
+          64692,
+          64130,
+          64099,
+          62725,
+          64142,
+          64450,
+          64441,
+          64459,
+          64432,
+          62379,
+          64520,
+          64510,
+          64492,
+          62373,
+          64556,
+          61316,
+          61069,
+          63838,
+          63483,
+          63502,
+          61225,
+          61245,
+          63928,
+          64735
+        ],
+        "right": [
+          64581
+        ],
+        "appearance_mean": 2.2458079123314825,
+        "appearance_min": 1.113366539651036,
+        "appearance_max": 3.432609259212416,
+        "fraction_below_threshold": 0.0,
+        "small_side_geometry_median": 0.8727882224925562,
+        "small_side_geometry_max": 0.8727882224925562,
+        "index": 26
+      },
+      {
+        "left": [
+          61078,
+          62591,
+          61523,
+          61599,
+          61618,
+          62638,
+          62648,
+          62875,
+          62885,
+          62905,
+          62950,
+          63012,
+          63026,
+          62959,
+          62974,
+          62967,
+          62913,
+          62942,
+          63415,
+          62753,
+          62668,
+          62741,
+          62596,
+          62714,
+          62657,
+          62604,
+          62239,
+          64285,
+          62398,
+          64088,
+          62224,
+          62025,
+          62014,
+          62190,
+          62559,
+          61946,
+          64295,
+          64057,
+          64066,
+          61591,
+          64255,
+          64244,
+          64077,
+          64692,
+          64130,
+          64099,
+          62725,
+          64142,
+          64450,
+          64441,
+          64459,
+          64432,
+          62379,
+          64520,
+          64510,
+          64492,
+          62373,
+          64556,
+          61316,
+          61069,
+          63838,
+          63483,
+          63502,
+          61225,
+          61245,
+          63928,
+          64735,
+          64581,
+          62687,
+          61341,
+          63685,
+          64627,
+          61290,
+          63696
+        ],
+        "right": [
+          64592
+        ],
+        "appearance_mean": 1.7514615428350422,
+        "appearance_min": -0.38520406496707693,
+        "appearance_max": 5.941031692154059,
+        "fraction_below_threshold": 0.0945945945945946,
+        "small_side_geometry_median": 0.9868850319049302,
+        "small_side_geometry_max": 0.9868850319049302,
+        "index": 33
+      }
+    ],
+    "direct_pair_features": [
+      {
+        "pair": [
+          64520,
+          64581
+        ],
+        "plain_cosine": 0.6719072078129067,
+        "masked_cosine": 0.5401375260394421,
+        "semantic_cosine": 0.845370977402782,
+        "appearance_evidence": 1.8533395073579477
+      },
+      {
+        "pair": [
+          64520,
+          64592
+        ],
+        "plain_cosine": 0.6769267748063661,
+        "masked_cosine": 0.4936843007223005,
+        "semantic_cosine": 0.8299382469343906,
+        "appearance_evidence": 1.5090467288917075
+      },
+      {
+        "pair": [
+          64520,
+          64735
+        ],
+        "plain_cosine": 0.745173494818095,
+        "masked_cosine": 0.4516473978832249,
+        "semantic_cosine": 0.9084348911786032,
+        "appearance_evidence": 2.9768753781330304
+      },
+      {
+        "pair": [
+          64692,
+          64581
+        ],
+        "plain_cosine": 0.7065464990502073,
+        "masked_cosine": 0.6251073251261838,
+        "semantic_cosine": 0.899552452728552,
+        "appearance_evidence": 3.1319636774589306
+      },
+      {
+        "pair": [
+          64692,
+          64592
+        ],
+        "plain_cosine": 0.679462639414065,
+        "masked_cosine": 0.5548606530288753,
+        "semantic_cosine": 0.8949857121760314,
+        "appearance_evidence": 2.698339214538514
+      },
+      {
+        "pair": [
+          64692,
+          64735
+        ],
+        "plain_cosine": 0.725041284627864,
+        "masked_cosine": 0.44201586305450646,
+        "semantic_cosine": 0.8518014053495477,
+        "appearance_evidence": 1.9672810063544723
+      }
+    ],
+    "conclusion": "All six direct wrong pairs pass appearance threshold 1.0; singleton geometry misses pass 2.5. Constituent-positive evidence and replacing median by maximum are insufficient."
+  },
+  "limits": [
+    "Development folds, not independent census; cross-fold pairs compare one held-out object with one training-fold object, not both-object holdout.",
+    "Fresh labels are frozen coding-agent drafts; primary excludes uncertain identities.",
+    "Pending observations unchanged; tiling boundaries and same-picture part conflicts remain.",
+    "No persistent identity, apply/rollback or reattachment-prevention implementation.",
+    "No new perception features or hardware validation in this experiment."
+  ],
+  "validation": {
+    "contract_tests": 20,
+    "documentation_check": "passed",
+    "registered_components_changed": false
+  }
+}

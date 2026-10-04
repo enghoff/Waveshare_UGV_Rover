@@ -188,9 +188,16 @@ the success predicate fixed here before the run.
    look to remain eligible without admitting a different object. Continue searching
    for confirmed duplicate detections separately: the claimed cow example did not
    survive inspection of its full frame. This is diagnosis, not a deployment gate.
-3. **Does the neighbourhood rebuild hold across the whole store?** Tile the store into
-   groups of neighbouring things so that each look is decided once, rebuild every
-   group, and score all 25 labelled things with weights fitted without them. It passes
+3. **Can joint repair avoid hiding mistakes in a larger cluster?** The
+   [disjoint whole-store experiment](../progress/2026-10-04-bounded-identity-repair.md)
+   improves the longer recording, but adds confirmed chair/table relations in the
+   fresh recording and leaves mixed records. The join trace shows that all six
+   confirmed wrong pairs pass the existing appearance threshold, with geometry also
+   permitting the joins. Inspect selected-pixel versus shared-context evidence and
+   part/parent distinctions before changing linkage; test conflict abstention while
+   retaining the longer-recording gains.
+   Continue using disjoint tiles, physical-object holdout, frozen drafts and separately
+   reported uncertain evidence. It passes
    if wrong looks kept are no more than single-look removal keeps at the same cost of
    right looks, no more than 10% of right looks are let go outright, and no two labelled
    objects end up in one thing. Prioritize cabinet partial views and painting/chair

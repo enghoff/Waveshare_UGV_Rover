@@ -170,3 +170,41 @@ test fold, as in the existing experiment. This tests the scoring rule under
 object holdout, not the default deployed weights or independent acceptance.
 Report newly added wrong pairs and lost correct pairs separately; net counts
 alone can hide replacement mistakes.
+
+## Bounded joint repair
+
+`repair_groups.py` partitions all placed records into deterministic disjoint spatial
+tiles, reconstructs observation clusters, and optionally runs the existing reader
+preview over the proposed records in an empty temporary store. It reads the source
+database in read-only mode and checks its hash afterward. Pending observations stay
+pending; missing appearance stays unchanged; singletons become waiting proposals.
+No live identities, persistent IDs or resolver rejection records are written.
+
+```powershell
+python experiments/entity_association/repair_groups.py --database captures/2026-10-04-association-likelihood/world.db --map captures/2026-10-04-association-likelihood/map.json --fold 0 --second-stage --output .cache/new-repair/fold-0.json
+python experiments/entity_association/repair_groups.py --database captures/2026-10-04-association-likelihood/world.db --map captures/2026-10-04-association-likelihood/map.json --fold 1 --second-stage --output .cache/new-repair/fold-1.json
+python experiments/entity_association/repair_groups.py --database captures/2026-10-04-reader-validation/after.db --map captures/2026-10-04-association-likelihood/map.json --labels captures/2026-10-04-reader-validation/owner-review/first-pass.json --second-stage --output .cache/new-repair/fresh.json
+```
+
+Choose new output paths; existing results are refused. Folds use the audited
+physical-object exclusions and one-person policy. Without `--fold`, the deployed
+default weights are used without fitting. Fresh scores report both clear drafts
+and all tentative object drafts. Labels determine fitting/scoring, never tiling or
+membership. The fresh store still includes earlier history.
+Repeat `--trace-observation <id>` to record accepted joins involving selected
+observations, their member IDs, appearance distribution and geometry misses.
+Tracing observes the same decisions; it does not alter membership.
+
+The fixed spatial radius is 0.75 m, with uncertain neighbours considered out to
+3 m. Tiles target at most 512 observations; an oversized source record is kept
+whole and reported. Sum linkage uses threshold 1.0, backend and same-picture
+cannot-links, and a median geometry veto at 2.5 on the smaller joining side.
+Unlike the old selected-neighbourhood bench, no-fit unions are refused. Missing
+masked vectors fall back to plain vectors. The second stage refits proposed
+records and can group across tile boundaries; it temporarily installs the fold's
+appearance weights and always restores them. Run this standalone experiment
+outside any serving process.
+
+The [first measurement](../../docs/progress/2026-10-04-bounded-identity-repair.md)
+shows substantial development improvement but confirmed fresh chair/table mistakes
+excluded from the clear-draft score. The prototype is not a production repair.
