@@ -538,3 +538,53 @@ smallest fix is to let that verdict withdraw `position_trusted` until a refit. I
 moves nothing, so it keeps the reason the check was made report-only, and the
 capture gate already refuses on that flag. A lift detector would close the window
 before the next check, which can be up to five minutes away.
+
+<a id="r-ws-17"></a>
+### R-WS-17 — Each object the rover has seen is one thing
+
+- **State:** proposed
+- **Proposed in:** [../plans/semantic-world-state.md](../plans/semantic-world-state.md) (One thing per object)
+
+An object the rover can tell apart from its neighbours is recorded as one thing, not as
+two or three. It is false when, on an acceptance recording labelled look by look by
+someone other than the author of the code being judged, more than one labelled object in
+ten is split: a second thing holds two or more of its looks. Objects nothing in this
+component can tell apart, such as the six identical dining chairs, are left out and
+counted separately.
+
+A split object is a smaller fault than a mixed one, and it still costs. The rover answers
+"where is the cow painting" with two places, the executive's memory of what it has
+already looked at is kept per thing and so starts again on the second record, and the
+autonomy plan's milestone M5 fails on a world filling with duplicates. On the store of
+2026-10-04 three of the 19 labelled objects that can be told apart were each two things,
+by the coding agent's labels, and the merge step proposed 18 joins over 192 things; on the
+drive of 2026-09-08, ten objects were split.
+
+How it is met is not part of the requirement, but [R-WS-3](#r-ws-3) and [R-WS-8](#r-ws-8)
+constrain it: evidence that does not resolve stays apart rather than being joined to
+empty the pool, and no amount of resemblance joins two things geometry says cannot be
+one. The proposed tolerance of one in ten is for the owner to agree before it is
+measured against.
+
+<a id="r-ws-18"></a>
+### R-WS-18 — A thing holds the looks of one object only
+
+- **State:** proposed
+- **Proposed in:** [../plans/semantic-world-state.md](../plans/semantic-world-state.md) (One thing per object)
+
+Every look filed under a thing shows that thing. It is false when, on the same kind of
+acceptance recording, more than one in twenty of the labelled looks filed under labelled
+things shows something else: another object, a doorway, glare or bare surface.
+
+A wrong look does more harm than a missing one. It pulls the thing's position towards
+whatever it really shows, it becomes one of the crops the thing is recognised by, and the
+next wrong look then joins more easily -- the drift found on 2026-09-08. On the store of
+2026-10-04, 46 of the 412 labelled looks (11%) were filed under the wrong thing, by the
+coding agent's labels with the 19 uncertain ones decided by the owner; on the drive of
+2026-09-08, 17 of 76 things held two objects.
+
+This is the store's own quality and is separate from [R-WS-13](#r-ws-13), which judges
+each action that relies on identity against what a mistake would cost that action. A
+store meeting this requirement makes those cases easier to pass; it does not pass them.
+The proposed tolerance of one in twenty is for the owner to agree before it is measured
+against.

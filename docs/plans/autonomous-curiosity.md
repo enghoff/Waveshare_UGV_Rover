@@ -749,6 +749,13 @@ Pass when all are true:
 6. repeated revisits reduce utility after the knowledge has been refreshed, so the
    rover does not become trapped by one formerly novel object.
 
+Criterion 4 and the milestone's duplicates are the world state's to prevent. What it
+must deliver is [R-WS-17](../requirements/world-state.md#r-ws-17) (each object is one
+thing) and [R-WS-18](../requirements/world-state.md#r-ws-18) (each thing holds one
+object's looks). The work towards them is
+[one thing per object](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks)
+in the world-state plan.
+
 ### Multi-day usefulness benchmark
 
 Before claiming useful lifelong memory, compare autonomy through M5 with both

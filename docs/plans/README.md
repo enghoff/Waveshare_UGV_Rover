@@ -7,7 +7,7 @@ or abandoned.
 
 | Plan | Status | About |
 |---|---|---|
-| [semantic-world-state.md](semantic-world-state.md) | mostly delivered; acceptance work open | remembering what the rover has seen, and searching it by description |
+| [semantic-world-state.md](semantic-world-state.md) | mostly delivered; one thing per object (R-WS-17, R-WS-18) in investigation | remembering what the rover has seen, and searching it by description |
 | [autonomous-curiosity.md](autonomous-curiosity.md) | Phase 0 closed; Phase 3 in progress | the rover choosing for itself what to investigate, and learning skills from experience |
 | [autonomous-curiosity-design.md](autonomous-curiosity-design.md) | proposed | the architecture the plan above implements |
 
