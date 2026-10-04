@@ -81,6 +81,10 @@ MAX_APART_M = 4.0
 #: otherwise read as two objects.
 ELLIPSE_FLOOR_M = 0.05
 
+# Nominal 99.9% two-dimensional Gaussian distance. The recorded ellipses are
+# not calibrated probabilities; this is a hard compatibility threshold (R-WS-8).
+MAX_ELLIPSE_DISTANCE2 = 13.815510557964274
+
 #: A pair is proposed when its score is above this, and its appearance on its own is
 #: above `LOOKS_ALIKE_ABOVE`. The second rule is the measurement that geometry can rule
 #: a merge out but cannot make the case for one: in this room two placements a few
@@ -175,6 +179,8 @@ def geometry(a: _Thing, b: _Thing, density: float) -> float:
                       a.placement["y_m"] - b.placement["y_m"]])
     both = a.covariance() + b.covariance()
     squared = float(apart @ np.linalg.solve(both, apart))
+    if not math.isfinite(squared) or squared > MAX_ELLIPSE_DISTANCE2:
+        return -math.inf
     return (-0.5 * squared - math.log(2.0 * math.pi * math.sqrt(np.linalg.det(both)))
             - math.log(density))
 

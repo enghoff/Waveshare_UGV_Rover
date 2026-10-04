@@ -212,10 +212,11 @@ the success predicate fixed here before the run.
 Each step needs the answer above it to have passed. Each is replayed, passes the
 offline suites, is deployed and verified over TCP 8769, and gets a progress entry.
 
-1. **A hard geometric limit on the merge rule.** No pair is proposed whose placements
-   are further apart than their error ellipses allow at 99.9%, so that appearance only
-   chooses among pairs geometry accepts ([R-WS-8](../requirements/world-state.md#r-ws-8)).
-   This is owed before any further merging code is deployed.
+1. **Validate the diagnostic grouping preview on independent evidence.** The
+   implementation and nominal ellipse gate are described in the
+   [component README](../../world_state/README.md#grouping-preview). Keep this
+   diagnostic separate from normal readers until question 1 passes. The nominal
+   99.9% geometric threshold does not establish calibrated uncertainty (R-WS-8).
 2. **Groups over things** (after question 1), with these parts:
    - a table of which things are one object, recomputed by a pass in the daemon's world
      loop on its own clock;

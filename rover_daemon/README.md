@@ -49,6 +49,11 @@ The exact schemas live in [`tool_schemas.py`](tool_schemas.py) and are the sourc
 of truth. `list_tools` returns the current set so clients do not maintain their
 own copies.
 
+`world_state_groups {}` is a diagnostic control call, excluded from model tools.
+It returns candidate groups from a disposable snapshot without applying them;
+the response identifies the snapshot and flags concurrent changes. See
+[the world-state README](../world_state/README.md#grouping-preview).
+
 Core hardware/vision tools include:
 
 | Tool | Purpose |

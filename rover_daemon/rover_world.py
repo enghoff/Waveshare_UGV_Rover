@@ -1176,6 +1176,16 @@ class RoverWorld:
         return {"ok": True, "applied": True, "backup": backup, "rerange": ranged,
                 "rebuild": built}
 
+    def _tool_world_state_groups(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Read-only grouping preview; consumers still use original entities."""
+        why = self._world_ready()
+        if why:
+            return {"ok": False, "error": why}
+        if arguments:
+            return {"ok": False, "error": "group previews take no arguments and cannot be applied"}
+        from world_state.reader_groups import preview
+        return preview(self._world_store(), reach=self._world_reach)
+
     def _tool_world_state_merge(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Join things the resolver split, or put the last joining back. A control
         call, and a person's act.

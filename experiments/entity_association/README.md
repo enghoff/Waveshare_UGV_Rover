@@ -85,6 +85,13 @@ and its overhead is substantial; elapsed time here is not a production latency
 claim. `summarize.py --directory .cache/entity-audit --output <result.json>` checks
 exact baseline memberships and grouping conservation before writing compact results.
 
+With a source checkout containing `world_state/reader_groups.py`, add
+`--reader-module` to `groups` runs to exercise the diagnostic implementation
+instead of the earlier bench-only grouping function. The held-out appearance
+weights are fitted as before. This flag validates the implementation against
+the development recording; it does not validate the daemon's default weights
+on independent data.
+
 `prepare_review.py --output .cache/entity-audit-new/owner-review` produces full
 frames with numbered regions, a blank CSV and a manifest for a blinded **pilot**
 review. It samples frames independently of existing entities and reports missing

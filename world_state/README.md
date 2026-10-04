@@ -10,6 +10,28 @@ perception finds regions with YOLOE and stores DINOv2 and SigLIP2 vectors.
 Identity comes primarily from measured geometry; text is used only to search
 stored images.
 
+## Grouping preview
+
+`world_state_groups {}` is a diagnostic control call on TCP 8769. It recomputes
+candidate groups on a disposable database backup, leaving the real observations,
+entities, placements, exemplars and merge journal untouched. Neither the resolver
+nor the console, voice tools or executive consumes this preview. There is no apply
+operation. A later preview can withdraw an earlier group.
+
+The response names original member IDs and a representative, supplies the world
+generation, map session and evidence revision, and reports whether concurrent
+evidence made it stale and whether the ten-round limit reached convergence.
+These names are snapshot references, not persistent redirects or destinations.
+Only one preview runs at a time. The appearance weights remain the existing
+development weights; a live preview is not independent validation.
+
+Both proposals and previews now reject pairs above squared ellipse distance
+13.8155 before ranking (R-WS-8). This is a nominal Gaussian threshold; the rover's
+ellipses are not calibrated to a 99.9% guarantee. Backend and shared-picture
+constraints remain in force, including through multi-round groups. The
+[development audit](../docs/progress/2026-10-04-entity-association-audit.md) supports
+testing this reader design, while R-WS-13, R-WS-17 and R-WS-18 remain unaccepted.
+
 ## Runtime
 
 `perception_server.py` listens on loopback port 8776. It prefers TensorRT engines

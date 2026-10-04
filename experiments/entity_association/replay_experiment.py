@@ -25,7 +25,7 @@ def digest(path):
 
 
 def run(source, output, fold, mode, geometric_gate=True, excluded=(), same_person=False,
-        trace_decisions=False):
+        trace_decisions=False, reader_module=False):
     sys.path.insert(0, str(source.resolve()))
     from world_state import merging, replay, resolve
     from world_state.store import WorldStore
@@ -95,6 +95,14 @@ def run(source, output, fold, mode, geometric_gate=True, excluded=(), same_perso
         # Re-solve a disposable copy. The live resolver receives neither these
         # merged placements nor their combined exemplars on its next look.
         before = owners(store)
+        if reader_module:
+            from world_state.reader_groups import preview
+            result = preview(store, reach=reach)
+            assert result['ok'] and not result['stale'] and result['converged'], result
+            alias = {member: group['representative'] for group in result['groups']
+                     for member in group['members'] if member != group['representative']}
+            assert owners(store) == before, "reader module changed resolver membership"
+            return alias
         with tempfile.TemporaryDirectory(prefix="entity-group-") as directory:
             clone = WorldStore(directory)
             try:
@@ -211,6 +219,7 @@ def run(source, output, fold, mode, geometric_gate=True, excluded=(), same_perso
               "excluded_observations": evidence.excluded,
               "head_and_body_one_person": same_person,
               "trace_decisions": trace_decisions,
+              "reader_module": reader_module,
               "source": str(source.resolve()), "model": model,
               "database_sha256": database_hash, "labels_sha256": digest(LABELS),
               "seconds": time.monotonic()-began, "entities": entities,
@@ -233,6 +242,7 @@ if __name__ == "__main__":
     parser.add_argument("--exclude-observation", action="append", type=int, default=[])
     parser.add_argument("--same-person", action="store_true")
     parser.add_argument("--trace", action="store_true")
+    parser.add_argument("--reader-module", action="store_true")
     args = parser.parse_args()
     run(args.source, args.output, args.fold, args.mode, not args.ungated, args.exclude_observation,
-        args.same_person, args.trace)
+        args.same_person, args.trace, args.reader_module)
