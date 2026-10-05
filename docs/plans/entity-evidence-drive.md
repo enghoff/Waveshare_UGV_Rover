@@ -5,12 +5,15 @@ development recording, not an acceptance census. Keep the proposed 5% contaminat
 target; independently labelled acceptance remains separate work.
 
 The [first visual recording](../progress/2026-10-05-visual-evidence-depth.md)
-exposes ambiguous depth and cross-view recognition failures. First audit surface
-attribution and depth ambiguity offline: reproduce the selected near/far bands,
-compare proposed abstentions with correct narrow/glass/occluded regions, and
-measure both lost useful measurements and removed errors. Do not automatically
-choose the farther surface or reject every box fallback. No drive is needed for
-that diagnosis.
+exposes ambiguous depth and cross-view recognition failures. The
+[fixed range-abstention pilot](../progress/2026-10-05-depth-abstention.md) passes
+its numerical development criteria, but has not proved an identity benefit.
+Preserve this candidate. Next build a complete reproduced resolver experiment
+that withholds only flagged ranges, keeps all observations and measures correct
+identity support, founders, fragments and placement errors. Do not choose the
+farther surface or make minority depth a mandatory identity rejection.
+Transparent and narrow objects need measured controls; current glass evidence
+has no taped distance. Offline preparation needs no drive.
 
 A remaining drive should answer whether useful same-object views can be connected
 without letting a foreground object become evidence for its background. Use the
@@ -65,5 +68,5 @@ in clear views, prioritise region separation and re-encoding those pixels. If cl
 masks still fail across verified views, investigate representation/viewpoint support.
 Only then choose an admission policy and freeze its criteria for a separate trial.
 
-The offline depth audit precedes the remaining recording. Neither a successful recording nor
+The reproduced resolver test and exact recorder precede the remaining policy trial. Neither a successful recording nor
 better pixel isolation alone authorises deploying the failed two-witness candidate.

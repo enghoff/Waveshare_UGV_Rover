@@ -8,8 +8,7 @@ or abandoned.
 | Plan | Status | About |
 |---|---|---|
 | [semantic-world-state.md](semantic-world-state.md) | mostly delivered; one thing per object (R-WS-17, R-WS-18) in investigation | remembering what the rover has seen, and searching it by description |
-| [entity-depth-abstention.md](entity-depth-abstention.md) | fixed offline development test (R-WS-13, R-WS-17, R-WS-18) | can ambiguous depth abstain without losing correct narrow or occluded readings? |
-| [entity-evidence-drive.md](entity-evidence-drive.md) | depth ambiguity audit and remaining controlled recording (R-WS-13, R-WS-17, R-WS-18) | connect verified views across viewpoint changes and separate foreground from background |
+| [entity-evidence-drive.md](entity-evidence-drive.md) | range-abstention resolver test and remaining controlled recording (R-WS-13, R-WS-17, R-WS-18) | connect verified views across viewpoint changes and separate foreground from background |
 | [autonomous-curiosity.md](autonomous-curiosity.md) | Phase 0 closed; Phase 3 in progress | the rover choosing for itself what to investigate, and learning skills from experience |
 | [autonomous-curiosity-design.md](autonomous-curiosity-design.md) | proposed | the architecture the plan above implements |
 

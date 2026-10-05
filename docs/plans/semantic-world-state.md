@@ -213,8 +213,10 @@ the success predicate fixed here before the run.
    than require two already-confirmed matches. The first
    [controlled visual recording](../progress/2026-10-05-visual-evidence-depth.md)
    reproduces ambiguous outline depth with a small within-band sigma, as well as
-   genuine cross-view appearance failures. Next audit surface attribution and
-   ambiguity on saved depth before choosing another admission policy. The
+   genuine cross-view appearance failures. The
+   [fixed depth-abstention pilot](../progress/2026-10-05-depth-abstention.md) passes
+   its range criteria; preserve it, then test identity and placement consequences
+   on a reproduced full resolver sequence before selecting a policy. The
    [remaining recording work](entity-evidence-drive.md) includes missing targets
    and exact background-resolver provenance. These failures do not establish
    that all multi-view repair is impossible or require relaxing the target.

@@ -433,3 +433,32 @@ python experiments/entity_association/diagnose_visual_evidence.py --directory ca
 
 Choose a new output file. The dated measurement records missing coverage and
 resolver-call provenance limits; the complete resolver trial remains future work.
+
+
+## Minority-depth abstention pilot
+
+`audit_depth_abstention.py` fixes a range-only candidate: withhold the nearest
+outline range when its production-selected band contains less than half the valid
+projected samples and the median lies more than 0.5 m behind that band's median.
+It uses the ordinary box-derived initial guess and two projection iterations.
+Box fallbacks and missing ranges stay unchanged. It regenerates older outlines
+from the archived region export, compares the ordinary replay with the historical
+untrimmed results, and scores the original taped-target mapping. Inputs are read-only.
+The candidate does not remove observations or resolve identities.
+
+`audit_depth_stationary.py` uses stored outlines, original target labels and
+stationary windows in the separate 2026-10-03 recording. It reports moving looks
+separately and preserves missing recorded ranges even where a zero-turn replay
+could measure one. `diagnose_depth_counterexample.py` reproduces the reviewed
+glass example; without taped truth it is qualitative evidence only.
+
+```powershell
+.venv/Scripts/python.exe experiments/entity_association/audit_depth_abstention.py --model captures/2026-10-05-depth-abstention/yoloe-11s-seg-objectness.onnx --fresh captures/2026-10-05-evidence-drive --output .cache/new-depth-pilot
+.venv/Scripts/python.exe experiments/entity_association/audit_depth_stationary.py --directory captures/2026-10-03-targets --output .cache/new-depth-stationary.json
+.venv/Scripts/python.exe experiments/entity_association/diagnose_depth_counterexample.py --database captures/2026-10-02-single-look-rules/world67.db --frames captures/2026-10-05-depth-abstention --model captures/2026-10-05-depth-abstention/yoloe-11s-seg-objectness.onnx --observation 59864 --output .cache/new-glass-depth.json
+```
+
+Use new output paths. The dated progress entry records the criteria fixed in
+125c0d8 and 3547957, the numerical pass, the discarded correct painting reading,
+and the limits that prevent an identity-policy or production acceptance claim.
+All trace outputs are checked against the production sampler before scoring.
