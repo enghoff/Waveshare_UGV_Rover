@@ -1,5 +1,10 @@
 # Reviewing entity association
 
+The latest [complete depth resolver study](../../docs/progress/2026-10-05-depth-resolver.md)
+corrects one painting attachment in an exact final-state replay; it also exposes
+genuine connection loss in the older complete-drive sensitivity. These scripts
+remain offline experiments; the rule is not deployed.
+
 Workstation experiments for R-WS-13, R-WS-17 and R-WS-18. These scripts are outside
 the deployment manifest. They change temporary replay stores only; they do not
 change the running rover, the historical recording, or its original labels.
@@ -431,8 +436,9 @@ the selected stationary manual looks; this is not a moving-frame replay tool.
 python experiments/entity_association/diagnose_visual_evidence.py --directory captures/2026-10-05-evidence-drive --output .cache/new-visual-diagnosis.json
 ```
 
-Choose a new output file. The dated measurement records missing coverage and
-resolver-call provenance limits; the complete resolver trial remains future work.
+Choose a new output file. The dated visual measurement records missing coverage
+and resolver-call provenance limits. The later full replay below reconstructs
+the latest final state exactly; it does not recover every live call.
 
 
 ## Minority-depth abstention pilot
@@ -462,3 +468,39 @@ Use new output paths. The dated progress entry records the criteria fixed in
 125c0d8 and 3547957, the numerical pass, the discarded correct painting reading,
 and the limits that prevent an identity-policy or production acceptance claim.
 All trace outputs are checked against the production sampler before scoring.
+
+
+## Complete depth resolver development replay
+
+`replay_depth_abstention.py` replays every observation in all three October 1/2
+recordings with original ranges, reconstructed production-outline ranges and
+selective abstention. It preserves recorded missing ranges, checks both controls
+by repetition, and reports proxy target connections, placement errors and waiting.
+The current resolver and saved map run once per inspection. A mismatch against
+recorded live state is reported explicitly; this is a development sensitivity.
+
+`trace_depth_founders.py` reconstructs those arms from their saved depth results
+and captures each actual founding attachment and initial placement. Its wrappers
+must reproduce all prior memberships and placements exactly. It does not re-perceive
+or adjust thresholds. Keep the measurement directory available for input hashes.
+
+`replay_fresh_depth.py` uses stored outlines and before/after snapshots from October 5.
+It derives a single matching schedule from surviving placement-update timestamps,
+including repeated passes at one frame boundary. It repeats the control and permits
+a candidate only when all recorded assignments, entity IDs, placements and plain/
+masked exemplars reproduce exactly, and every archived stored range reproduces.
+This is final-state reproduction, not proof of the complete historical call sequence.
+No original range is substituted: the only candidate intervention is withholding
+flagged distances. Full arm stores, per-call outcomes and all differences are retained.
+
+```powershell
+.venv/Scripts/python.exe experiments/entity_association/replay_depth_abstention.py --model captures/2026-10-05-depth-abstention/yoloe-11s-seg-objectness.onnx --output .cache/new-complete-depth
+.venv/Scripts/python.exe experiments/entity_association/trace_depth_founders.py --source .cache/new-complete-depth --output .cache/new-complete-founders
+.venv/Scripts/python.exe experiments/entity_association/replay_fresh_depth.py --directory captures/2026-10-05-evidence-drive --output .cache/new-fresh-depth
+```
+
+Every output directory must be new. No rover connection is used. Criteria were
+fixed before computing in ef9b646/fc11b8b; their finished plan remains in git history.
+The dated progress entry owns the results and limitations. Post-score photograph
+reviews stay separate from frozen primary labels and never create independent
+acceptance truth. The range flag remains a candidate, not a deployed identity gate.

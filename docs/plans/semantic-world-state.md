@@ -215,8 +215,11 @@ the success predicate fixed here before the run.
    reproduces ambiguous outline depth with a small within-band sigma, as well as
    genuine cross-view appearance failures. The
    [fixed depth-abstention pilot](../progress/2026-10-05-depth-abstention.md) passes
-   its range criteria; preserve it, then test identity and placement consequences
-   on a reproduced full resolver sequence before selecting a policy. The
+    its range criteria. The subsequent
+    [complete resolver study](../progress/2026-10-05-depth-resolver.md) corrects one
+    painting attachment in an exact final-state replay, but loses genuine cabinet
+    connections in the older sensitivity. Preserve the positive case; measured
+    hardware controls must precede selecting a blanket policy. The
    [remaining recording work](entity-evidence-drive.md) includes missing targets
    and exact background-resolver provenance. These failures do not establish
    that all multi-view repair is impossible or require relaxing the target.
