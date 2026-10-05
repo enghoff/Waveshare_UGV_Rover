@@ -202,10 +202,14 @@ the success predicate fixed here before the run.
    chair) against 85 rightly released, so appearance alone cannot decide a release,
    and the [predeclared position test](../progress/2026-10-05-release-position.md)
    fails too: wrongly filed objects sit in the same direction as the record's object.
-   Release-only is not an automatic repair. Next test what the selected pixels are —
-   the stored SigLIP image vectors scored against a few category phrases embedded by
-   the rover's text model — against the same frozen review, with its pass condition
-   committed first. Keep the disputed new table/painting
+   Release-only is not an automatic repair, and the
+   [predeclared category test](../progress/2026-10-05-release-category.md) — stored
+   SigLIP vectors against 26 phrases embedded by the rover — fails as well: the kind
+   given to a poor view slips just as its appearance does. No single-look evidence
+   tested decides a release. Before more repair experiments the owner should decide
+   whether R-WS-18's one-in-twenty tolerance is held, which points at capture (the
+   region finder separating occluders), or relaxed for readers that tolerate
+   contamination. Keep the disputed new table/painting
    pair visible rather than silently relabelling it or using it alone to reject the
    candidate. Do not tune global appearance weights to the six fresh examples.
    Continue using disjoint tiles, physical-object holdout, frozen drafts and separately

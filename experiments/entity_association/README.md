@@ -354,3 +354,17 @@ python experiments/entity_association/release_position.py --fresh captures/2026-
 ```
 
 It [fails](../../docs/progress/2026-10-05-release-position.md) on all three.
+
+`release_category.py` scores each observation's stored SigLIP2 vector against
+`PHRASES`, keeps a release whose best phrase matches its record's, and is judged on
+the same terms. `request` writes the phrase list; the vectors must come from the
+rover's perception sidecar, the backend every stored vector came from:
+
+```powershell
+python experiments/entity_association/release_category.py request --output phrases-request.json
+ssh orin "curl -s -X POST -H 'Content-Type: application/json' --data-binary @- 127.0.0.1:8776/embed" < phrases-request.json > phrases-response.json
+```
+
+Store the response with its phrases as the `--phrases` file for `test`, which takes
+the same arguments as `release_position.py` with `--phrases` for `--map`. It
+[fails](../../docs/progress/2026-10-05-release-category.md) on all three.
