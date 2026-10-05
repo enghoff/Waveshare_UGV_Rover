@@ -64,6 +64,19 @@ def tiles(placed, counts):
     return groups
 
 
+def verify_split_only(before,after):
+    """Every resulting group must be a subset of one original assigned record."""
+    if set(before)!=set(after):raise ValueError('split changed observation coverage')
+    parents={}
+    for i,owner in after.items():
+        if owner is None:continue
+        if before[i] is None:raise ValueError('split assigned a pending observation')
+        parents.setdefault(owner,set()).add(before[i])
+    if any(len(values)!=1 for values in parents.values()):
+        raise ValueError('split joined previously separate records')
+    return {owner:next(iter(values)) for owner,values in parents.items()}
+
+
 def cluster(pool, placed, model, threshold=THRESHOLD, veto=True, trace_ids=(), trace=None, extra=None):
     n=len(pool)
     if not n:return [],[],{}
@@ -160,7 +173,9 @@ def regroup(database, looks, placed, owners, model, reach, bank=None):
     return {i:aliases.get(owner,owner) for i,owner in owners.items()},result
 
 
-def run(database, map_path, output, fold, labels=None, second_stage=False, trace_ids=(), appearance_columns=None, semantic_probe=None):
+def run(database, map_path, output, fold, labels=None, second_stage=False, trace_ids=(), appearance_columns=None, semantic_probe=None, split_only=False, release_only=False):
+    split_only=split_only or release_only
+    if split_only and second_stage:raise ValueError('split-only forbids later reader joins')
     if output.exists():raise ValueError('choose a new result path')
     digest=hashlib.sha256(database.read_bytes()).hexdigest()
     evidence=Evidence(excluded=[61656],same_person=True)
@@ -183,7 +198,8 @@ def run(database, map_path, output, fold, labels=None, second_stage=False, trace
     if bank is not None:missing_features=bank.validate(rows)
     owners={r['id']:r['entity_id'] for r in rows};before=owners.copy()
     by_entity={k:[p for p in looks.values() if p.entity==k] for k in placed}
-    groups=tiles(placed,{k:len(v) for k,v in by_entity.items() if v})
+    counts={k:len(v) for k,v in by_entity.items() if v}
+    groups=([[k] for k in sorted(counts,key=lambda k:(-counts[k],k))] if split_only else tiles(placed,counts))
     events=[];all_stats=Counter();untouched=[];released_ids=[];join_trace=[]
     for index,group in enumerate(groups):
         # Separate incomparable vector widths. Missing appearance stays unchanged.
@@ -207,6 +223,9 @@ def run(database, map_path, output, fold, labels=None, second_stage=False, trace
         events.append(detail)
         if index<5 or index%10==9 or index==len(groups)-1:
             print(f'fold {fold}: tile {index+1}/{len(groups)}, {detail["regions"]} regions, {time.monotonic()-began:.1f}s',flush=True)
+    if release_only:
+        owners=before.copy()
+        for i in released_ids:owners[i]=None
     result={'database_sha256':digest,'map_sha256':hashlib.sha256(map_path.read_bytes()).hexdigest(),
             'fold':fold,'model':model,'regions':len(rows),'tiles':events,'stats':dict(all_stats),
             'pending_original':sum(v is None for v in before.values()),'released':released_ids,
@@ -223,6 +242,12 @@ def run(database, map_path, output, fold, labels=None, second_stage=False, trace
     if second_stage:
         grouped,preview=regroup(database,looks,placed,owners,model,reach,bank)
         result['grouped_owners']=grouped;result['grouping_preview']=preview
+    if split_only:
+        result['split_only']=True
+        result['release_only']=release_only
+        result['action']='release singletons; retain other original memberships' if release_only else 'split original records independently'
+        result['original_parent_by_proposal']=verify_split_only(before,owners)
+        result['limitations'][0]='Original records are analysed independently; pending regions are unchanged; no later grouping is allowed.'
     if trace_ids:result['join_trace']=join_trace;result['trace_ids']=list(trace_ids)
     if bank is not None:
         result['masked_semantic_probe']={'vectors_sha256':bank.sha256,
@@ -270,4 +295,6 @@ if __name__=='__main__':
     p.add_argument('--appearance-columns',type=int,nargs='+',choices=[0,1,2,3],
                    help='refit development channels (0 plain, 1 masked, 2 semantic, 3 masked semantic with --semantic-probe); no fold fits all development objects')
     p.add_argument('--semantic-probe',type=Path)
-    args=p.parse_args();run(args.database,args.map,args.output,args.fold,args.labels,args.second_stage,args.trace_observation,args.appearance_columns,args.semantic_probe)
+    p.add_argument('--split-only',action='store_true')
+    p.add_argument('--release-only',action='store_true')
+    args=p.parse_args();run(args.database,args.map,args.output,args.fold,args.labels,args.second_stage,args.trace_observation,args.appearance_columns,args.semantic_probe,args.split_only,args.release_only)

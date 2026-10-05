@@ -293,3 +293,35 @@ encoding artifacts for the full trial are preserved privately under
 [full comparison](../../docs/progress/2026-10-05-masked-semantic-repair.md) rejects
 this fitted candidate for deployment; the smaller favourable diagnostic is not
 an acceptance result.
+
+## Split-only and release-only proposals
+
+`repair_groups.py --split-only` analyses each original placed record separately,
+retaining the existing fit and linkage rules. `--release-only` uses the same
+analysis but only sends singleton observations back to pending; all other original
+memberships remain. Both forbid `--second-stage`. A checked invariant prevents
+cross-record joins, changes to originally pending observations, and incomplete
+coverage. This guarantee applies to the proposal, not subsequent resolver passes.
+
+Use `--fold 0` and `--fold 1` on the older snapshot. For the fresh snapshot use
+`--appearance-columns 0 1 2 --labels <first-pass.json>` to fit the older development
+labels before scoring the frozen fresh draft. Use a new output path each time.
+
+`replay_release.py` backs up the source into a temporary store, releases the
+proposal's singleton IDs through the existing experimental detach path, and runs
+three ordinary idle resolver passes. It supports `baseline`, `released` and
+`guarded`; the last refuses each released observation's original parent using a
+temporary in-memory hook. It neither applies multi-observation splits nor implements
+durable rejection memory. Never use this as a live repair command.
+
+```powershell
+python experiments/entity_association/repair_groups.py --database captures/2026-10-04-reader-validation/after.db --map captures/2026-10-04-association-likelihood/map.json --labels captures/2026-10-04-reader-validation/owner-review/first-pass.json --appearance-columns 0 1 2 --release-only --output .cache/new-release/proposal.json
+python experiments/entity_association/replay_release.py --database captures/2026-10-04-reader-validation/after.db --proposal .cache/new-release/proposal.json --map captures/2026-10-04-association-likelihood/map.json --draft captures/2026-10-04-reader-validation/owner-review/first-pass.json --mode guarded --output .cache/new-release/guarded.json
+```
+
+The lifecycle output's `returned_to_original` lists released-candidate IDs currently
+in their original parent; at `original` and in the untouched baseline they have
+never left, so those are not reattachment counts. Scores retain the frozen labels.
+The [measurement](../../docs/progress/2026-10-05-release-only-repair.md) preserves a
+post-score visual dispute separately and retains release-only as a candidate for
+review, not an approved automatic repair.

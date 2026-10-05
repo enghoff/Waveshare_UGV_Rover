@@ -1,0 +1,3699 @@
+{
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "independent_acceptance": false,
+  "deployed": false,
+  "hardware_validated": false,
+  "source_database_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+  "draft_sha256": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0",
+  "artifacts": {
+    "captures/2026-10-04-reader-validation/split-only/fold-0.json": "3db3bd363f1d78fda94d016e980c39c3159fc68c09f6db2925fcb50950e51592",
+    "captures/2026-10-04-reader-validation/split-only/fold-1.json": "8dae446491483b34a7fbea1122823f63ad0aa291965660caddb748f13f2e22df",
+    "captures/2026-10-04-reader-validation/split-only/fresh.json": "db5970ef954aa8853a80fe64cfea5efa6185d0b2fe85b98c0f81761df0244a1c",
+    "captures/2026-10-04-reader-validation/split-only/full-pair.jpg": "b1c5bb1d3bd1475f54e4c2842ffd3b462a5585d8c0e39f49339bec7ce2b02b78",
+    "captures/2026-10-04-reader-validation/split-only/next-wrong.jpg": "e0686cc4b064df87051a71052745b20d17a393f45cdc5bf2c314ce69cc039baa",
+    "captures/2026-10-04-reader-validation/split-only/release-0.json": "92f91621311d3b7af2b9c2e8fc455de97bf464989bd654ebe2b78fa514f75e5f",
+    "captures/2026-10-04-reader-validation/split-only/release-1.json": "b17587b63ac8369f1f80956dfe1717fb1ef5270b476c4f0001a65b6cc9d98d84",
+    "captures/2026-10-04-reader-validation/split-only/release-fresh.json": "5714a97c7d4c2fb2909797e212848992818499620cd69404eb3e1b6a5050e6d3",
+    "captures/2026-10-04-reader-validation/split-only/replay-baseline.json": "c03bf2f7ae898b5855410fbec43793ac9943c05eae55ae5c833f96fd9f446d32",
+    "captures/2026-10-04-reader-validation/split-only/replay-guarded.json": "0ce984a502fa277a42feac613b23a3889f581356f25a0509fef78ba1433bc593",
+    "captures/2026-10-04-reader-validation/split-only/replay-released.json": "da1c0ece919326cea7c0611759a2464ae1c0481a71a8aa10ce9812c354ffd376"
+  },
+  "older": {
+    "full_split": {
+      "folds": [
+        {
+          "fold": 0,
+          "model": {
+            "coef": [
+              9.25970903822949,
+              2.309252417388156,
+              13.68775887231196
+            ],
+            "offset": -16.921272206152466,
+            "training_pairs": 21126,
+            "training_same": 2519,
+            "held_out_objects": [
+              "object:242",
+              "object:247",
+              "object:259",
+              "object:276",
+              "object:307",
+              "object:335",
+              "object:350",
+              "object:377",
+              "object:387",
+              "object:407"
+            ]
+          },
+          "before": {
+            "same_together": 1793,
+            "same_apart": 0,
+            "different_together": 357,
+            "different_apart": 29523,
+            "precision": 0.833953488372093,
+            "recall": 1.0,
+            "f1": 0.9094598021810804,
+            "main_looks": 159,
+            "main_waiting": 0,
+            "odd_kept_in_original_home": 20,
+            "odd_count": 20,
+            "objects_scored": 8,
+            "objects_split": 0,
+            "macro_object_pair_recall": 1.0,
+            "per_object": {
+              "object:242": {
+                "looks": 48,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:259": {
+                "looks": 12,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:276": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:307": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:335": {
+                "looks": 29,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:377": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:387": {
+                "looks": 17,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:407": {
+                "looks": 7,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "after": {
+            "same_together": 1533,
+            "same_apart": 260,
+            "different_together": 82,
+            "different_apart": 29798,
+            "precision": 0.9492260061919504,
+            "recall": 0.8549916341327384,
+            "f1": 0.8996478873239436,
+            "main_looks": 159,
+            "main_waiting": 5,
+            "odd_kept_in_original_home": 5,
+            "odd_count": 20,
+            "objects_scored": 8,
+            "objects_split": 1,
+            "macro_object_pair_recall": 0.9208095109417074,
+            "per_object": {
+              "object:242": {
+                "looks": 48,
+                "waiting": 0,
+                "pieces_with_two_looks": 3,
+                "pair_recall": 0.8023049645390071
+              },
+              "object:259": {
+                "looks": 12,
+                "waiting": 2,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.6818181818181818
+              },
+              "object:276": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:307": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:335": {
+                "looks": 29,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:377": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:387": {
+                "looks": 17,
+                "waiting": 1,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.8823529411764706
+              },
+              "object:407": {
+                "looks": 7,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "global_released": 184,
+          "new_wrong_after": []
+        },
+        {
+          "fold": 1,
+          "model": {
+            "coef": [
+              4.807851925514747,
+              5.462566863693885,
+              8.28032209689627
+            ],
+            "offset": -11.21926843077799,
+            "training_pairs": 12463,
+            "training_same": 1793,
+            "held_out_objects": [
+              "object:246",
+              "object:249",
+              "object:275",
+              "object:302",
+              "object:332",
+              "object:343",
+              "object:374",
+              "object:383",
+              "object:386",
+              "object:402",
+              "object:413"
+            ]
+          },
+          "before": {
+            "same_together": 1923,
+            "same_apart": 596,
+            "different_together": 353,
+            "different_apart": 31110,
+            "precision": 0.8449033391915641,
+            "recall": 0.7633981738785233,
+            "f1": 0.8020855057351408,
+            "main_looks": 206,
+            "main_waiting": 0,
+            "odd_kept_in_original_home": 26,
+            "odd_count": 26,
+            "objects_scored": 10,
+            "objects_split": 4,
+            "macro_object_pair_recall": 0.8487615433270083,
+            "per_object": {
+              "object:246": {
+                "looks": 25,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.52
+              },
+              "object:249": {
+                "looks": 51,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.8196078431372549
+              },
+              "object:275": {
+                "looks": 9,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:332": {
+                "looks": 31,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.6774193548387096
+              },
+              "object:343": {
+                "looks": 12,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:374": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:383": {
+                "looks": 17,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.47058823529411764
+              },
+              "object:386": {
+                "looks": 5,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:402": {
+                "looks": 21,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:413": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "after": {
+            "same_together": 1755,
+            "same_apart": 764,
+            "different_together": 160,
+            "different_apart": 31303,
+            "precision": 0.9164490861618799,
+            "recall": 0.6967050416832076,
+            "f1": 0.7916102841677943,
+            "main_looks": 206,
+            "main_waiting": 4,
+            "odd_kept_in_original_home": 8,
+            "odd_count": 26,
+            "objects_scored": 10,
+            "objects_split": 5,
+            "macro_object_pair_recall": 0.7920991235203758,
+            "per_object": {
+              "object:246": {
+                "looks": 25,
+                "waiting": 1,
+                "pieces_with_two_looks": 3,
+                "pair_recall": 0.3233333333333333
+              },
+              "object:249": {
+                "looks": 51,
+                "waiting": 1,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.8164705882352942
+              },
+              "object:275": {
+                "looks": 9,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:332": {
+                "looks": 31,
+                "waiting": 1,
+                "pieces_with_two_looks": 3,
+                "pair_recall": 0.567741935483871
+              },
+              "object:343": {
+                "looks": 12,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:374": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:383": {
+                "looks": 17,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.47058823529411764
+              },
+              "object:386": {
+                "looks": 5,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:402": {
+                "looks": 21,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.7428571428571429
+              },
+              "object:413": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "global_released": 167,
+          "new_wrong_after": []
+        }
+      ],
+      "combined": {
+        "before": {
+          "same_together": 3716,
+          "different_together": 710,
+          "main_waiting": 0,
+          "main_looks": 365
+        },
+        "after": {
+          "same_together": 3288,
+          "different_together": 242,
+          "main_waiting": 9,
+          "main_looks": 365
+        }
+      }
+    },
+    "release_only": {
+      "folds": [
+        {
+          "fold": 0,
+          "model": {
+            "coef": [
+              9.25970903822949,
+              2.309252417388156,
+              13.68775887231196
+            ],
+            "offset": -16.921272206152466,
+            "training_pairs": 21126,
+            "training_same": 2519,
+            "held_out_objects": [
+              "object:242",
+              "object:247",
+              "object:259",
+              "object:276",
+              "object:307",
+              "object:335",
+              "object:350",
+              "object:377",
+              "object:387",
+              "object:407"
+            ]
+          },
+          "before": {
+            "same_together": 1793,
+            "same_apart": 0,
+            "different_together": 357,
+            "different_apart": 29523,
+            "precision": 0.833953488372093,
+            "recall": 1.0,
+            "f1": 0.9094598021810804,
+            "main_looks": 159,
+            "main_waiting": 0,
+            "odd_kept_in_original_home": 20,
+            "odd_count": 20,
+            "objects_scored": 8,
+            "objects_split": 0,
+            "macro_object_pair_recall": 1.0,
+            "per_object": {
+              "object:242": {
+                "looks": 48,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:259": {
+                "looks": 12,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:276": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:307": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:335": {
+                "looks": 29,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:377": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:387": {
+                "looks": 17,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:407": {
+                "looks": 7,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "after": {
+            "same_together": 1756,
+            "same_apart": 37,
+            "different_together": 181,
+            "different_apart": 29699,
+            "precision": 0.9065565307176046,
+            "recall": 0.9793641940881205,
+            "f1": 0.9415549597855228,
+            "main_looks": 159,
+            "main_waiting": 5,
+            "odd_kept_in_original_home": 11,
+            "odd_count": 20,
+            "objects_scored": 8,
+            "objects_split": 0,
+            "macro_object_pair_recall": 0.9455213903743316,
+            "per_object": {
+              "object:242": {
+                "looks": 48,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:259": {
+                "looks": 12,
+                "waiting": 2,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.6818181818181818
+              },
+              "object:276": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:307": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:335": {
+                "looks": 29,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:377": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:387": {
+                "looks": 17,
+                "waiting": 1,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.8823529411764706
+              },
+              "object:407": {
+                "looks": 7,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "global_released": 184,
+          "new_wrong_after": []
+        },
+        {
+          "fold": 1,
+          "model": {
+            "coef": [
+              4.807851925514747,
+              5.462566863693885,
+              8.28032209689627
+            ],
+            "offset": -11.21926843077799,
+            "training_pairs": 12463,
+            "training_same": 1793,
+            "held_out_objects": [
+              "object:246",
+              "object:249",
+              "object:275",
+              "object:302",
+              "object:332",
+              "object:343",
+              "object:374",
+              "object:383",
+              "object:386",
+              "object:402",
+              "object:413"
+            ]
+          },
+          "before": {
+            "same_together": 1923,
+            "same_apart": 596,
+            "different_together": 353,
+            "different_apart": 31110,
+            "precision": 0.8449033391915641,
+            "recall": 0.7633981738785233,
+            "f1": 0.8020855057351408,
+            "main_looks": 206,
+            "main_waiting": 0,
+            "odd_kept_in_original_home": 26,
+            "odd_count": 26,
+            "objects_scored": 10,
+            "objects_split": 4,
+            "macro_object_pair_recall": 0.8487615433270083,
+            "per_object": {
+              "object:246": {
+                "looks": 25,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.52
+              },
+              "object:249": {
+                "looks": 51,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.8196078431372549
+              },
+              "object:275": {
+                "looks": 9,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:332": {
+                "looks": 31,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.6774193548387096
+              },
+              "object:343": {
+                "looks": 12,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:374": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:383": {
+                "looks": 17,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.47058823529411764
+              },
+              "object:386": {
+                "looks": 5,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:402": {
+                "looks": 21,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:413": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "after": {
+            "same_together": 1899,
+            "same_apart": 620,
+            "different_together": 248,
+            "different_apart": 31215,
+            "precision": 0.8844899860270145,
+            "recall": 0.7538705835649067,
+            "f1": 0.8139734247749678,
+            "main_looks": 206,
+            "main_waiting": 4,
+            "odd_kept_in_original_home": 17,
+            "odd_count": 26,
+            "objects_scored": 10,
+            "objects_split": 4,
+            "macro_object_pair_recall": 0.8423725490196079,
+            "per_object": {
+              "object:246": {
+                "looks": 25,
+                "waiting": 1,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.47
+              },
+              "object:249": {
+                "looks": 51,
+                "waiting": 1,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.8164705882352942
+              },
+              "object:275": {
+                "looks": 9,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:332": {
+                "looks": 31,
+                "waiting": 1,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.6666666666666666
+              },
+              "object:343": {
+                "looks": 12,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:374": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:383": {
+                "looks": 17,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.47058823529411764
+              },
+              "object:386": {
+                "looks": 5,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:402": {
+                "looks": 21,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:413": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "global_released": 167,
+          "new_wrong_after": []
+        }
+      ],
+      "combined": {
+        "before": {
+          "same_together": 3716,
+          "different_together": 710,
+          "main_waiting": 0,
+          "main_looks": 365
+        },
+        "after": {
+          "same_together": 3655,
+          "different_together": 429,
+          "main_waiting": 9,
+          "main_looks": 365
+        }
+      }
+    }
+  },
+  "fresh": {
+    "full_split": {
+      "fresh_before": {
+        "same_together": 284,
+        "same_apart": 572,
+        "different_together": 3,
+        "different_apart": 9726,
+        "waiting": 39,
+        "regions": 146,
+        "objects": 16,
+        "wrong_pairs": [
+          [
+            64581,
+            64638
+          ],
+          [
+            64592,
+            64638
+          ],
+          [
+            64638,
+            64735
+          ]
+        ]
+      },
+      "fresh_after": {
+        "same_together": 274,
+        "same_apart": 582,
+        "different_together": 0,
+        "different_apart": 9729,
+        "waiting": 42,
+        "regions": 146,
+        "objects": 16,
+        "wrong_pairs": []
+      },
+      "tentative": {
+        "before": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 34,
+          "different_apart": 18910,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64638
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64581,
+              64638
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64638
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64638,
+              64735
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "after": {
+          "same_together": 392,
+          "same_apart": 764,
+          "different_together": 27,
+          "different_apart": 18917,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        }
+      },
+      "released_count": 200,
+      "model": {
+        "coef": [
+          5.798640187224526,
+          2.17721528048042,
+          16.565095355284782
+        ],
+        "offset": -17.149414880615023,
+        "training_pairs": 65522,
+        "training_same": 4312,
+        "held_out_objects": []
+      }
+    },
+    "release_only": {
+      "fresh_before": {
+        "same_together": 284,
+        "same_apart": 572,
+        "different_together": 3,
+        "different_apart": 9726,
+        "waiting": 39,
+        "regions": 146,
+        "objects": 16,
+        "wrong_pairs": [
+          [
+            64581,
+            64638
+          ],
+          [
+            64592,
+            64638
+          ],
+          [
+            64638,
+            64735
+          ]
+        ]
+      },
+      "fresh_after": {
+        "same_together": 284,
+        "same_apart": 572,
+        "different_together": 0,
+        "different_apart": 9729,
+        "waiting": 42,
+        "regions": 146,
+        "objects": 16,
+        "wrong_pairs": []
+      },
+      "tentative": {
+        "before": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 34,
+          "different_apart": 18910,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64638
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64581,
+              64638
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64638
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64638,
+              64735
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "after": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 29,
+          "different_apart": 18915,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        }
+      },
+      "released_count": 200,
+      "model": {
+        "coef": [
+          5.798640187224526,
+          2.17721528048042,
+          16.565095355284782
+        ],
+        "offset": -17.149414880615023,
+        "training_pairs": 65522,
+        "training_same": 4312,
+        "held_out_objects": []
+      }
+    }
+  },
+  "lifecycle": {
+    "baseline": [
+      {
+        "step": "original",
+        "clear": {
+          "same_together": 284,
+          "same_apart": 572,
+          "different_together": 3,
+          "different_apart": 9726,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64581,
+              64638
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64638,
+              64735
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 34,
+          "different_apart": 18910,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64638
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64581,
+              64638
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64638
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64638,
+              64735
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 200,
+        "target_64638": "object:415",
+        "new_clear_wrong_pairs": []
+      },
+      {
+        "step": 1,
+        "clear": {
+          "same_together": 284,
+          "same_apart": 572,
+          "different_together": 3,
+          "different_apart": 9726,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64581,
+              64638
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64638,
+              64735
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 34,
+          "different_apart": 18910,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64638
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64581,
+              64638
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64638
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64638,
+              64735
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 200,
+        "target_64638": "object:415",
+        "new_clear_wrong_pairs": []
+      },
+      {
+        "step": 2,
+        "clear": {
+          "same_together": 284,
+          "same_apart": 572,
+          "different_together": 3,
+          "different_apart": 9726,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64581,
+              64638
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64638,
+              64735
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 34,
+          "different_apart": 18910,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64638
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64581,
+              64638
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64638
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64638,
+              64735
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 200,
+        "target_64638": "object:415",
+        "new_clear_wrong_pairs": []
+      },
+      {
+        "step": 3,
+        "clear": {
+          "same_together": 284,
+          "same_apart": 572,
+          "different_together": 3,
+          "different_apart": 9726,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64581,
+              64638
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64638,
+              64735
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 34,
+          "different_apart": 18910,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64638
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64581,
+              64638
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64638
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64638,
+              64735
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 200,
+        "target_64638": "object:415",
+        "new_clear_wrong_pairs": []
+      }
+    ],
+    "released": [
+      {
+        "step": "original",
+        "clear": {
+          "same_together": 284,
+          "same_apart": 572,
+          "different_together": 3,
+          "different_apart": 9726,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64581,
+              64638
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64638,
+              64735
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 34,
+          "different_apart": 18910,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64638
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64581,
+              64638
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64638
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64638,
+              64735
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 200,
+        "target_64638": "object:415",
+        "new_clear_wrong_pairs": []
+      },
+      {
+        "step": "released",
+        "clear": {
+          "same_together": 284,
+          "same_apart": 572,
+          "different_together": 0,
+          "different_apart": 9729,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": []
+        },
+        "tentative": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 29,
+          "different_apart": 18915,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 0,
+        "target_64638": null,
+        "new_clear_wrong_pairs": []
+      },
+      {
+        "step": 1,
+        "clear": {
+          "same_together": 314,
+          "same_apart": 542,
+          "different_together": 1,
+          "different_apart": 9728,
+          "waiting": 32,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64601,
+              64625
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 437,
+          "same_apart": 719,
+          "different_together": 30,
+          "different_apart": 18914,
+          "waiting": 35,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64601,
+              64625
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 35,
+        "target_64638": "object:351",
+        "new_clear_wrong_pairs": [
+          [
+            64601,
+            64625
+          ]
+        ]
+      },
+      {
+        "step": 2,
+        "clear": {
+          "same_together": 314,
+          "same_apart": 542,
+          "different_together": 1,
+          "different_apart": 9728,
+          "waiting": 32,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64601,
+              64625
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 437,
+          "same_apart": 719,
+          "different_together": 30,
+          "different_apart": 18914,
+          "waiting": 35,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64601,
+              64625
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 36,
+        "target_64638": "object:351",
+        "new_clear_wrong_pairs": [
+          [
+            64601,
+            64625
+          ]
+        ]
+      },
+      {
+        "step": 3,
+        "clear": {
+          "same_together": 314,
+          "same_apart": 542,
+          "different_together": 1,
+          "different_apart": 9728,
+          "waiting": 32,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64601,
+              64625
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 437,
+          "same_apart": 719,
+          "different_together": 30,
+          "different_apart": 18914,
+          "waiting": 35,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64601,
+              64625
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 36,
+        "target_64638": "object:351",
+        "new_clear_wrong_pairs": [
+          [
+            64601,
+            64625
+          ]
+        ]
+      }
+    ],
+    "guarded": [
+      {
+        "step": "original",
+        "clear": {
+          "same_together": 284,
+          "same_apart": 572,
+          "different_together": 3,
+          "different_apart": 9726,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64581,
+              64638
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64638,
+              64735
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 34,
+          "different_apart": 18910,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64638
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64581,
+              64638
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64592,
+              64638
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64638
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64638,
+              64735
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 200,
+        "target_64638": "object:415",
+        "new_clear_wrong_pairs": []
+      },
+      {
+        "step": "released",
+        "clear": {
+          "same_together": 284,
+          "same_apart": 572,
+          "different_together": 0,
+          "different_apart": 9729,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": []
+        },
+        "tentative": {
+          "same_together": 407,
+          "same_apart": 749,
+          "different_together": 29,
+          "different_apart": 18915,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 0,
+        "target_64638": null,
+        "new_clear_wrong_pairs": []
+      },
+      {
+        "step": 1,
+        "clear": {
+          "same_together": 305,
+          "same_apart": 551,
+          "different_together": 1,
+          "different_apart": 9728,
+          "waiting": 34,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64601,
+              64625
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 428,
+          "same_apart": 728,
+          "different_together": 30,
+          "different_apart": 18914,
+          "waiting": 37,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64601,
+              64625
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 0,
+        "target_64638": "object:351",
+        "new_clear_wrong_pairs": [
+          [
+            64601,
+            64625
+          ]
+        ]
+      },
+      {
+        "step": 2,
+        "clear": {
+          "same_together": 305,
+          "same_apart": 551,
+          "different_together": 1,
+          "different_apart": 9728,
+          "waiting": 33,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64601,
+              64625
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 428,
+          "same_apart": 728,
+          "different_together": 30,
+          "different_apart": 18914,
+          "waiting": 36,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64601,
+              64625
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 0,
+        "target_64638": "object:351",
+        "new_clear_wrong_pairs": [
+          [
+            64601,
+            64625
+          ]
+        ]
+      },
+      {
+        "step": 3,
+        "clear": {
+          "same_together": 305,
+          "same_apart": 551,
+          "different_together": 1,
+          "different_apart": 9728,
+          "waiting": 33,
+          "regions": 146,
+          "objects": 16,
+          "wrong_pairs": [
+            [
+              64601,
+              64625
+            ]
+          ]
+        },
+        "tentative": {
+          "same_together": 428,
+          "same_apart": 728,
+          "different_together": 30,
+          "different_apart": 18914,
+          "waiting": 36,
+          "regions": 201,
+          "objects": 23,
+          "wrong_pairs": [
+            [
+              64519,
+              64626
+            ],
+            [
+              64555,
+              64626
+            ],
+            [
+              64556,
+              64581
+            ],
+            [
+              64556,
+              64592
+            ],
+            [
+              64556,
+              64627
+            ],
+            [
+              64556,
+              64735
+            ],
+            [
+              64565,
+              64626
+            ],
+            [
+              64574,
+              64626
+            ],
+            [
+              64581,
+              64627
+            ],
+            [
+              64584,
+              64648
+            ],
+            [
+              64584,
+              64705
+            ],
+            [
+              64585,
+              64626
+            ],
+            [
+              64592,
+              64627
+            ],
+            [
+              64595,
+              64648
+            ],
+            [
+              64595,
+              64705
+            ],
+            [
+              64596,
+              64626
+            ],
+            [
+              64601,
+              64625
+            ],
+            [
+              64609,
+              64626
+            ],
+            [
+              64616,
+              64626
+            ],
+            [
+              64626,
+              64693
+            ],
+            [
+              64626,
+              64740
+            ],
+            [
+              64627,
+              64735
+            ],
+            [
+              64636,
+              64648
+            ],
+            [
+              64636,
+              64705
+            ],
+            [
+              64645,
+              64648
+            ],
+            [
+              64645,
+              64705
+            ],
+            [
+              64648,
+              64657
+            ],
+            [
+              64648,
+              64694
+            ],
+            [
+              64657,
+              64705
+            ],
+            [
+              64694,
+              64705
+            ]
+          ]
+        },
+        "candidates_currently_in_original_parent": 0,
+        "target_64638": "object:351",
+        "new_clear_wrong_pairs": [
+          [
+            64601,
+            64625
+          ]
+        ]
+      }
+    ]
+  },
+  "post_score_audit": {
+    "frozen_labels_unchanged": true,
+    "disputed_pair": [
+      64601,
+      64625
+    ],
+    "finding": "64625 retains foreground chair pixels inside the painting mask; 64601 is a narrow furniture part whose table assignment is not clearly supported by selected pixels.",
+    "verdict": "Mixed-region rerouting is observed; clean-object physical identity error is not independently established.",
+    "selection": "Inspected after seeing a new scored wrong pair; not a blinded or comprehensive relabelling."
+  },
+  "all_sources_unchanged": true,
+  "limitations": [
+    "Two development folds with one-object holdout for cross-fold pairs; not independent acceptance.",
+    "Fresh/fresh pair counts do not audit all 200 whole-store releases.",
+    "Three idle resolver passes with frozen map, no new observations and no hardware validation.",
+    "Temporary refusal is not durable rejection memory; other destinations can still be wrong.",
+    "Primary scores retain the post-score-disputed draft labels."
+  ]
+}

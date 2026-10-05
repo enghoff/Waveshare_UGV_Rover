@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from experiments.entity_association.repair_groups import cluster, tiles
+from experiments.entity_association.repair_groups import cluster, tiles, verify_split_only
 
 
 def look(i,picture,backend='a'):
@@ -13,6 +13,15 @@ def look(i,picture,backend='a'):
 
 
 class RepairContracts(unittest.TestCase):
+    def test_split_contract_allows_pieces_and_release(self):
+        self.assertEqual(verify_split_only({1:'a',2:'a',3:'b',4:None},
+                                          {1:'p',2:'q',3:None,4:None}),{'p':'a','q':'a'})
+
+    def test_split_contract_rejects_merges_pending_assignment_and_missing_rows(self):
+        before={1:'a',2:'b',3:None}
+        for after in ({1:'p',2:'p',3:None},{1:'p',2:'q',3:'r'},{1:'p',2:'q'}):
+            with self.assertRaises(ValueError):verify_split_only(before,after)
+
     def test_cannot_link_survives_a_transitive_join(self):
         pool=[look(1,1),look(2,2),look(3,1)]
         clusters,released,_=cluster(pool,{}, {'coef':[1.,1.,1.],'offset':0},veto=False)

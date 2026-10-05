@@ -195,10 +195,12 @@ the success predicate fixed here before the run.
    confirmed wrong pairs pass the existing appearance threshold, with geometry also
    permitting the joins. The [fourth-channel trial](../progress/2026-10-05-masked-semantic-repair.md)
    is worse than the existing repair; the older photographs and encoded features
-   are now available locally. Next test split-only proposals that remove mixed
-   observations without joining previously separate records. Measure the correct
-   identities fragmented, and prevent a later grouping stage from silently restoring
-   prohibited joins. Compare outlier, partial-view and mixed-detection evidence
+   are now available locally. The [split/release experiment](../progress/2026-10-05-release-only-repair.md)
+   favours releasing isolated observations over full splitting on measured cost.
+   Next audit its 200 whole-store release proposals using selected pixels and
+   multi-view evidence, and freeze those judgments before another score. Keep
+   the disputed new table/painting pair visible rather than silently relabelling
+   it or using it alone to reject the candidate. Compare outlier, partial-view and mixed-detection evidence
    explicitly; do not tune global appearance weights to the six fresh examples.
    Continue using disjoint tiles, physical-object holdout, frozen drafts and separately
    reported uncertain evidence. It passes
@@ -211,7 +213,10 @@ the success predicate fixed here before the run.
    the tested blanket appearance attachment gate for this joint repair.
 4. **Does a look the rebuild lets go stay away?** Replay with a "not this thing"
    record written by the rebuild and consulted by the resolver. It passes if no look the
-   rebuild took off its thing is later filed under that same thing again.
+   rebuild took off its thing is later filed under that same thing again. A temporary
+   refusal passes three idle replay cycles; still test durable storage, restart and
+   new observations. Separately check the correctness of alternative destinations:
+   refusing an old parent does not make another parent right.
 5. **Do the answers hold on an independently labelled drive?** On a new driven
    recording, label sampled frames and regions without exposing current entity
    assignments; use stable physical-object identities across viewpoints. Include
