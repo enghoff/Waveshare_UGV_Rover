@@ -22,14 +22,22 @@ Retain all failed detections, valid parts, mixed masks and missing depth. The
 second short drive lacked an unoccluded side painting region; another photograph
 of the same occlusion does not fulfil that gap.
 
-The prepared route follows the reached waypoints (-17.462, -15.479),
-(-18.239, -15.030), (-18.550, -14.571), then proposes a short side extension to
-(-19.050, -14.850). The archived grid gives that extension at least 0.743 m
-clearance, against the reported 0.20 m body clearance. This is an offline
-precheck only. Recheck the live map, localization and route before motion;
-any refusal or uncertain localization ends the trial. Do not reset or refit
-maps to make the route pass. If the extension is blocked, return along the
-reached route rather than seeking an improvised alternative.
+The [night attempt](../progress/2026-10-05-night-visibility-run.md) reached the first
+three waypoints but not the proposed side extension. Do not repeat that extension
+with the same heading request merely because the global grid shows clearance.
+The saved costmap/lattice diagnostic suggests facing along the travel segment
+before requesting the side goal, then framing the painting after arrival. It
+predicts a shorter path but does not reproduce the live planner exactly. The next
+live precheck must verify the actual route, localization and current clearance.
+Any refusal or uncertain localization ends the attempt; do not reset or refit maps
+to make a route pass, or improvise a longer route during the evidence trial.
+
+Use the local `drive_trial_guard.py` admission checks and a new capture directory.
+Wait for every movement command to finish before a fresh inspection. Reserve the
+motion deadline or inspection allowance within the 60-second window and begin
+return when no further action fits. Explicit return legs are exempt from the
+outbound cutoff. Keep a recording window long enough for the return and release
+recorders only after STOP; the preceding support recording missed the final leg.
 
 Save the exact current starting pose, raw board feedback and controller tick
 recording before movement. Capture fresh raw depth and actual matching calls

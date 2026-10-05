@@ -577,3 +577,12 @@ map callback and rejects the entire pass after resolution. Without that outer
 check a disagreement can be swallowed by the rover's intentional map-failure
 fallback. The stronger guard was verified by injecting a disagreement into the
 real stationary recording and repeating the moving range diagnostic exactly.
+
+
+`drive_trial_guard.py` is a local runner precondition check, with no network or
+motor commands. Refuse overlapping motion/fresh inspection and reserve 16 seconds
+for motion or eight for a fresh inspection inside the outbound budget. A caller
+must maintain motion ownership, use a new capture directory, mark return legs
+explicitly, and still verify STOP and localization. It is not an automatic return
+controller. The [night run](../../docs/progress/2026-10-05-night-visibility-run.md)
+records the real timing failures and their successful rejection in timeline replay.
