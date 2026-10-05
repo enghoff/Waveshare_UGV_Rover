@@ -26,10 +26,17 @@ from tool_schemas import (
 )
 
 #: How far below an angle the gimbal drops before coming back up to it, so that
-#: it arrives from the direction the pan calibration was measured in. Thirty
-#: degrees because that is what `usb_cameras/calibrate_gimbal.py` uses, and
-#: because the backlash is only certainly re-seated by a move bigger than it.
-APPROACH_UNDERSHOOT_DEG = 30
+#: it arrives from the direction the pan calibration was measured in.
+#:
+#: **Five degrees, measured; it was thirty because the calibration bench uses
+#: thirty.** On 2026-10-05 (`usb_cameras/gimbal_approach.py`, starting each landing
+#: from +30 so the servo began on the far side of its play) the backlash came to
+#: 1.8 degrees, and a landing from five below matched the thirty-degree landing to
+#: within 0.14 at rest and 0.07 at both pan limits. Two was enough at rest, one
+#: left the camera 0.85 short, and three and four landed 0.23 short at +20. The
+#: calibration therefore still describes where the camera ends up, and every move
+#: is a 5-degree flick rather than a 30-degree swing.
+APPROACH_UNDERSHOOT_DEG = 5
 #: How long to let the servo get there. The bench waits 2.5 s before it
 #: photographs anything, most of which is for the picture rather than the servo;
 #: nothing is measured here, so this only has to be longer than a 30-degree

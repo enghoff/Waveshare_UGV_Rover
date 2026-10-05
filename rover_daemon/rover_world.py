@@ -74,13 +74,16 @@ MAP_ASK_S = 8.0
 TILT_SETTLE_S = 1.0
 # An aimed look that is not a hypothesis check leaves the gimbal at rest when the
 # place is this close to straight ahead. The OAK sees 65 degrees of the room, so a
-# place fifteen degrees round is still seventeen inside the depth picture, and
-# every move costs two 30 degree swings -- there and back to rest -- plus a pan the
-# calibration covers less well than rest (see `centre_gimbal`). On 2026-10-05, in
+# place 25 degrees round is still seven inside the depth picture, and every move
+# costs two swings -- there and back to rest, each with its approach undershoot --
+# and a pan the calibration covers less well than rest, where the servo's gain
+# error vanishes (see `centre_gimbal`). On 2026-10-05, in
 # M3 session 1, the run's looks asked for pans of 2 to 15 degrees and every one
-# swung the camera. A check look still aims exactly: it wants the place in the
-# middle of the depth picture, and R-AUT-12 was accepted that way.
-AIM_DEADBAND_DEG = 15.0
+# swung the camera; at 15 degrees, session 2's still swung on 16 to 20, because a
+# drive arrives within about fifteen degrees of the heading it was asked for. A
+# check look still aims exactly: it wants the place in the middle of the depth
+# picture, and R-AUT-12 was accepted that way.
+AIM_DEADBAND_DEG = 25.0
 # How long a check look, or an autonomous run's look, waits for a look already
 # running to finish, and for the depth camera to finish waking: four to six
 # seconds of firmware upload on this rover, measured, with room over.
@@ -1275,7 +1278,7 @@ class RoverWorld:
                 pan = aimed.get("pan_deg") or 0.0
             # **Not moved at all when it is already where it would be put**, or
             # for an ordinary look near enough to it (AIM_DEADBAND_DEG). Each
-            # move is a 30 degree undershoot and back, and an aimed look used to
+            # move is an undershoot and back, and an aimed look used to
             # make two -- there and back to rest -- even when the aim was
             # straight ahead, which it often is once the drive has turned the
             # rover to face the thing (seen on 2026-10-03).

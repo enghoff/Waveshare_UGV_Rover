@@ -214,7 +214,7 @@ def test_a_check_look_is_aimed_from_the_measured_heading():
 
 def test_a_look_aimed_straight_ahead_does_not_move_a_gimbal_already_there():
     """Seen on 2026-10-03: every aimed look swung the gimbal to aim and swung it
-    back to rest, each by way of a 30 degree undershoot, even when the aim was
+    back to rest, each by way of a 30 degree undershoot (5 since 2026-10-05), even when the aim was
     straight ahead and the camera was already there."""
     from types import SimpleNamespace
 
@@ -243,16 +243,16 @@ def test_a_look_aimed_straight_ahead_does_not_move_a_gimbal_already_there():
     moved, got = look(0.0)
     check("an aim straight ahead with the camera at rest moves nothing", moved, 0)
     check("...and says so", "not moved" in got["aimed"].get("gimbal", ""), True)
-    # Seen on 2026-10-05, M3 session 1: the run's looks asked for 2 to 15
-    # degrees and every one swung the camera there and back.
-    for pan in (2.0, -10.0, 15.0):
+    # Seen on 2026-10-05: session 1's looks asked for 2 to 15 degrees and every
+    # one swung the camera there and back; session 2's asked for up to 20.
+    for pan in (2.0, -10.0, 15.0, -20.0, 25.0):
         moved, got = look(pan)
         check("an ordinary look aimed %+.0f deg leaves a camera at rest alone"
               % pan, (moved, got["aimed"]["pan_deg"]), (0, 0.0))
     check("...and says why", "inside the depth camera's view" in
           look(-10.0)[1]["aimed"].get("gimbal", ""), True)
     check("an aim further round than that moves it there and back",
-          look(-18.0)[0], 2)
+          look(-26.0)[0], 2)
     check("...as does a check look ten degrees round, which aims exactly",
           look(-10.0, keep_depth=True)[0], 2)
     check("...and an aim when the camera is not known to be at rest",
