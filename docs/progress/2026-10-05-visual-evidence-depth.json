@@ -1,0 +1,2671 @@
+{
+  "source_commit_during_capture": "509251a2e218e89f5397b9f01a44215e83ddb444",
+  "scope": "Controlled visual-evidence diagnosis only; no exact background resolver replay or acceptance claim. Return-to-charge movement occurred after the after.db snapshot.",
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "new_observations": 125,
+  "new_frames": 14,
+  "archived_depth_maps": 5,
+  "reviewed_regions": 18,
+  "same_subject_pairs": 33,
+  "painting_chair_pairs": 50,
+  "start_pose": {
+    "x_m": -17.194,
+    "y_m": -15.733,
+    "heading_deg": 91.9
+  },
+  "returned_pose": {
+    "x_m": -17.17,
+    "y_m": -15.599,
+    "heading_deg": 85.3
+  },
+  "return_distance_from_start_m": 0.13613228860193294,
+  "return_heading_difference_deg": 6.600000000000023,
+  "returned_motors": [
+    0,
+    0
+  ],
+  "battery_on_return_percent": 70,
+  "diagnosis": {
+    "input_sha256": {
+      "after.db": "0828b5de2a20a8bfc02bbb1f5b1e06f757e89a6600a3a708ac372eff051ff298",
+      "before.db": "badd7516a4b44024e41c76d3dbee1e73a5ab386b9a64ff15716a09e756a80e76",
+      "physical-subjects-frozen.json": "c59fdacf1ed0cc5bfc6fed368dd782b6f7c78684d3946699132731aba668fb05",
+      "mask-review-frozen.json": "f98b241d46d490381891953a772ed3daeac1754c1c1eda1bff6ec85b3c622353",
+      "visual-protocol.json": "620b900eb4ac2920c853d87b1e86c818cbd0435f484514b5ca4efaac790a64f6",
+      "frames\\20261005-125746-655c0b.jpg": "90dceb3cab84f4acd401edc406aac870ac6a9cbe1559d5b06d25128c43fbe7be",
+      "frames\\20261005-125746-655c0b.depth.gz": "6c797611884b975dd27dd703c32f26e9765ca296446dda33915909e098b7de0d",
+      "frames\\20261005-125816-2bd871.jpg": "68f5cf37c0a27a9e7c27a8a125dbdeb9a1360bfc010306bc89358b1be3f254d0",
+      "frames\\20261005-125816-2bd871.depth.gz": "c447c398a4d997d098d7b1ea685d900b6c152c3e9457d450caf667990a022e25",
+      "frames\\20261005-125906-d13a02.jpg": "11325372749afdd17832fd994ce13cc3c0af9b6fcb70e73e16feb5fb25c4c7cd",
+      "frames\\20261005-125906-d13a02.depth.gz": "a95ca4d24ee55512da4cef243d589683768deb82a91e9c55baa6ca5b55f78f15",
+      "frames\\20261005-130045-e9c012.jpg": "6678f82a0a4fafe992b1b8d252e25ce703a50a90b11ed0ad9f2a535715ea493b",
+      "frames\\20261005-130045-e9c012.depth.gz": "8e53e0c722eedafa7a2e9d52a512eb0f018b25ab0a7d7d2781283f207ce71dd3",
+      "frames\\20261005-130119-75e426.jpg": "0e95526c35e0482c6a4497d829567d592bfe1a91530c3fbc912641b0d36cdf19",
+      "frames\\20261005-130119-75e426.depth.gz": "ad39dd9a7690f64d613ea0aefda65741d66f5991749ac1343d6e46ea9fc77e3a"
+    },
+    "same_subject_pairs": {
+      "painting-behind-chairs": [
+        {
+          "ids": [
+            68581,
+            68602
+          ],
+          "plain": 0.943251321406612,
+          "masked": 0.749288915116818,
+          "baseline_m": 0.33270106702564234,
+          "parallax_deg": 1.6000000000000227,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68581,
+            68640
+          ],
+          "plain": 0.7725663106644342,
+          "masked": 0.8088827628962184,
+          "baseline_m": 1.1676305066244221,
+          "parallax_deg": 9.300000000000011,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68581,
+            68675
+          ],
+          "plain": 0.555078635731715,
+          "masked": 0.6794541933331711,
+          "baseline_m": 1.7234665648047836,
+          "parallax_deg": 8.400000000000006,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68581,
+            68700
+          ],
+          "plain": 0.573810936281802,
+          "masked": 0.6392951157901947,
+          "baseline_m": 1.7559589972433882,
+          "parallax_deg": 13.0,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -18.79,
+            "y_m": -10.576,
+            "uncertainty_m": 1.41,
+            "error_major_m": 1.41,
+            "error_minor_m": 0.126,
+            "error_major_deg": 99.9,
+            "baseline_m": 1.756,
+            "parallax_deg": 13.0,
+            "extent_m": 0.434,
+            "height_m": 1.973,
+            "height_sigma_m": 0.703,
+            "height_above_floor_m": 2.208
+          }
+        },
+        {
+          "ids": [
+            68602,
+            68640
+          ],
+          "plain": 0.8472261926636755,
+          "masked": 0.7587731055634684,
+          "baseline_m": 0.8539514037695592,
+          "parallax_deg": 7.699999999999989,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68602,
+            68675
+          ],
+          "plain": 0.629556236384307,
+          "masked": 0.66485645553073,
+          "baseline_m": 1.399833204349717,
+          "parallax_deg": 6.800000000000011,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68602,
+            68700
+          ],
+          "plain": 0.6000185187642704,
+          "masked": 0.6366855572944636,
+          "baseline_m": 1.4329501038068284,
+          "parallax_deg": 11.399999999999977,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68640,
+            68675
+          ],
+          "plain": 0.796798592735354,
+          "masked": 0.689535771352585,
+          "baseline_m": 0.5667680301499001,
+          "parallax_deg": 0.8999999999999773,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68640,
+            68700
+          ],
+          "plain": 0.6643481243785234,
+          "masked": 0.5613281932658165,
+          "baseline_m": 0.5969128914674229,
+          "parallax_deg": 3.6999999999999886,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68675,
+            68700
+          ],
+          "plain": 0.7295120710296645,
+          "masked": 0.602475571532062,
+          "baseline_m": 0.0351140997321602,
+          "parallax_deg": 4.599999999999994,
+          "independent_geometry": false,
+          "fix": null
+        }
+      ],
+      "front-left-dining-chair": [
+        {
+          "ids": [
+            68583,
+            68600
+          ],
+          "plain": 0.8623569488735513,
+          "masked": 0.847412293259567,
+          "baseline_m": 0.33270106702564234,
+          "parallax_deg": 1.9000000000000057,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68583,
+            68638
+          ],
+          "plain": 0.6729269630661763,
+          "masked": 0.745534431585306,
+          "baseline_m": 1.1676305066244221,
+          "parallax_deg": 17.5,
+          "independent_geometry": true,
+          "fix": null
+        },
+        {
+          "ids": [
+            68583,
+            68670
+          ],
+          "plain": 0.6311583703472037,
+          "masked": 0.6288666203607791,
+          "baseline_m": 1.7234665648047836,
+          "parallax_deg": 28.19999999999999,
+          "independent_geometry": true,
+          "fix": null
+        },
+        {
+          "ids": [
+            68583,
+            68694
+          ],
+          "plain": 0.6554515261532516,
+          "masked": 0.7201549314919256,
+          "baseline_m": 1.7559589972433882,
+          "parallax_deg": 29.900000000000006,
+          "independent_geometry": true,
+          "fix": null
+        },
+        {
+          "ids": [
+            68600,
+            68638
+          ],
+          "plain": 0.790244918438511,
+          "masked": 0.7120642459183752,
+          "baseline_m": 0.8539514037695592,
+          "parallax_deg": 15.599999999999994,
+          "independent_geometry": true,
+          "fix": null
+        },
+        {
+          "ids": [
+            68600,
+            68670
+          ],
+          "plain": 0.7848555543782277,
+          "masked": 0.6337907634099571,
+          "baseline_m": 1.399833204349717,
+          "parallax_deg": 26.30000000000001,
+          "independent_geometry": true,
+          "fix": null
+        },
+        {
+          "ids": [
+            68600,
+            68694
+          ],
+          "plain": 0.7633503770405843,
+          "masked": 0.6647157180683801,
+          "baseline_m": 1.4329501038068284,
+          "parallax_deg": 28.0,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -18.382,
+            "y_m": -13.151,
+            "uncertainty_m": 0.238,
+            "error_major_m": 0.238,
+            "error_minor_m": 0.051,
+            "error_major_deg": 95.7,
+            "baseline_m": 1.433,
+            "parallax_deg": 28.0,
+            "extent_m": 0.207,
+            "height_m": 0.3,
+            "height_sigma_m": 0.103,
+            "height_above_floor_m": 0.535
+          }
+        },
+        {
+          "ids": [
+            68638,
+            68670
+          ],
+          "plain": 0.9200933982426229,
+          "masked": 0.7983252420912056,
+          "baseline_m": 0.5667680301499001,
+          "parallax_deg": 10.699999999999989,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68638,
+            68694
+          ],
+          "plain": 0.7834805060549237,
+          "masked": 0.7974248539782486,
+          "baseline_m": 0.5969128914674229,
+          "parallax_deg": 12.400000000000006,
+          "independent_geometry": true,
+          "fix": null
+        },
+        {
+          "ids": [
+            68670,
+            68694
+          ],
+          "plain": 0.8206025538426079,
+          "masked": 0.7622043117116759,
+          "baseline_m": 0.0351140997321602,
+          "parallax_deg": 1.6999999999999886,
+          "independent_geometry": false,
+          "fix": null
+        }
+      ],
+      "front-right-dining-chair": [
+        {
+          "ids": [
+            68580,
+            68601
+          ],
+          "plain": 0.9264921045179537,
+          "masked": 0.8193752543916044,
+          "baseline_m": 0.33270106702564234,
+          "parallax_deg": 3.1999999999999886,
+          "independent_geometry": false,
+          "fix": null
+        },
+        {
+          "ids": [
+            68580,
+            68637
+          ],
+          "plain": 0.7614216133160956,
+          "masked": 0.648072761287972,
+          "baseline_m": 1.1676305066244221,
+          "parallax_deg": 22.30000000000001,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -17.867,
+            "y_m": -13.166,
+            "uncertainty_m": 0.353,
+            "error_major_m": 0.353,
+            "error_minor_m": 0.06,
+            "error_major_deg": 91.8,
+            "baseline_m": 1.168,
+            "parallax_deg": 22.3,
+            "extent_m": 0.197,
+            "height_m": 0.321,
+            "height_sigma_m": 0.128,
+            "height_above_floor_m": 0.556
+          }
+        },
+        {
+          "ids": [
+            68580,
+            68672
+          ],
+          "plain": 0.7069946927944192,
+          "masked": 0.632677034447852,
+          "baseline_m": 1.7234665648047836,
+          "parallax_deg": 36.0,
+          "independent_geometry": true,
+          "fix": null
+        },
+        {
+          "ids": [
+            68580,
+            68695
+          ],
+          "plain": 0.6633608265218007,
+          "masked": 0.5959384695856313,
+          "baseline_m": 1.7559589972433882,
+          "parallax_deg": 39.0,
+          "independent_geometry": true,
+          "fix": null
+        },
+        {
+          "ids": [
+            68601,
+            68637
+          ],
+          "plain": 0.8662243398005816,
+          "masked": 0.8434495716866022,
+          "baseline_m": 0.8539514037695592,
+          "parallax_deg": 19.099999999999994,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -17.862,
+            "y_m": -13.127,
+            "uncertainty_m": 0.401,
+            "error_major_m": 0.401,
+            "error_minor_m": 0.057,
+            "error_major_deg": 91.0,
+            "baseline_m": 0.854,
+            "parallax_deg": 19.1,
+            "extent_m": 0.194,
+            "height_m": 0.313,
+            "height_sigma_m": 0.137,
+            "height_above_floor_m": 0.548
+          }
+        },
+        {
+          "ids": [
+            68601,
+            68672
+          ],
+          "plain": 0.8146026716148507,
+          "masked": 0.7781240206233998,
+          "baseline_m": 1.399833204349717,
+          "parallax_deg": 32.80000000000001,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -17.876,
+            "y_m": -13.058,
+            "uncertainty_m": 0.208,
+            "error_major_m": 0.208,
+            "error_minor_m": 0.054,
+            "error_major_deg": 82.0,
+            "baseline_m": 1.4,
+            "parallax_deg": 32.8,
+            "extent_m": 0.2,
+            "height_m": 0.326,
+            "height_sigma_m": 0.103,
+            "height_above_floor_m": 0.561
+          }
+        },
+        {
+          "ids": [
+            68601,
+            68695
+          ],
+          "plain": 0.7514154138821114,
+          "masked": 0.7308062674846991,
+          "baseline_m": 1.4329501038068284,
+          "parallax_deg": 35.80000000000001,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -17.859,
+            "y_m": -13.142,
+            "uncertainty_m": 0.182,
+            "error_major_m": 0.182,
+            "error_minor_m": 0.053,
+            "error_major_deg": 80.1,
+            "baseline_m": 1.433,
+            "parallax_deg": 35.8,
+            "extent_m": 0.171,
+            "height_m": 0.286,
+            "height_sigma_m": 0.089,
+            "height_above_floor_m": 0.521
+          }
+        },
+        {
+          "ids": [
+            68637,
+            68672
+          ],
+          "plain": 0.8782786381810002,
+          "masked": 0.8370581098700549,
+          "baseline_m": 0.5667680301499001,
+          "parallax_deg": 13.699999999999989,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -17.841,
+            "y_m": -12.969,
+            "uncertainty_m": 0.531,
+            "error_major_m": 0.531,
+            "error_minor_m": 0.051,
+            "error_major_deg": 75.1,
+            "baseline_m": 0.567,
+            "parallax_deg": 13.7,
+            "extent_m": 0.284,
+            "height_m": 0.339,
+            "height_sigma_m": 0.165,
+            "height_above_floor_m": 0.574
+          }
+        },
+        {
+          "ids": [
+            68637,
+            68695
+          ],
+          "plain": 0.8077555865984212,
+          "masked": 0.7318442912491447,
+          "baseline_m": 0.5969128914674229,
+          "parallax_deg": 16.69999999999999,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -17.866,
+            "y_m": -13.158,
+            "uncertainty_m": 0.374,
+            "error_major_m": 0.374,
+            "error_minor_m": 0.046,
+            "error_major_deg": 73.4,
+            "baseline_m": 0.597,
+            "parallax_deg": 16.7,
+            "extent_m": 0.169,
+            "height_m": 0.279,
+            "height_sigma_m": 0.12,
+            "height_above_floor_m": 0.514
+          }
+        },
+        {
+          "ids": [
+            68672,
+            68695
+          ],
+          "plain": 0.886422333926352,
+          "masked": 0.8080635954235198,
+          "baseline_m": 0.0351140997321602,
+          "parallax_deg": 3.0,
+          "independent_geometry": false,
+          "fix": null
+        }
+      ],
+      "rug": [
+        {
+          "ids": [
+            68577,
+            68671
+          ],
+          "plain": 0.6403920959639616,
+          "masked": 0.6215738091243328,
+          "baseline_m": 1.7234665648047836,
+          "parallax_deg": 34.80000000000001,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -18.101,
+            "y_m": -13.212,
+            "uncertainty_m": 0.196,
+            "error_major_m": 0.196,
+            "error_minor_m": 0.052,
+            "error_major_deg": 87.3,
+            "baseline_m": 1.723,
+            "parallax_deg": 34.8,
+            "extent_m": 0.75,
+            "height_m": -0.07,
+            "height_sigma_m": 0.13,
+            "height_above_floor_m": 0.165
+          }
+        },
+        {
+          "ids": [
+            68577,
+            68691
+          ],
+          "plain": 0.6165092848769289,
+          "masked": 0.6365328241604361,
+          "baseline_m": 1.7559589972433882,
+          "parallax_deg": 21.899999999999977,
+          "independent_geometry": true,
+          "fix": {
+            "x_m": -18.417,
+            "y_m": -12.337,
+            "uncertainty_m": 0.465,
+            "error_major_m": 0.465,
+            "error_minor_m": 0.076,
+            "error_major_deg": 96.6,
+            "baseline_m": 1.756,
+            "parallax_deg": 21.9,
+            "extent_m": 0.75,
+            "height_m": -0.129,
+            "height_sigma_m": 0.211,
+            "height_above_floor_m": 0.106
+          }
+        },
+        {
+          "ids": [
+            68671,
+            68691
+          ],
+          "plain": 0.8436252781548368,
+          "masked": 0.7709155336921705,
+          "baseline_m": 0.0351140997321602,
+          "parallax_deg": 12.900000000000006,
+          "independent_geometry": false,
+          "fix": null
+        }
+      ]
+    },
+    "painting_chair_pairs": [
+      {
+        "ids": [
+          68581,
+          68583
+        ],
+        "plain": 0.6308751568841193,
+        "masked": 0.1573225204107867
+      },
+      {
+        "ids": [
+          68581,
+          68600
+        ],
+        "plain": 0.6598126310292785,
+        "masked": 0.20751292709796393
+      },
+      {
+        "ids": [
+          68581,
+          68638
+        ],
+        "plain": 0.6269415935047028,
+        "masked": 0.2730755961076614
+      },
+      {
+        "ids": [
+          68581,
+          68670
+        ],
+        "plain": 0.6317901312775418,
+        "masked": 0.22203301737660236
+      },
+      {
+        "ids": [
+          68581,
+          68694
+        ],
+        "plain": 0.6374276105783906,
+        "masked": 0.16615351576220141
+      },
+      {
+        "ids": [
+          68581,
+          68580
+        ],
+        "plain": 0.7517333965013555,
+        "masked": 0.3073901773947866
+      },
+      {
+        "ids": [
+          68581,
+          68601
+        ],
+        "plain": 0.7185547185350639,
+        "masked": 0.23140727468355754
+      },
+      {
+        "ids": [
+          68581,
+          68637
+        ],
+        "plain": 0.5847614157735759,
+        "masked": 0.1616674140288259
+      },
+      {
+        "ids": [
+          68581,
+          68672
+        ],
+        "plain": 0.570058737637236,
+        "masked": 0.21493128407945344
+      },
+      {
+        "ids": [
+          68581,
+          68695
+        ],
+        "plain": 0.5181347844221433,
+        "masked": 0.21245089193451983
+      },
+      {
+        "ids": [
+          68602,
+          68583
+        ],
+        "plain": 0.6446352168799039,
+        "masked": 0.26419789737344657
+      },
+      {
+        "ids": [
+          68602,
+          68600
+        ],
+        "plain": 0.7097505456323652,
+        "masked": 0.3266122021235125
+      },
+      {
+        "ids": [
+          68602,
+          68638
+        ],
+        "plain": 0.6807106636227302,
+        "masked": 0.3818390452759776
+      },
+      {
+        "ids": [
+          68602,
+          68670
+        ],
+        "plain": 0.6986997220301147,
+        "masked": 0.3014037135513724
+      },
+      {
+        "ids": [
+          68602,
+          68694
+        ],
+        "plain": 0.710999480127086,
+        "masked": 0.241726044072389
+      },
+      {
+        "ids": [
+          68602,
+          68580
+        ],
+        "plain": 0.752780266094818,
+        "masked": 0.3660986918768725
+      },
+      {
+        "ids": [
+          68602,
+          68601
+        ],
+        "plain": 0.7465365106275403,
+        "masked": 0.3044703806102115
+      },
+      {
+        "ids": [
+          68602,
+          68637
+        ],
+        "plain": 0.6486262789712255,
+        "masked": 0.2617693138169475
+      },
+      {
+        "ids": [
+          68602,
+          68672
+        ],
+        "plain": 0.6306204105930342,
+        "masked": 0.30903416677594303
+      },
+      {
+        "ids": [
+          68602,
+          68695
+        ],
+        "plain": 0.5929683116172368,
+        "masked": 0.312674213972282
+      },
+      {
+        "ids": [
+          68640,
+          68583
+        ],
+        "plain": 0.6287687159002738,
+        "masked": 0.212048395313907
+      },
+      {
+        "ids": [
+          68640,
+          68600
+        ],
+        "plain": 0.70682372592043,
+        "masked": 0.25417673435502997
+      },
+      {
+        "ids": [
+          68640,
+          68638
+        ],
+        "plain": 0.7256617848687346,
+        "masked": 0.31729294330008484
+      },
+      {
+        "ids": [
+          68640,
+          68670
+        ],
+        "plain": 0.7227070730278251,
+        "masked": 0.238212352893793
+      },
+      {
+        "ids": [
+          68640,
+          68694
+        ],
+        "plain": 0.6872277850751114,
+        "masked": 0.15848911087659084
+      },
+      {
+        "ids": [
+          68640,
+          68580
+        ],
+        "plain": 0.6764494896521203,
+        "masked": 0.26722843700681376
+      },
+      {
+        "ids": [
+          68640,
+          68601
+        ],
+        "plain": 0.7138067903501699,
+        "masked": 0.22569434547178946
+      },
+      {
+        "ids": [
+          68640,
+          68637
+        ],
+        "plain": 0.6591505169456205,
+        "masked": 0.18255014860966684
+      },
+      {
+        "ids": [
+          68640,
+          68672
+        ],
+        "plain": 0.7036307944130069,
+        "masked": 0.2521378238944389
+      },
+      {
+        "ids": [
+          68640,
+          68695
+        ],
+        "plain": 0.6855714515548461,
+        "masked": 0.23354166249326072
+      },
+      {
+        "ids": [
+          68675,
+          68583
+        ],
+        "plain": 0.5256057152705197,
+        "masked": 0.2510094619909887
+      },
+      {
+        "ids": [
+          68675,
+          68600
+        ],
+        "plain": 0.5688962393272766,
+        "masked": 0.3188521800449528
+      },
+      {
+        "ids": [
+          68675,
+          68638
+        ],
+        "plain": 0.5607032081250755,
+        "masked": 0.3846202386383725
+      },
+      {
+        "ids": [
+          68675,
+          68670
+        ],
+        "plain": 0.5711556599148948,
+        "masked": 0.33122807152358424
+      },
+      {
+        "ids": [
+          68675,
+          68694
+        ],
+        "plain": 0.5601220754605942,
+        "masked": 0.21308140315959412
+      },
+      {
+        "ids": [
+          68675,
+          68580
+        ],
+        "plain": 0.5246864253926953,
+        "masked": 0.3267959341606461
+      },
+      {
+        "ids": [
+          68675,
+          68601
+        ],
+        "plain": 0.538732704942368,
+        "masked": 0.29429482030900467
+      },
+      {
+        "ids": [
+          68675,
+          68637
+        ],
+        "plain": 0.47059219477162,
+        "masked": 0.27896353699418425
+      },
+      {
+        "ids": [
+          68675,
+          68672
+        ],
+        "plain": 0.5752973209074914,
+        "masked": 0.35600260291012475
+      },
+      {
+        "ids": [
+          68675,
+          68695
+        ],
+        "plain": 0.6002928449703039,
+        "masked": 0.29703359866068335
+      },
+      {
+        "ids": [
+          68700,
+          68583
+        ],
+        "plain": 0.5628856586828984,
+        "masked": 0.13586141320040288
+      },
+      {
+        "ids": [
+          68700,
+          68600
+        ],
+        "plain": 0.5842438753556262,
+        "masked": 0.15881550772115854
+      },
+      {
+        "ids": [
+          68700,
+          68638
+        ],
+        "plain": 0.5153361965114325,
+        "masked": 0.2585404845336601
+      },
+      {
+        "ids": [
+          68700,
+          68670
+        ],
+        "plain": 0.500001412014075,
+        "masked": 0.15973520094900395
+      },
+      {
+        "ids": [
+          68700,
+          68694
+        ],
+        "plain": 0.5277281560857514,
+        "masked": 0.19025142696605635
+      },
+      {
+        "ids": [
+          68700,
+          68580
+        ],
+        "plain": 0.6264135296329842,
+        "masked": 0.26388508516849385
+      },
+      {
+        "ids": [
+          68700,
+          68601
+        ],
+        "plain": 0.5819690099947052,
+        "masked": 0.24186431633994104
+      },
+      {
+        "ids": [
+          68700,
+          68637
+        ],
+        "plain": 0.4495365532971767,
+        "masked": 0.15945203626882395
+      },
+      {
+        "ids": [
+          68700,
+          68672
+        ],
+        "plain": 0.5152541747722822,
+        "masked": 0.17573099789317476
+      },
+      {
+        "ids": [
+          68700,
+          68695
+        ],
+        "plain": 0.5033754836566157,
+        "masked": 0.21765049591801572
+      }
+    ],
+    "depth": [
+      {
+        "id": 68577,
+        "stored_range_m": 3.244,
+        "stored_sigma_m": 0.129,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 3.244,
+          "sigma_m": 0.129,
+          "pixels": 107,
+          "valid": 0.955,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.377,
+          "apart_s": 0.0,
+          "taken_at": 1791185266.3007,
+          "off_s": 0.0149,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 126,
+        "quantiles_m": {
+          "p05": 2.68184323173725,
+          "p20": 3.1124193328108682,
+          "p50": 3.287342552364489,
+          "p80": 3.462302369693859,
+          "p95": 3.6626934236109863
+        },
+        "chosen_band_share": 0.8492063492063492,
+        "under_2_5m_share": 0.0,
+        "over_3m_share": 0.8968253968253969,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 3.233,
+              "sigma_m": 0.131,
+              "pixels": 110,
+              "valid": 0.956,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 3.244,
+              "sigma_m": 0.129,
+              "pixels": 107,
+              "valid": 0.955,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 3.244,
+              "sigma_m": 0.129,
+              "pixels": 107,
+              "valid": 0.955,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 3.244,
+              "sigma_m": 0.129,
+              "pixels": 107,
+              "valid": 0.955,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 3.244,
+              "sigma_m": 0.129,
+              "pixels": 107,
+              "valid": 0.955,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 3.246,
+              "sigma_m": 0.127,
+              "pixels": 106,
+              "valid": 0.976,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68580,
+        "stored_range_m": 3.24,
+        "stored_sigma_m": 0.125,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 3.24,
+          "sigma_m": 0.125,
+          "pixels": 379,
+          "valid": 0.908,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.377,
+          "apart_s": 0.0,
+          "taken_at": 1791185266.3007,
+          "off_s": 0.0149,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 748,
+        "quantiles_m": {
+          "p05": 2.949574698337516,
+          "p20": 3.196405286375221,
+          "p50": 3.670240547080385,
+          "p80": 4.11880228261537,
+          "p95": 6.034222686446319
+        },
+        "chosen_band_share": 0.5066844919786097,
+        "under_2_5m_share": 0.0,
+        "over_3m_share": 0.929144385026738,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 3.241,
+              "sigma_m": 0.125,
+              "pixels": 379,
+              "valid": 0.907,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 3.241,
+              "sigma_m": 0.125,
+              "pixels": 378,
+              "valid": 0.908,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 3.24,
+              "sigma_m": 0.125,
+              "pixels": 379,
+              "valid": 0.908,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 3.24,
+              "sigma_m": 0.125,
+              "pixels": 378,
+              "valid": 0.909,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 3.24,
+              "sigma_m": 0.125,
+              "pixels": 379,
+              "valid": 0.908,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 3.24,
+              "sigma_m": 0.125,
+              "pixels": 379,
+              "valid": 0.908,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68581,
+        "stored_range_m": 5.862,
+        "stored_sigma_m": 0.236,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 5.862,
+          "sigma_m": 0.236,
+          "pixels": 656,
+          "valid": 0.89,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.377,
+          "apart_s": 0.0,
+          "taken_at": 1791185266.3007,
+          "off_s": 0.0149,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 656,
+        "quantiles_m": {
+          "p05": 5.454496088545091,
+          "p20": 5.618964354349922,
+          "p50": 5.858008367980098,
+          "p80": 6.076958483625523,
+          "p95": 6.249545643156148
+        },
+        "chosen_band_share": 1.0,
+        "under_2_5m_share": 0.0,
+        "over_3m_share": 1.0,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 5.862,
+              "sigma_m": 0.236,
+              "pixels": 656,
+              "valid": 0.89,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 5.862,
+              "sigma_m": 0.236,
+              "pixels": 656,
+              "valid": 0.89,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 5.862,
+              "sigma_m": 0.236,
+              "pixels": 656,
+              "valid": 0.89,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 5.862,
+              "sigma_m": 0.236,
+              "pixels": 656,
+              "valid": 0.89,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 5.862,
+              "sigma_m": 0.236,
+              "pixels": 656,
+              "valid": 0.89,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 5.862,
+              "sigma_m": 0.236,
+              "pixels": 656,
+              "valid": 0.89,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68583,
+        "stored_range_m": 3.305,
+        "stored_sigma_m": 0.11,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 3.305,
+          "sigma_m": 0.11,
+          "pixels": 394,
+          "valid": 0.935,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.377,
+          "apart_s": 0.0,
+          "taken_at": 1791185266.3007,
+          "off_s": 0.0149,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 778,
+        "quantiles_m": {
+          "p05": 3.0508306329924397,
+          "p20": 3.270912947917923,
+          "p50": 3.730276296699263,
+          "p80": 5.976446523858014,
+          "p95": 6.368004382898988
+        },
+        "chosen_band_share": 0.506426735218509,
+        "under_2_5m_share": 0.0,
+        "over_3m_share": 0.9730077120822622,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 3.305,
+              "sigma_m": 0.11,
+              "pixels": 394,
+              "valid": 0.935,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 3.305,
+              "sigma_m": 0.11,
+              "pixels": 394,
+              "valid": 0.935,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 3.305,
+              "sigma_m": 0.11,
+              "pixels": 394,
+              "valid": 0.935,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 3.305,
+              "sigma_m": 0.11,
+              "pixels": 394,
+              "valid": 0.935,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 3.305,
+              "sigma_m": 0.11,
+              "pixels": 394,
+              "valid": 0.935,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 3.305,
+              "sigma_m": 0.11,
+              "pixels": 394,
+              "valid": 0.935,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68600,
+        "stored_range_m": 2.556,
+        "stored_sigma_m": 0.058,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 2.556,
+          "sigma_m": 0.058,
+          "pixels": 346,
+          "valid": 0.874,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.367,
+          "apart_s": 0.0,
+          "taken_at": 1791185296.4973,
+          "off_s": -0.0069,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 624,
+        "quantiles_m": {
+          "p05": 2.5026766044301008,
+          "p20": 2.543484701198886,
+          "p50": 2.6661160249580904,
+          "p80": 3.5977392996379356,
+          "p95": 4.808134812471469
+        },
+        "chosen_band_share": 0.5544871794871795,
+        "under_2_5m_share": 0.04487179487179487,
+        "over_3m_share": 0.4182692307692308,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 2.556,
+              "sigma_m": 0.057,
+              "pixels": 344,
+              "valid": 0.871,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 2.557,
+              "sigma_m": 0.058,
+              "pixels": 346,
+              "valid": 0.874,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 2.557,
+              "sigma_m": 0.058,
+              "pixels": 346,
+              "valid": 0.874,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 2.557,
+              "sigma_m": 0.058,
+              "pixels": 345,
+              "valid": 0.874,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 2.557,
+              "sigma_m": 0.058,
+              "pixels": 346,
+              "valid": 0.874,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 2.557,
+              "sigma_m": 0.058,
+              "pixels": 346,
+              "valid": 0.874,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68601,
+        "stored_range_m": 2.57,
+        "stored_sigma_m": 0.09,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 2.57,
+          "sigma_m": 0.09,
+          "pixels": 489,
+          "valid": 0.972,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.367,
+          "apart_s": 0.0,
+          "taken_at": 1791185296.4973,
+          "off_s": -0.0069,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 936,
+        "quantiles_m": {
+          "p05": 2.5070548077579624,
+          "p20": 2.5577272793314627,
+          "p50": 2.8928153508828602,
+          "p80": 3.5978359075988844,
+          "p95": 4.521016075628485
+        },
+        "chosen_band_share": 0.5224358974358975,
+        "under_2_5m_share": 0.0405982905982906,
+        "over_3m_share": 0.44871794871794873,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 2.57,
+              "sigma_m": 0.09,
+              "pixels": 488,
+              "valid": 0.972,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 2.57,
+              "sigma_m": 0.09,
+              "pixels": 489,
+              "valid": 0.972,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 2.57,
+              "sigma_m": 0.09,
+              "pixels": 489,
+              "valid": 0.972,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 2.57,
+              "sigma_m": 0.09,
+              "pixels": 489,
+              "valid": 0.972,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 2.57,
+              "sigma_m": 0.09,
+              "pixels": 489,
+              "valid": 0.972,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 2.571,
+              "sigma_m": 0.09,
+              "pixels": 488,
+              "valid": 0.972,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68602,
+        "stored_range_m": 4.748,
+        "stored_sigma_m": 0.3,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 4.748,
+          "sigma_m": 0.3,
+          "pixels": 701,
+          "valid": 0.983,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.367,
+          "apart_s": 0.0,
+          "taken_at": 1791185296.4973,
+          "off_s": -0.0069,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 711,
+        "quantiles_m": {
+          "p05": 3.5037055022022843,
+          "p20": 4.664758481536134,
+          "p50": 4.74550307384554,
+          "p80": 4.872226561219022,
+          "p95": 5.216145105581114
+        },
+        "chosen_band_share": 0.9873417721518988,
+        "under_2_5m_share": 0.016877637130801686,
+        "over_3m_share": 0.9507735583684951,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 4.731,
+              "sigma_m": 0.376,
+              "pixels": 701,
+              "valid": 0.985,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 4.748,
+              "sigma_m": 0.3,
+              "pixels": 701,
+              "valid": 0.983,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 4.748,
+              "sigma_m": 0.3,
+              "pixels": 702,
+              "valid": 0.983,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 4.748,
+              "sigma_m": 0.297,
+              "pixels": 702,
+              "valid": 0.983,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 4.748,
+              "sigma_m": 0.292,
+              "pixels": 702,
+              "valid": 0.983,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 4.748,
+              "sigma_m": 0.292,
+              "pixels": 702,
+              "valid": 0.983,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68637,
+        "stored_range_m": 1.982,
+        "stored_sigma_m": 0.058,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 1.982,
+          "sigma_m": 0.058,
+          "pixels": 886,
+          "valid": 0.922,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.365,
+          "apart_s": 0.0,
+          "taken_at": 1791185346.0663,
+          "off_s": 0.0191,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 1582,
+        "quantiles_m": {
+          "p05": 1.9095490614828232,
+          "p20": 1.9580553019622184,
+          "p50": 2.1915313416192603,
+          "p80": 2.7620826942389387,
+          "p95": 4.029803858748875
+        },
+        "chosen_band_share": 0.5600505689001264,
+        "under_2_5m_share": 0.695322376738306,
+        "over_3m_share": 0.13780025284450062,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 1.982,
+              "sigma_m": 0.058,
+              "pixels": 885,
+              "valid": 0.922,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 1.982,
+              "sigma_m": 0.058,
+              "pixels": 886,
+              "valid": 0.922,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 1.982,
+              "sigma_m": 0.058,
+              "pixels": 886,
+              "valid": 0.922,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 1.982,
+              "sigma_m": 0.058,
+              "pixels": 884,
+              "valid": 0.922,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 1.982,
+              "sigma_m": 0.058,
+              "pixels": 885,
+              "valid": 0.922,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 1.982,
+              "sigma_m": 0.058,
+              "pixels": 885,
+              "valid": 0.922,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68638,
+        "stored_range_m": 4.133,
+        "stored_sigma_m": 0.235,
+        "stored_method": "box",
+        "replayed": {
+          "range_m": 4.133,
+          "sigma_m": 0.235,
+          "pixels": 34,
+          "valid": 0.099,
+          "method": "box"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.365,
+          "apart_s": 0.0,
+          "taken_at": 1791185346.0663,
+          "off_s": 0.0191,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0
+      },
+      {
+        "id": 68640,
+        "stored_range_m": 1.852,
+        "stored_sigma_m": 0.03,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 1.852,
+          "sigma_m": 0.03,
+          "pixels": 140,
+          "valid": 0.891,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.365,
+          "apart_s": 0.0,
+          "taken_at": 1791185346.0663,
+          "off_s": 0.0191,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 417,
+        "quantiles_m": {
+          "p05": 1.8168598787171888,
+          "p20": 1.855482085069683,
+          "p50": 3.982826320653696,
+          "p80": 4.098876452036168,
+          "p95": 4.215526008156569
+        },
+        "chosen_band_share": 0.33573141486810554,
+        "under_2_5m_share": 0.3405275779376499,
+        "over_3m_share": 0.6402877697841727,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 1.852,
+              "sigma_m": 0.03,
+              "pixels": 140,
+              "valid": 0.891,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 1.852,
+              "sigma_m": 0.03,
+              "pixels": 140,
+              "valid": 0.891,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 1.852,
+              "sigma_m": 0.03,
+              "pixels": 140,
+              "valid": 0.891,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 1.852,
+              "sigma_m": 0.03,
+              "pixels": 140,
+              "valid": 0.891,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 1.852,
+              "sigma_m": 0.03,
+              "pixels": 140,
+              "valid": 0.891,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 1.852,
+              "sigma_m": 0.03,
+              "pixels": 140,
+              "valid": 0.891,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68670,
+        "stored_range_m": 3.891,
+        "stored_sigma_m": 0.35,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 3.891,
+          "sigma_m": 0.35,
+          "pixels": 91,
+          "valid": 0.382,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.443,
+          "apart_s": 0.0,
+          "taken_at": 1791185444.9553,
+          "off_s": -0.0231,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 129,
+        "quantiles_m": {
+          "p05": 2.3321882662420848,
+          "p20": 3.823744166080014,
+          "p50": 3.9868930878803397,
+          "p80": 4.621257643988773,
+          "p95": 6.0692849651124545
+        },
+        "chosen_band_share": 0.7054263565891473,
+        "under_2_5m_share": 0.06976744186046512,
+        "over_3m_share": 0.9147286821705426,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 3.89,
+              "sigma_m": 0.353,
+              "pixels": 89,
+              "valid": 0.376,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 3.891,
+              "sigma_m": 0.35,
+              "pixels": 91,
+              "valid": 0.382,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 3.891,
+              "sigma_m": 0.35,
+              "pixels": 91,
+              "valid": 0.382,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 3.891,
+              "sigma_m": 0.35,
+              "pixels": 91,
+              "valid": 0.382,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 3.891,
+              "sigma_m": 0.35,
+              "pixels": 91,
+              "valid": 0.382,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 3.891,
+              "sigma_m": 0.35,
+              "pixels": 91,
+              "valid": 0.382,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68671,
+        "stored_range_m": 1.956,
+        "stored_sigma_m": 0.139,
+        "stored_method": "box",
+        "replayed": {
+          "range_m": 1.956,
+          "sigma_m": 0.139,
+          "pixels": 519,
+          "valid": 0.699,
+          "method": "box"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.443,
+          "apart_s": 0.0,
+          "taken_at": 1791185444.9553,
+          "off_s": -0.0231,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0
+      },
+      {
+        "id": 68672,
+        "stored_range_m": 1.71,
+        "stored_sigma_m": 0.079,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 1.71,
+          "sigma_m": 0.079,
+          "pixels": 541,
+          "valid": 0.658,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.443,
+          "apart_s": 0.0,
+          "taken_at": 1791185444.9553,
+          "off_s": -0.0231,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 1307,
+        "quantiles_m": {
+          "p05": 1.539362408719014,
+          "p20": 1.7060994341710407,
+          "p50": 2.1803335938322936,
+          "p80": 2.8458685927907745,
+          "p95": 4.46298850955499
+        },
+        "chosen_band_share": 0.4131599081866871,
+        "under_2_5m_share": 0.6526396327467483,
+        "over_3m_share": 0.17214996174445293,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 1.708,
+              "sigma_m": 0.078,
+              "pixels": 540,
+              "valid": 0.656,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 1.708,
+              "sigma_m": 0.079,
+              "pixels": 540,
+              "valid": 0.658,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 1.708,
+              "sigma_m": 0.078,
+              "pixels": 540,
+              "valid": 0.659,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 1.706,
+              "sigma_m": 0.078,
+              "pixels": 540,
+              "valid": 0.658,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 1.708,
+              "sigma_m": 0.078,
+              "pixels": 540,
+              "valid": 0.659,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 1.708,
+              "sigma_m": 0.078,
+              "pixels": 540,
+              "valid": 0.659,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68675,
+        "stored_range_m": null,
+        "stored_sigma_m": null,
+        "stored_method": null,
+        "replayed": {
+          "absent": "outside the depth camera's view"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.443,
+          "apart_s": 0.0,
+          "taken_at": 1791185444.9553,
+          "off_s": -0.0231,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion"
+      },
+      {
+        "id": 68691,
+        "stored_range_m": null,
+        "stored_sigma_m": null,
+        "stored_method": null,
+        "replayed": {
+          "absent": "outside the depth camera's view"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.472,
+          "apart_s": 0.0,
+          "taken_at": 1791185479.4753,
+          "off_s": -0.0131,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion"
+      },
+      {
+        "id": 68694,
+        "stored_range_m": 1.394,
+        "stored_sigma_m": 0.024,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 1.394,
+          "sigma_m": 0.024,
+          "pixels": 1413,
+          "valid": 0.886,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.472,
+          "apart_s": 0.0,
+          "taken_at": 1791185479.4753,
+          "off_s": -0.0131,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 2260,
+        "quantiles_m": {
+          "p05": 1.349740673812511,
+          "p20": 1.372337186217219,
+          "p50": 1.4254854576208205,
+          "p80": 2.5473512719117855,
+          "p95": 3.6914977123548356
+        },
+        "chosen_band_share": 0.6252212389380531,
+        "under_2_5m_share": 0.7849557522123893,
+        "over_3m_share": 0.18451327433628317,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 1.394,
+              "sigma_m": 0.024,
+              "pixels": 1414,
+              "valid": 0.886,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 1.394,
+              "sigma_m": 0.024,
+              "pixels": 1413,
+              "valid": 0.885,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 1.394,
+              "sigma_m": 0.024,
+              "pixels": 1414,
+              "valid": 0.885,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 1.394,
+              "sigma_m": 0.024,
+              "pixels": 1413,
+              "valid": 0.885,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 1.394,
+              "sigma_m": 0.024,
+              "pixels": 1414,
+              "valid": 0.885,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 1.394,
+              "sigma_m": 0.024,
+              "pixels": 1412,
+              "valid": 0.885,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68695,
+        "stored_range_m": 1.562,
+        "stored_sigma_m": 0.024,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 1.562,
+          "sigma_m": 0.024,
+          "pixels": 113,
+          "valid": 0.377,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.472,
+          "apart_s": 0.0,
+          "taken_at": 1791185479.4753,
+          "off_s": -0.0131,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 162,
+        "quantiles_m": {
+          "p05": 1.538258334937768,
+          "p20": 1.547690790545556,
+          "p50": 1.5830271911809892,
+          "p80": 4.429282992508808,
+          "p95": 6.3900151247486345
+        },
+        "chosen_band_share": 0.6975308641975309,
+        "under_2_5m_share": 0.7160493827160493,
+        "over_3m_share": 0.2716049382716049,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 1.562,
+              "sigma_m": 0.024,
+              "pixels": 113,
+              "valid": 0.377,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 1.562,
+              "sigma_m": 0.024,
+              "pixels": 113,
+              "valid": 0.377,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 1.562,
+              "sigma_m": 0.024,
+              "pixels": 113,
+              "valid": 0.377,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 1.562,
+              "sigma_m": 0.024,
+              "pixels": 113,
+              "valid": 0.377,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 1.562,
+              "sigma_m": 0.024,
+              "pixels": 113,
+              "valid": 0.377,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 1.562,
+              "sigma_m": 0.024,
+              "pixels": 113,
+              "valid": 0.377,
+              "method": "outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": 68700,
+        "stored_range_m": 3.503,
+        "stored_sigma_m": 0.236,
+        "stored_method": "outline",
+        "replayed": {
+          "range_m": 3.503,
+          "sigma_m": 0.236,
+          "pixels": 824,
+          "valid": 0.927,
+          "method": "outline"
+        },
+        "depth_header": {
+          "width": 320,
+          "height": 180,
+          "dtype": "uint16",
+          "unit": "mm",
+          "age_s": 0.472,
+          "apart_s": 0.0,
+          "taken_at": 1791185479.4753,
+          "off_s": -0.0131,
+          "lens": {
+            "fx": 500.3,
+            "fy": 500.17,
+            "cx": 321.23,
+            "cy": 190.69,
+            "width": 640.0,
+            "height": 360.0
+          }
+        },
+        "stationary_projection": "zero turn; selected manual looks recorded no shutter motion",
+        "range_delta_m": 0.0,
+        "valid_samples": 833,
+        "quantiles_m": {
+          "p05": 3.264483039380894,
+          "p20": 3.418927117698058,
+          "p50": 3.493765287724738,
+          "p80": 3.6431028776373546,
+          "p95": 3.879034154853242
+        },
+        "chosen_band_share": 0.9891956782713085,
+        "under_2_5m_share": 0.04201680672268908,
+        "over_3m_share": 0.957983193277311,
+        "initial_guess_sensitivity": [
+          {
+            "guess_m": 1,
+            "answer": {
+              "range_m": 3.502,
+              "sigma_m": 0.236,
+              "pixels": 824,
+              "valid": 0.925,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 2,
+            "answer": {
+              "range_m": 3.502,
+              "sigma_m": 0.236,
+              "pixels": 823,
+              "valid": 0.925,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 3,
+            "answer": {
+              "range_m": 3.502,
+              "sigma_m": 0.236,
+              "pixels": 823,
+              "valid": 0.925,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 4,
+            "answer": {
+              "range_m": 3.503,
+              "sigma_m": 0.236,
+              "pixels": 824,
+              "valid": 0.927,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 5,
+            "answer": {
+              "range_m": 3.503,
+              "sigma_m": 0.236,
+              "pixels": 824,
+              "valid": 0.927,
+              "method": "outline"
+            }
+          },
+          {
+            "guess_m": 6,
+            "answer": {
+              "range_m": 3.503,
+              "sigma_m": 0.236,
+              "pixels": 824,
+              "valid": 0.927,
+              "method": "outline"
+            }
+          }
+        ]
+      }
+    ],
+    "limitations": [
+      "Analyst development labels; not independent acceptance.",
+      "No recorded exact background resolver sequence; no resolver replay claim.",
+      "Saved outlines are clipped and half resolution, unlike the full appearance mask.",
+      "No tape ground truth; range-band ambiguity is reproduced, not a calibration verdict.",
+      "This diagnostic neither fits a gate nor changes observations or entities."
+    ]
+  },
+  "frozen_physical_subjects": {
+    "frozen_at": 1791185664.76397,
+    "labels": "Analyst development judgments from frames and boxes, hidden assignments and scores. Chairs tracked by fixed relative order through continuous motion, not independent acceptance truth.",
+    "subjects": {
+      "painting-behind-chairs": [
+        68581,
+        68602,
+        68640,
+        68675,
+        68700
+      ],
+      "front-left-dining-chair": [
+        68583,
+        68600,
+        68638,
+        68670,
+        68694
+      ],
+      "front-right-dining-chair": [
+        68580,
+        68601,
+        68637,
+        68672,
+        68695
+      ],
+      "rug": [
+        68577,
+        68671,
+        68691
+      ]
+    },
+    "unknown-table-regions": [
+      68641,
+      68692,
+      68693
+    ],
+    "missing": "No table region distinguished in initial and intermediate retained boxes; rug absent at intermediate and first side. Armchair not captured."
+  },
+  "frozen_mask_review": {
+    "frozen_at": 1791185722.5330048,
+    "scope": "Saved clipped half-resolution outline only. Actual appearance preprocessing may retain pixels outside this outline; no score or entity assignment consulted.",
+    "painting": {
+      "68581": "mostly painting; tiny residual foreground chair pixels near lower edge",
+      "68602": "mostly painting; tiny residual foreground chair pixels near lower edge",
+      "68640": "painting fragmented by foreground chair; chair mostly excluded",
+      "68675": "visible painting part, chair mostly excluded",
+      "68700": "visible painting part, foreground chair mostly outside box"
+    },
+    "chair": "Mostly intended chair, with some adjoining table or other furniture remnants; no perfect pixel-level purity claim.",
+    "rug": {
+      "68577": "narrow visible rug strip, with substantial isolated chair-leg pixels above it",
+      "68671": "rug with residual chair-leg pixels",
+      "68691": "rug with residual chair-leg pixels"
+    },
+    "other_regions": {
+      "68641": "mixed table leg and side dining chair part; no pure-table label",
+      "68692": "mixed table leg, tabletop and chair back/legs; no pure-table label",
+      "68693": "valid part of left side dining chair; not the table"
+    },
+    "missing": "No two clear pure-table regions; no armchair view. These target portions of the original plan remain unfulfilled."
+  },
+  "inputs_sha256": {
+    "calls.jsonl": "59d57d9df9dc0b073e052ae514f51d6f99537d60e04f6cc1e53f3fba77ada7ba",
+    "regions-blind.json": "9f9696b20df711f3183695f2c964a1981203671b06e3457a594255c522b8dfc3",
+    "visual-protocol.json": "620b900eb4ac2920c853d87b1e86c818cbd0435f484514b5ca4efaac790a64f6",
+    "diagnosis.json": "749b01cdb995921f8532a9162d65b7aeca399e5ea79ca654602df921762a005c"
+  }
+}

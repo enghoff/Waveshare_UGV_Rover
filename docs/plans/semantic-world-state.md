@@ -210,9 +210,13 @@ the success predicate fixed here before the run.
    The [tentative-evidence experiment](../progress/2026-10-05-tentative-evidence.md)
    preserves proposed associations but demonstrates the cost of withholding model
    updates; its cold-start test exposes the need to support new appearances rather
-   than require two already-confirmed matches. Next collect the
-   [controlled viewpoint evidence](entity-evidence-drive.md) before choosing another
-   admission policy or changing region selection. These failures do not establish
+   than require two already-confirmed matches. The first
+   [controlled visual recording](../progress/2026-10-05-visual-evidence-depth.md)
+   reproduces ambiguous outline depth with a small within-band sigma, as well as
+   genuine cross-view appearance failures. Next audit surface attribution and
+   ambiguity on saved depth before choosing another admission policy. The
+   [remaining recording work](entity-evidence-drive.md) includes missing targets
+   and exact background-resolver provenance. These failures do not establish
    that all multi-view repair is impossible or require relaxing the target.
    Keep the disputed new table/painting
    pair visible rather than silently relabelling it or using it alone to reject the

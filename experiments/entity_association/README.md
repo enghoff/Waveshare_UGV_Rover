@@ -415,3 +415,21 @@ The latest 24 tentative peers are tried; all anchors come from the pre-round con
 snapshot. The founders remain exempt. Bridge events retain the anchors, peer,
 baseline, parallax and geometry score. This path is a development response to the
 first candidate's cold-start bootstrap failure, not an independent validation trial.
+
+
+## Controlled visual-evidence diagnosis
+
+`diagnose_visual_evidence.py` reads frozen physical-subject and outline judgments,
+saved vectors and raw depth maps. It compares same-subject appearances and
+painting/chair appearances, checks actual baseline/parallax, and reproduces the
+production depth sampler and its selected band. It does not resolve the store,
+fit an admission threshold, or claim independent acceptance. Saved outlines do
+not recover the full appearance mask. Zero-turn depth projection here applies to
+the selected stationary manual looks; this is not a moving-frame replay tool.
+
+```powershell
+python experiments/entity_association/diagnose_visual_evidence.py --directory captures/2026-10-05-evidence-drive --output .cache/new-visual-diagnosis.json
+```
+
+Choose a new output file. The dated measurement records missing coverage and
+resolver-call provenance limits; the complete resolver trial remains future work.

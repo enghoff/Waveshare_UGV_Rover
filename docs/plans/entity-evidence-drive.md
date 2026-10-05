@@ -4,14 +4,31 @@ R-WS-13 remains open; R-WS-17 and R-WS-18 remain proposed. This is a controlled
 development recording, not an acceptance census. Keep the proposed 5% contamination
 target; independently labelled acceptance remains separate work.
 
-The next drive should answer whether useful same-object views can be connected
+The [first visual recording](../progress/2026-10-05-visual-evidence-depth.md)
+exposes ambiguous depth and cross-view recognition failures. First audit surface
+attribution and depth ambiguity offline: reproduce the selected near/far bands,
+compare proposed abstentions with correct narrow/glass/occluded regions, and
+measure both lost useful measurements and removed errors. Do not automatically
+choose the farther surface or reject every box fallback. No drive is needed for
+that diagnosis.
+
+A remaining drive should answer whether useful same-object views can be connected
 without letting a foreground object become evidence for its background. Use the
 unchanged resolver. Preserve the map and before/after snapshots, exact inspection
 and background-resolver call order, full frames, raw depth where available, selected
 masks, plain/masked vectors and poses. Photograph-only recordings cannot supply
 the occlusion changes and independent bearings missing from the current evidence.
 
+Before a resolver-policy trial, add and verify a recorder for actual inspection
+and background-resolver calls. Current diagnostics do not provide this sequence;
+polling the last outcome is insufficient. Keep the recording optional and prove
+that it preserves ordinary matching behavior before using it on a drive.
+
 ## Targets and coverage
+
+Complete the missing pure-table and glare-armchair coverage, and obtain genuinely
+clear side views. The first recording had no two pure-table regions, no armchair,
+and no exact matching schedule; its visual diagnosis cannot replace these.
 
 Choose a distinguishable painting partly hidden by a chair, an armchair affected
 by window glare, the dining table's full and part views, and the rug. For each:
@@ -48,5 +65,5 @@ in clear views, prioritise region separation and re-encoding those pixels. If cl
 masks still fail across verified views, investigate representation/viewpoint support.
 Only then choose an admission policy and freeze its criteria for a separate trial.
 
-The drive is the next evidence-gathering step. Neither a successful recording nor
+The offline depth audit precedes the remaining recording. Neither a successful recording nor
 better pixel isolation alone authorises deploying the failed two-witness candidate.
