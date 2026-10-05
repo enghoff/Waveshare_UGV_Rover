@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-from contextlib import closing
+from contextlib import closing, nullcontext
 import hashlib
 import json
 import math
@@ -64,12 +64,16 @@ def tiles(placed, counts):
     return groups
 
 
-def cluster(pool, placed, model, threshold=THRESHOLD, veto=True, trace_ids=(), trace=None):
+def cluster(pool, placed, model, threshold=THRESHOLD, veto=True, trace_ids=(), trace=None, extra=None):
     n=len(pool)
     if not n:return [],[],{}
     plain=np.stack([p.v for p in pool]);masked=np.stack([p.a if p.a is not None else p.v for p in pool])
     semantic=np.stack([p.g for p in pool])
     w=model['coef'];s=w[0]*(plain@plain.T)+w[1]*(masked@masked.T)+w[2]*(semantic@semantic.T)+model['offset']
+    if len(w)==4:
+        if extra is None:raise ValueError('four-channel model needs masked semantic features')
+        added=np.stack([extra[p.id] for p in pool])
+        s+=w[3]*(added@added.T)
     individual=s.copy() if trace is not None else None
     backend=[p.row.get('vectors_from') for p in pool]
     cannot=np.array([[(a.inference is not None and a.inference==b.inference) or
@@ -116,11 +120,11 @@ def cluster(pool, placed, model, threshold=THRESHOLD, veto=True, trace_ids=(), t
     return clusters,released,dict(stats)
 
 
-def regroup(database, looks, placed, owners, model, reach):
+def regroup(database, looks, placed, owners, model, reach, bank=None):
     """The existing reader module over reconstructed records in an empty clone."""
     from world_state.reader_groups import preview
     weights,offset=merging.APPEARANCE_WEIGHTS,merging.APPEARANCE_OFFSET
-    merging.APPEARANCE_WEIGHTS=tuple(model['coef']);merging.APPEARANCE_OFFSET=model['offset']
+    merging.APPEARANCE_WEIGHTS=tuple(model['coef'][:3]);merging.APPEARANCE_OFFSET=model['offset']
     by_owner={}
     for i,owner in owners.items():
         if owner is not None:by_owner.setdefault(owner,[]).append(looks[i])
@@ -145,7 +149,10 @@ def regroup(database, looks, placed, owners, model, reach):
                         store.db.execute('INSERT INTO entities(id,kind,label,canonical_description,created_at,last_seen_at,observation_count,placement_json,placement_map_session) '
                                          'VALUES(?,?,?,?,?,?,?,?,?)',(owner,'object','','',min(p.row['observed_at'] for p in members),max(p.row['observed_at'] for p in members),
                                                                len(members),json.dumps(point) if point else None,session))
-                result=preview(store,reach=reach)
+                if bank is not None:
+                    from experiments.entity_association.semantic_features import reader_channel
+                with reader_channel(bank,model['coef'][3]) if bank is not None else nullcontext():
+                    result=preview(store,reach=reach)
                 assert result['ok'] and not result['stale'] and result['converged'],result
             finally:store.close()
     finally:merging.APPEARANCE_WEIGHTS=weights;merging.APPEARANCE_OFFSET=offset
@@ -153,11 +160,16 @@ def regroup(database, looks, placed, owners, model, reach):
     return {i:aliases.get(owner,owner) for i,owner in owners.items()},result
 
 
-def run(database, map_path, output, fold, labels=None, second_stage=False, trace_ids=(), appearance_columns=None):
+def run(database, map_path, output, fold, labels=None, second_stage=False, trace_ids=(), appearance_columns=None, semantic_probe=None):
     if output.exists():raise ValueError('choose a new result path')
     digest=hashlib.sha256(database.read_bytes()).hexdigest()
     evidence=Evidence(excluded=[61656],same_person=True)
-    model=(evidence.fit(fold,columns=appearance_columns) if appearance_columns is not None else
+    bank=None
+    if semantic_probe is not None:
+        from experiments.entity_association.semantic_features import SemanticFeatures
+        bank=SemanticFeatures(semantic_probe);bank.validate(evidence.rows.values())
+    model=(evidence.fit(fold,columns=appearance_columns or (0,1,2,3),additional=bank.vectors) if bank is not None else
+           evidence.fit(fold,columns=appearance_columns) if appearance_columns is not None else
            evidence.fit(fold) if fold is not None else
            {'coef':list(merging.APPEARANCE_WEIGHTS),'offset':merging.APPEARANCE_OFFSET})
     reach=replay.reach_from(str(map_path));began=time.monotonic()
@@ -168,6 +180,7 @@ def run(database, map_path, output, fold, labels=None, second_stage=False, trace
         placed={r['id']:json.loads(r['placement_json']) for r in con.execute(
             'SELECT id,placement_json FROM entities WHERE placement_map_session=? AND placement_json IS NOT NULL',(session,))}
     looks={r['id']:Look(r,resolve.ray_of(r,reach)) for r in rows}
+    if bank is not None:missing_features=bank.validate(rows)
     owners={r['id']:r['entity_id'] for r in rows};before=owners.copy()
     by_entity={k:[p for p in looks.values() if p.entity==k] for k in placed}
     groups=tiles(placed,{k:len(v) for k,v in by_entity.items() if v})
@@ -177,13 +190,15 @@ def run(database, map_path, output, fold, labels=None, second_stage=False, trace
         batches={}
         for entity in group:
             for look in by_entity[entity]:
-                if look.v is None or look.g is None or not look.row.get('vectors_from'):
+                if (look.v is None or look.g is None or not look.row.get('vectors_from') or
+                        (bank is not None and look.id not in bank.vectors)):
                     untouched.append(look.id);continue
                 batches.setdefault((len(look.v),len(look.g),len(look.a) if look.a is not None else len(look.v)),[]).append(look)
         detail={'tile':index,'records':group,'regions':sum(len(by_entity[k]) for k in group),'clusters':[],'released':[]}
         for batch,pool in enumerate(batches.values()):
             clusters,released,stats=cluster(pool,placed,model,trace_ids=trace_ids,
-                                           trace=join_trace if trace_ids else None);all_stats.update(stats)
+                                           trace=join_trace if trace_ids else None,
+                                           extra=bank.vectors if bank is not None else None);all_stats.update(stats)
             for number,members in enumerate(clusters):
                 name=f'repair:{index}:{batch}:{number}'
                 ids=[p.id for p in members];detail['clusters'].append(ids)
@@ -206,11 +221,17 @@ def run(database, map_path, output, fold, labels=None, second_stage=False, trace
                            'No-fit unions are refused; prior selected-neighbourhood bench allowed them.',
                            'Reconstruction is a disposable proposal; no persistent IDs or reader destinations are created.']}
     if second_stage:
-        grouped,preview=regroup(database,looks,placed,owners,model,reach)
+        grouped,preview=regroup(database,looks,placed,owners,model,reach,bank)
         result['grouped_owners']=grouped;result['grouping_preview']=preview
     if trace_ids:result['join_trace']=join_trace;result['trace_ids']=list(trace_ids)
-    if appearance_columns is not None:
-        result['appearance_columns']=list(appearance_columns)
+    if bank is not None:
+        result['masked_semantic_probe']={'vectors_sha256':bank.sha256,
+            'model_sha256':bank.provenance['model_sha256'],'missing_observations':missing_features,
+            'training_missing_observations':bank.validate(evidence.rows.values()),
+            'columns':list(appearance_columns or (0,1,2,3)),
+            'policy':'Missing features retain original owners and cannot support reader grouping.'}
+    if appearance_columns is not None or bank is not None:
+        result['appearance_columns']=list(appearance_columns or (0,1,2,3))
         result['training_labels_sha256']=hashlib.sha256(LABELS.read_bytes()).hexdigest()
         result['training_database_sha256']=hashlib.sha256(evidence.database.read_bytes()).hexdigest()
     result['source_unchanged']=hashlib.sha256(database.read_bytes()).hexdigest()==digest
@@ -246,6 +267,7 @@ if __name__=='__main__':
     p.add_argument('--output',type=Path,required=True);p.add_argument('--fold',type=int,choices=[0,1]);p.add_argument('--labels',type=Path)
     p.add_argument('--second-stage',action='store_true')
     p.add_argument('--trace-observation',action='append',type=int,default=[])
-    p.add_argument('--appearance-columns',type=int,nargs='+',choices=[0,1,2],
-                   help='refit selected channels on development labels (0 plain, 1 masked, 2 semantic); no fold fits all development objects')
-    args=p.parse_args();run(args.database,args.map,args.output,args.fold,args.labels,args.second_stage,args.trace_observation,args.appearance_columns)
+    p.add_argument('--appearance-columns',type=int,nargs='+',choices=[0,1,2,3],
+                   help='refit development channels (0 plain, 1 masked, 2 semantic, 3 masked semantic with --semantic-probe); no fold fits all development objects')
+    p.add_argument('--semantic-probe',type=Path)
+    args=p.parse_args();run(args.database,args.map,args.output,args.fold,args.labels,args.second_stage,args.trace_observation,args.appearance_columns,args.semantic_probe)

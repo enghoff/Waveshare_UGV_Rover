@@ -22,11 +22,18 @@ from world_state.perceive import Perception, LETTERBOX_GREY
 from experiments.entity_association.repair_geometry import unit
 
 
-def run(database,frames,model_path,runtime,ids,output,kind='dino'):
+def observation_fingerprint(row):
+    fields={k:row[k] for k in ('id','frame_id','bbox_json','vectors_from')}
+    for k in ('outline_blob','siglip_blob'):
+        fields[k]=bytes(row[k] or b'').hex()
+    return hashlib.sha256(json.dumps(fields,sort_keys=True).encode()).hexdigest()
+
+
+def run(database,frames,model_path,runtime,ids,output,kind='dino',threads=2):
     if output.exists():raise ValueError('choose a new output directory')
     sys.path.insert(0,str(runtime.resolve()))
     import onnxruntime as ort
-    options=ort.SessionOptions();options.intra_op_num_threads=2;options.inter_op_num_threads=1
+    options=ort.SessionOptions();options.intra_op_num_threads=threads;options.inter_op_num_threads=1
     session=ort.InferenceSession(str(model_path),sess_options=options,providers=['CPUExecutionProvider'])
     encoder=object.__new__(Perception);encoder._np=np;encoder._cv2=cv2
     if kind=='dino':
@@ -60,11 +67,13 @@ def run(database,frames,model_path,runtime,ids,output,kind='dino'):
             clipped=plain.copy();clipped[mask[window[1]:window[3],window[0]:window[2]]==0]=LETTERBOX_GREY
             patches.extend([plain,clipped]);stored.append(unit(row[key]))
             stored_masked.append(unit(row[comparison_key]))
-            observations.append({'id':i,'frame_id':row['frame_id']})
+            observations.append({'id':i,'frame_id':row['frame_id'],
+                                 'input_sha256':observation_fingerprint(row)})
     values=[]
     for start in range(0,len(patches),16):
         vectors,_=encode(patches[start:start+16]);values.extend(vectors)
-        print(f'encoded {min(start+16,len(patches))}/{len(patches)} crops',flush=True)
+        if start%160==0 or start+16>=len(patches):
+            print(f'encoded {min(start+16,len(patches))}/{len(patches)} crops',flush=True)
     values=np.asarray(values);plain=values[::2];clipped=values[1::2]
     for n,row in enumerate(observations):
         row['plain_vs_recorded_cosine']=float(plain[n]@stored[n])
@@ -90,4 +99,5 @@ if __name__=='__main__':
     for name in ['database','frames','model','runtime','output']:p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--observations',type=int,nargs='+',required=True)
     p.add_argument('--kind',choices=['dino','semantic'],default='dino')
-    a=p.parse_args();run(a.database,a.frames,a.model,a.runtime,a.observations,a.output,a.kind)
+    p.add_argument('--threads',type=int,default=2)
+    a=p.parse_args();run(a.database,a.frames,a.model,a.runtime,a.observations,a.output,a.kind,a.threads)

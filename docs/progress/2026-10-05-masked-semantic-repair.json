@@ -1,0 +1,1123 @@
+{
+  "date": "2026-10-05",
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "decision": "Do not deploy this fourth-channel linear identity score; it is worse than the three-channel control.",
+  "independent_acceptance": false,
+  "retrieved_frames": 570,
+  "missing_frames": [
+    "19700101-053038-1bc7b8.jpg"
+  ],
+  "frame_manifest_sha256": "8e8273129e6d6c75b5185dbd430339068d3f0a22795333485b35a987e7cfda53",
+  "encoded_observations": 4015,
+  "missing_observations": [
+    61541,
+    61542,
+    61543,
+    61544,
+    61545,
+    61546,
+    61547,
+    61548,
+    61549,
+    61550,
+    61551
+  ],
+  "missing_labelled_observations": [],
+  "source_database_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+  "model_sha256": "44fcd984cf4ac4baba5b4776192c0b141a120c6981df49732c681d4fe8ddc718",
+  "fidelity": {
+    "min": 0.9396486966816975,
+    "median": 0.9999986816938538,
+    "below_099": 116
+  },
+  "models": {
+    "control": {
+      "development": {
+        "before": {
+          "same_together": 3716,
+          "different_together": 710,
+          "main_waiting": 0
+        },
+        "after": {
+          "same_together": 3390,
+          "different_together": 197,
+          "main_waiting": 9
+        },
+        "grouped": {
+          "same_together": 3658,
+          "different_together": 282,
+          "main_waiting": 9
+        }
+      },
+      "fold_models": [
+        {
+          "coef": [
+            9.25970903822949,
+            2.309252417388156,
+            13.68775887231196,
+            0.0
+          ],
+          "offset": -16.921272206152466,
+          "training_pairs": 21126,
+          "training_same": 2519,
+          "held_out_objects": [
+            "object:242",
+            "object:247",
+            "object:259",
+            "object:276",
+            "object:307",
+            "object:335",
+            "object:350",
+            "object:377",
+            "object:387",
+            "object:407"
+          ]
+        },
+        {
+          "coef": [
+            4.807851925514747,
+            5.462566863693885,
+            8.28032209689627,
+            0.0
+          ],
+          "offset": -11.21926843077799,
+          "training_pairs": 12463,
+          "training_same": 1793,
+          "held_out_objects": [
+            "object:246",
+            "object:249",
+            "object:275",
+            "object:302",
+            "object:332",
+            "object:343",
+            "object:374",
+            "object:383",
+            "object:386",
+            "object:402",
+            "object:413"
+          ]
+        }
+      ],
+      "fresh_model": {
+        "coef": [
+          5.798640187224526,
+          2.17721528048042,
+          16.565095355284782,
+          0.0
+        ],
+        "offset": -17.149414880615023,
+        "training_pairs": 65522,
+        "training_same": 4312,
+        "held_out_objects": []
+      },
+      "fresh_clear": {
+        "before": {
+          "same_together": 284,
+          "different_together": 3,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16
+        },
+        "after": {
+          "same_together": 384,
+          "different_together": 0,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16
+        },
+        "grouped": {
+          "same_together": 475,
+          "different_together": 0,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16
+        }
+      },
+      "fresh_tentative": {
+        "before": {
+          "same_together": 407,
+          "different_together": 34,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23
+        },
+        "after": {
+          "same_together": 489,
+          "different_together": 72,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23
+        },
+        "grouped": {
+          "same_together": 587,
+          "different_together": 78,
+          "waiting": 45,
+          "regions": 201,
+          "objects": 23
+        }
+      },
+      "new_wrong_vs_original": 0,
+      "fresh_target_pairs_remaining": [
+        [
+          64520,
+          64581
+        ],
+        [
+          64520,
+          64592
+        ],
+        [
+          64520,
+          64735
+        ],
+        [
+          64692,
+          64581
+        ],
+        [
+          64692,
+          64592
+        ],
+        [
+          64692,
+          64735
+        ]
+      ]
+    },
+    "candidate": {
+      "development": {
+        "before": {
+          "same_together": 3716,
+          "different_together": 710,
+          "main_waiting": 0
+        },
+        "after": {
+          "same_together": 3339,
+          "different_together": 201,
+          "main_waiting": 8
+        },
+        "grouped": {
+          "same_together": 3611,
+          "different_together": 331,
+          "main_waiting": 8
+        }
+      },
+      "fold_models": [
+        {
+          "coef": [
+            9.175638082393494,
+            1.6071985457404556,
+            12.742811848605559,
+            3.3783767791569397
+          ],
+          "offset": -18.46651693822617,
+          "training_pairs": 21126,
+          "training_same": 2519,
+          "held_out_objects": [
+            "object:242",
+            "object:247",
+            "object:259",
+            "object:276",
+            "object:307",
+            "object:335",
+            "object:350",
+            "object:377",
+            "object:387",
+            "object:407"
+          ]
+        },
+        {
+          "coef": [
+            4.8846204012256855,
+            6.093735764357663,
+            9.161827010530994,
+            -3.4294749215455527
+          ],
+          "offset": -9.542268584211207,
+          "training_pairs": 12463,
+          "training_same": 1793,
+          "held_out_objects": [
+            "object:246",
+            "object:249",
+            "object:275",
+            "object:302",
+            "object:332",
+            "object:343",
+            "object:374",
+            "object:383",
+            "object:386",
+            "object:402",
+            "object:413"
+          ]
+        }
+      ],
+      "fresh_model": {
+        "coef": [
+          5.834635882079894,
+          2.3834939391271326,
+          16.95364555441046,
+          -1.1779964577427604
+        ],
+        "offset": -16.640512573376732,
+        "training_pairs": 65522,
+        "training_same": 4312,
+        "held_out_objects": []
+      },
+      "fresh_clear": {
+        "before": {
+          "same_together": 284,
+          "different_together": 3,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16
+        },
+        "after": {
+          "same_together": 384,
+          "different_together": 0,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16
+        },
+        "grouped": {
+          "same_together": 475,
+          "different_together": 0,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16
+        }
+      },
+      "fresh_tentative": {
+        "before": {
+          "same_together": 407,
+          "different_together": 34,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23
+        },
+        "after": {
+          "same_together": 489,
+          "different_together": 72,
+          "waiting": 44,
+          "regions": 201,
+          "objects": 23
+        },
+        "grouped": {
+          "same_together": 587,
+          "different_together": 78,
+          "waiting": 44,
+          "regions": 201,
+          "objects": 23
+        }
+      },
+      "new_wrong_vs_original": 0,
+      "fresh_target_pairs_remaining": [
+        [
+          64520,
+          64581
+        ],
+        [
+          64520,
+          64592
+        ],
+        [
+          64520,
+          64735
+        ],
+        [
+          64692,
+          64581
+        ],
+        [
+          64692,
+          64592
+        ],
+        [
+          64692,
+          64735
+        ]
+      ]
+    }
+  },
+  "pair_changes_vs_control": {
+    "wrong_added": 51,
+    "correct_removed": 51,
+    "wrong_removed": 2,
+    "correct_added": 4
+  },
+  "fold_changes": [
+    {
+      "fold": 0,
+      "counts": {
+        "wrong_added": 6
+      },
+      "changed_pairs": {
+        "wrong_added": [
+          [
+            61801,
+            62712,
+            "object:377",
+            "object:377"
+          ],
+          [
+            62712,
+            63198,
+            "object:377",
+            "object:377"
+          ],
+          [
+            62712,
+            63297,
+            "object:377",
+            "object:377"
+          ],
+          [
+            62712,
+            63468,
+            "object:377",
+            "object:377"
+          ],
+          [
+            62712,
+            63474,
+            "object:377",
+            "object:377"
+          ],
+          [
+            62712,
+            63510,
+            "object:377",
+            "object:377"
+          ]
+        ]
+      }
+    },
+    {
+      "fold": 1,
+      "counts": {
+        "wrong_added": 45,
+        "correct_removed": 51,
+        "wrong_removed": 2,
+        "correct_added": 4
+      },
+      "changed_pairs": {
+        "wrong_added": [
+          [
+            60737,
+            61092,
+            "object:246",
+            "object:246"
+          ],
+          [
+            60737,
+            61741,
+            "object:246",
+            "object:246"
+          ],
+          [
+            60737,
+            61815,
+            "object:246",
+            "object:246"
+          ],
+          [
+            60758,
+            61092,
+            "object:246",
+            "object:246"
+          ],
+          [
+            60758,
+            61741,
+            "object:246",
+            "object:246"
+          ],
+          [
+            60758,
+            61815,
+            "object:246",
+            "object:246"
+          ],
+          [
+            60768,
+            61092,
+            "object:246",
+            "object:246"
+          ],
+          [
+            60768,
+            61741,
+            "object:246",
+            "object:246"
+          ],
+          [
+            60768,
+            61815,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            61214,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            61230,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            61286,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            61582,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            62091,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            62582,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            62659,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            62867,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            62899,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            63021,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            63029,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61092,
+            64097,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61214,
+            61741,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61214,
+            61815,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61230,
+            61741,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61230,
+            61815,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61286,
+            61741,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61286,
+            61815,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61582,
+            61741,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61582,
+            61815,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61741,
+            62091,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61741,
+            62582,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61741,
+            62659,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61741,
+            62867,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61741,
+            62899,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61741,
+            63021,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61741,
+            63029,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61741,
+            64097,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61815,
+            62091,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61815,
+            62582,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61815,
+            62659,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61815,
+            62867,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61815,
+            62899,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61815,
+            63021,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61815,
+            63029,
+            "object:246",
+            "object:246"
+          ],
+          [
+            61815,
+            64097,
+            "object:246",
+            "object:246"
+          ]
+        ],
+        "correct_removed": [
+          [
+            60745,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61155,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61244,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61365,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61540,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61575,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61594,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61612,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61632,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61649,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61654,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61673,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            61831,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            61844,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            61858,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            61872,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            61893,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62015,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62147,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62237,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62394,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62425,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62556,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62575,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62624,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62766,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62778,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            62893,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63035,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63138,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63164,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63331,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63463,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63542,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63593,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63688,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63764,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63786,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63803,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            63940,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            64014,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            64060,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            64078,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            64100,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61731,
+            64143,
+            "object:249",
+            "object:249"
+          ],
+          [
+            62634,
+            62983,
+            "object:386",
+            "object:386"
+          ],
+          [
+            62634,
+            62988,
+            "object:386",
+            "object:386"
+          ],
+          [
+            62634,
+            63119,
+            "object:386",
+            "object:386"
+          ],
+          [
+            62983,
+            63149,
+            "object:386",
+            "object:386"
+          ],
+          [
+            62988,
+            63149,
+            "object:386",
+            "object:386"
+          ],
+          [
+            63119,
+            63149,
+            "object:386",
+            "object:386"
+          ]
+        ],
+        "wrong_removed": [
+          [
+            61392,
+            61731,
+            "object:249",
+            "object:249"
+          ],
+          [
+            61493,
+            61731,
+            "object:249",
+            "object:249"
+          ]
+        ],
+        "correct_added": [
+          [
+            61731,
+            61897,
+            "object:249",
+            "object:340"
+          ],
+          [
+            61731,
+            62155,
+            "object:249",
+            "object:340"
+          ],
+          [
+            61731,
+            62216,
+            "object:249",
+            "object:340"
+          ],
+          [
+            61731,
+            63908,
+            "object:249",
+            "object:340"
+          ]
+        ]
+      }
+    }
+  ],
+  "per_object_changes": {
+    "object:246": {
+      "control": {
+        "looks": 25,
+        "waiting": 1,
+        "pieces_with_two_looks": 1,
+        "pair_recall": 0.92
+      },
+      "candidate": {
+        "looks": 25,
+        "waiting": 0,
+        "pieces_with_two_looks": 1,
+        "pair_recall": 0.92
+      }
+    },
+    "object:249": {
+      "control": {
+        "looks": 51,
+        "waiting": 1,
+        "pieces_with_two_looks": 2,
+        "pair_recall": 0.8164705882352942
+      },
+      "candidate": {
+        "looks": 51,
+        "waiting": 1,
+        "pieces_with_two_looks": 2,
+        "pair_recall": 0.7843137254901961
+      }
+    },
+    "object:386": {
+      "control": {
+        "looks": 5,
+        "waiting": 0,
+        "pieces_with_two_looks": 1,
+        "pair_recall": 1.0
+      },
+      "candidate": {
+        "looks": 5,
+        "waiting": 0,
+        "pieces_with_two_looks": 2,
+        "pair_recall": 0.4
+      }
+    }
+  },
+  "control_reproduces_previous_memberships": true,
+  "fresh_training_used": false,
+  "limitations": [
+    "Physical-object folds; cross-fold pairs have one held-out object, not necessarily both.",
+    "Frozen analyst labels and previously inspected diagnostic recording, not independent acceptance.",
+    "Box-rounded, half-resolution mask reconstruction; CPU model execution validated through plain crops.",
+    "Negative conditional coefficients do not show that raw masked similarity has an inverse identity meaning.",
+    "Two folds with correlated region pairs cannot establish statistical significance."
+  ],
+  "rover_actions": "Read-only historical frame retrieval; no deployment, restart or driving.",
+  "validation": {
+    "tests": 24,
+    "docs": "passed",
+    "registered_components_changed": false
+  },
+  "artifacts": [
+    {
+      "path": "captures/2026-10-04-reader-validation/semantic-development/results/control-0.json",
+      "sha256": "5ae211dee4ce0510aea0101370a5cc27de03e36a83c693d95a60624b8b9fcba5"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/semantic-development/results/control-1.json",
+      "sha256": "b985f1e0b2f89c6fef19f8307ba1890ee10dcdb673d880403e95b3837d6472f0"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/semantic-development/results/control-fresh.json",
+      "sha256": "b6af2b0441431417d725684e8079d0f781d37d5f2d70310dde13bb0516bea166"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/semantic-development/results/candidate-0.json",
+      "sha256": "f5375560ef6beb6d0c4f7f565fbfacddc4644fcc3740944cb13a6bf34ade51a0"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/semantic-development/results/candidate-1.json",
+      "sha256": "b0ccae748b34c325da1b867a68253b853d47de1ccf9ef435b3c2d54150a4c1c0"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/semantic-development/results/candidate-fresh.json",
+      "sha256": "d4bc0e9262800b25f94eac66b8bb004823b01abf3db19a54aaab83743236299a"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/semantic-development/results/full-probe/summary.json",
+      "sha256": "361adf383f8b78acd6b5ee8636670a9e6cb3d7d9386bd5a3ff1e6965224620e3"
+    },
+    {
+      "path": "captures/2026-10-04-reader-validation/semantic-development/results/full-probe/vectors.npz",
+      "sha256": "7436bd3a17af6b8e4676215d9c4d5bdaf9c464fdab7bae06f6f32915bc737505"
+    }
+  ]
+}

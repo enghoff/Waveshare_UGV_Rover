@@ -260,3 +260,36 @@ agreement measures part of that uncertainty; it does not remove it.
 The [measurement](../../docs/progress/2026-10-04-appearance-provenance.md) retains
 masked semantic evidence for a further development experiment. It does not approve
 any channel replacement or identity change on the rover.
+
+## Fitted masked-semantic repair
+
+New semantic probe outputs contain per-observation fingerprints of the frame,
+box, mask, original semantic vector and backend. `semantic_features.py` checks
+those fingerprints before a bank can be used with either saved database. It
+normalizes the new vectors and reports absent observations explicitly. The older
+diagnostic outputs without fingerprints cannot be substituted silently.
+
+Pass `--semantic-probe <probe-directory>` to `repair_groups.py` to fit and test
+the fourth channel. Column 3 is the new masked semantic similarity. A matched
+control uses `--appearance-columns 0 1 2`; the candidate uses `0 1 2 3`.
+Both use the bank's coverage and the same original labels. Fit each development
+fold with `--fold 0` or `--fold 1`; omit `--fold` for a full development fit followed
+by fresh evaluation, never a fit to the fresh labels.
+
+```powershell
+python experiments/entity_association/repair_groups.py --database captures/2026-10-04-association-likelihood/world.db --map captures/2026-10-04-association-likelihood/map.json --fold 0 --second-stage --semantic-probe .cache/masked-semantic/full-probe --appearance-columns 0 1 2 3 --output .cache/new-semantic/candidate-0.json
+```
+
+Missing-feature observations keep their original owners. Reader grouping refuses
+comparisons lacking the additional sampled features, in both arms. The temporary
+reader hook preserves the original sampling, backend comparisons and three-channel
+arithmetic, adds the fitted fourth term, and restores the original functions even
+after failure. It supports negative fitted coefficients as well as positive ones.
+Run the experiment standalone, never inside a serving process.
+
+The probe's `--threads` controls workstation CPU threads. Frame retrieval and
+encoding artifacts for the full trial are preserved privately under
+`captures/2026-10-04-reader-validation/semantic-development/`. The
+[full comparison](../../docs/progress/2026-10-05-masked-semantic-repair.md) rejects
+this fitted candidate for deployment; the smaller favourable diagnostic is not
+an acceptance result.

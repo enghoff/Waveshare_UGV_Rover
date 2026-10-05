@@ -45,6 +45,11 @@ class AccountingTests(unittest.TestCase):
         self.assertNotEqual(model['coef'][1],0.)
         self.assertEqual(model['held_out_objects'],[])
         self.assertEqual(self.e.fit(None),self.e.fit(None,columns=(0,1,2)))
+        extra={i:np.array([0.,1.]) for i in self.e.rows}
+        control=self.e.fit(None,columns=(0,1,2),additional=extra)
+        np.testing.assert_allclose(control['coef'][:3],self.e.fit(None)['coef'])
+        self.assertEqual(control['coef'][3],0.)
+        self.assertEqual(control['training_pairs'],self.e.fit(None)['training_pairs'])
 
     def test_invalid_or_repeated_feature_columns_are_refused(self):
         for columns in ((),(3,),(1,1)):
