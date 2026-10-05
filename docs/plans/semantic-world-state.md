@@ -206,10 +206,12 @@ the success predicate fixed here before the run.
    [predeclared category test](../progress/2026-10-05-release-category.md) — stored
    SigLIP vectors against 26 phrases embedded by the rover — fails as well: the kind
    given to a poor view slips just as its appearance does. No single-look evidence
-   tested decides a release. Before more repair experiments the owner should decide
-   whether R-WS-18's one-in-twenty tolerance is held, which points at capture (the
-   region finder separating occluders), or relaxed for readers that tolerate
-   contamination. Keep the disputed new table/painting
+   tested decides a release. Keep R-WS-18's tolerance as a provisional target.
+   Next test [tentative evidence](tentative-entity-evidence.md): preserve proposed
+   associations but withhold their influence on position and recognition until
+   separate confirmed frames support them. These release failures do not establish
+   that all multi-view repair is impossible or require relaxing the target.
+   Keep the disputed new table/painting
    pair visible rather than silently relabelling it or using it alone to reject the
    candidate. Do not tune global appearance weights to the six fresh examples.
    Continue using disjoint tiles, physical-object holdout, frozen drafts and separately
