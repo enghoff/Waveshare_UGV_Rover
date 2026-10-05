@@ -368,3 +368,41 @@ ssh orin "curl -s -X POST -H 'Content-Type: application/json' --data-binary @- 1
 Store the response with its phrases as the `--phrases` file for `test`, which takes
 the same arguments as `release_position.py` with `--phrases` for `--map`. It
 [fails](../../docs/progress/2026-10-05-release-category.md) on all three.
+
+## Tentative evidence and model influence
+
+`tentative_evidence.py` runs the ordinary resolver with either its ordinary store
+(`control`) or a disposable proxy (`candidate`). New associations to existing
+entities remain archived with their proposed destination, but do not train the
+appearance model or enter position refits until two confirmed observations in
+distinct other inference frames match both plain and masked DINO at 0.70. Promotion
+uses a snapshot of confirmed peers, preventing self-confirmation within a round.
+Missing features, different backends and different vector widths abstain. Only the
+latest 24 confirmed peers are tested. Founder and inherited evidence remains trusted;
+tentative destinations are not reconsidered in this prototype.
+
+The confirmed history is filtered before the ordinary history limit. Exemplar
+updates and position refits use confirmed evidence only. Every archived measurement
+is preserved; `confirmed_owners` is a separate experimental view, not a new production
+schema. Both the tentative associations and pending observations appear in results.
+The two-frame rule does not prove independent viewpoints or clean physical identity.
+
+`freeze-appearance` and `freeze-model` are explanatory controls that freeze existing
+appearance, or both appearance and placement, while retaining ordinary associations.
+New discovery founders establish their ordinary initial models. These arms diagnose
+feedback; they are not proposed production policies.
+
+```powershell
+python experiments/entity_association/tentative_evidence.py --database captures/2026-10-04-reader-validation/after.db --before captures/2026-10-04-reader-validation/before.db --map captures/2026-10-04-association-likelihood/map.json --draft captures/2026-10-04-reader-validation/owner-review/first-pass.json --mode candidate --output .cache/new-tentative/fresh-candidate
+python experiments/entity_association/tentative_evidence.py --database captures/2026-10-04-association-likelihood/world.db --map captures/2026-10-04-association-likelihood/map.json --mode candidate --output .cache/new-tentative/older-candidate
+```
+
+Run the control first and choose a new output directory for each arm. Fresh replay
+uses the previously reconstructed inspection schedule and six background passes;
+older replay resolves after each frame. `assess_tentative.py` takes `--directory`,
+`--output` and `--previous-baseline`, checks reproduction and archived measurements,
+and evaluates the predeclared pair-retention and labelled-object coverage criteria.
+Older live-snapshot state is distinct from the reproduced older replay baseline;
+fresh replay reproduces the live end snapshot exactly. All scoring uses frozen
+development labels, never independent acceptance. These scripts must never be
+connected to a serving store.
