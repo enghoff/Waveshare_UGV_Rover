@@ -207,9 +207,12 @@ the success predicate fixed here before the run.
    SigLIP vectors against 26 phrases embedded by the rover — fails as well: the kind
    given to a poor view slips just as its appearance does. No single-look evidence
    tested decides a release. Keep R-WS-18's tolerance as a provisional target.
-   Next test [tentative evidence](tentative-entity-evidence.md): preserve proposed
-   associations but withhold their influence on position and recognition until
-   separate confirmed frames support them. These release failures do not establish
+   The [tentative-evidence experiment](../progress/2026-10-05-tentative-evidence.md)
+   preserves proposed associations but demonstrates the cost of withholding model
+   updates; its cold-start test exposes the need to support new appearances rather
+   than require two already-confirmed matches. Next collect the
+   [controlled viewpoint evidence](entity-evidence-drive.md) before choosing another
+   admission policy or changing region selection. These failures do not establish
    that all multi-view repair is impossible or require relaxing the target.
    Keep the disputed new table/painting
    pair visible rather than silently relabelling it or using it alone to reject the

@@ -406,3 +406,12 @@ Older live-snapshot state is distinct from the reproduced older replay baseline;
 fresh replay reproduces the live end snapshot exactly. All scoring uses frozen
 development labels, never independent acceptance. These scripts must never be
 connected to a serving store.
+
+`--mode bridge` keeps the direct two-witness path and adds an anchored pair of
+tentative views. Both must match each other at 0.70 and connect to confirmed evidence
+at 0.55, with one connection at 0.70. Their independent rays must produce a valid
+ordinary fix and agree with the entity within squared ellipse distance 13.8155.
+The latest 24 tentative peers are tried; all anchors come from the pre-round confirmed
+snapshot. The founders remain exempt. Bridge events retain the anchors, peer,
+baseline, parallax and geometry score. This path is a development response to the
+first candidate's cold-start bootstrap failure, not an independent validation trial.

@@ -1,7 +1,8 @@
 import tempfile
 import unittest
+import json
 import numpy as np
-from experiments.entity_association.tentative_evidence import TentativeStore,witnesses
+from experiments.entity_association.tentative_evidence import BridgeStore,TentativeStore,witnesses
 from world_state.store import WorldStore
 
 
@@ -11,6 +12,27 @@ def row(i,frame,v=None,backend='a'):
 
 
 class TentativeContracts(unittest.TestCase):
+    def test_bridge_needs_independent_geometry_and_preexisting_anchor(self):
+        for separated,anchored,aligned in ((True,True,True),(False,True,True),(True,False,True),(True,True,False)):
+            with self.subTest(separated=separated,anchored=anchored,aligned=aligned),tempfile.TemporaryDirectory() as tmp:
+                store=WorldStore(tmp)
+                try:
+                    eid=store.create_entity();session=store.map_session()
+                    vectors=[[1.,0.],[.6,.8],[1.,0.],[.995,-.1]] if anchored else [[1.,0.],[.6,.8],[-1.,0.],[-.995,-.1]]
+                    with store.db:
+                        for i,v in enumerate(vectors,1):
+                            blob=row(i,i,v)['dino_blob'];y=1. if i==4 and separated else 0.
+                            pose=json.dumps({'x_m':0.,'y_m':y,'heading_deg':0.})
+                            bearing=-26.565 if y else 0.
+                            store.db.execute("INSERT INTO observations(id,observed_at,source,inference_id,dino_blob,dino_alone_blob,vectors_from,map_session,observer_pose_json,bearing_deg,bearing_sigma_deg,span_deg) VALUES(?,?,'test',?,?,?,'a',?,?,?,1.,2.)",(i,i,i,blob,blob,session,pose,bearing))
+                    store.place(eid,{'x_m':2. if aligned else 10.,'y_m':0.,'uncertainty_m':.2,'extent_m':.1},session)
+                    proxy=BridgeStore(store);proxy.attach(eid,[1,2]);proxy.attach(eid,[3,4]);proxy.promote()
+                    if separated and anchored and aligned:
+                        self.assertTrue({3,4}<=proxy.confirmed)
+                        self.assertEqual(proxy.stats['bridge_promotions'],2)
+                    else:self.assertEqual(proxy.confirmed,{1,2})
+                finally:store.close()
+
     def test_same_frame_cannot_supply_two_witnesses(self):
         self.assertEqual(len(witnesses(row(1,1),[row(2,2),row(3,2),row(4,1)])),1)
 

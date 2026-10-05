@@ -66,6 +66,8 @@ def measurement_proof(source,end):
 def report(directory,output,previous_baseline):
     if output.exists():raise ValueError('choose a new summary path')
     names=['fresh-control','fresh-candidate','older-control','older-candidate','fresh-freeze-appearance','fresh-freeze-model']
+    if all((directory/n/'result.json').is_file() for n in ('fresh-bridge','older-bridge')):
+        names.extend(('fresh-bridge','older-bridge'))
     data={n:json.loads((directory/n/'result.json').read_text()) for n in names}
     evidence=Evidence(excluded=[61656],same_person=True)
     previous=json.loads(previous_baseline.read_text())
@@ -81,6 +83,11 @@ def report(directory,output,previous_baseline):
                            'older_live_snapshot_exactness':False,
                            'limitation':'The older rebuilt replay is the established baseline, not the raw live snapshot: it assigns 2,887 of 3,540 rows; the saved snapshot assigns 2,979. Names also differ.'},
             'arms':{}}
+    if 'fresh-bridge' in data:
+        result['bridge']={'predicate_commit':'febca34',
+                          'fresh':assess(data['fresh-control'],data['fresh-bridge'],evidence,True),
+                          'older':assess(data['older-control'],data['older-bridge'],evidence)}
+        result['bridge']['passes']=result['bridge']['fresh']['passes'] and result['bridge']['older']['passes']
     for name,d in data.items():
         source=ROOT/('captures/2026-10-04-reader-validation/after.db' if name.startswith('fresh') else 'captures/2026-10-04-association-likelihood/world.db')
         assert digest(source)==d['hashes']['database'] and d['source_unchanged']
