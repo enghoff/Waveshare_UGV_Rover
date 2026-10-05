@@ -343,3 +343,14 @@ python experiments/entity_association/release_audit.py summarize --review experi
 
 The [result](../../docs/progress/2026-10-05-release-audit.md): wrong releases are about
 as common as right ones, so release-only stays a candidate list, not a repair.
+
+`release_position.py` measures each release against a placement refitted from its
+record's largest kept cluster and gates on the repair's existing 2.5 veto. Its
+`PREDICATE` was committed before any score was computed; scores are against the
+frozen review and, for both older folds, the older look labels.
+
+```powershell
+python experiments/entity_association/release_position.py --fresh captures/2026-10-04-reader-validation/split-only/release-fresh.json --older captures/2026-10-04-reader-validation/split-only/release-0.json captures/2026-10-04-reader-validation/split-only/release-1.json --database captures/2026-10-04-reader-validation/after.db --older-database captures/2026-10-04-association-likelihood/world.db --map captures/2026-10-04-association-likelihood/map.json --review experiments/entity_association/release_audit.json --labels captures/2026-10-03-merge-review/look_labels.json --output .cache/new-release-position.json
+```
+
+It [fails](../../docs/progress/2026-10-05-release-position.md) on all three.

@@ -199,10 +199,13 @@ the success predicate fixed here before the run.
    favours releasing isolated observations over full splitting on measured cost,
    but the [frozen visual review](../progress/2026-10-05-release-audit.md) of all 200
    whole-store releases finds 87 views of the record's own object (or an identical
-   chair) against 85 rightly released, so appearance alone cannot decide a release.
-   Next test whether position — the observation's bearing and range against the
-   record's placement — separates the two in that frozen review, then confirm on the
-   older recording's labels before another score. Keep the disputed new table/painting
+   chair) against 85 rightly released, so appearance alone cannot decide a release,
+   and the [predeclared position test](../progress/2026-10-05-release-position.md)
+   fails too: wrongly filed objects sit in the same direction as the record's object.
+   Release-only is not an automatic repair. Next test what the selected pixels are —
+   the stored SigLIP image vectors scored against a few category phrases embedded by
+   the rover's text model — against the same frozen review, with its pass condition
+   committed first. Keep the disputed new table/painting
    pair visible rather than silently relabelling it or using it alone to reject the
    candidate. Do not tune global appearance weights to the six fresh examples.
    Continue using disjoint tiles, physical-object holdout, frozen drafts and separately
