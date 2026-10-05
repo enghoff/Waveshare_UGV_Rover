@@ -39,7 +39,7 @@ def compare(actual, expected):
                 if any(actual['entities'][e][k] != expected['entities'][e][k] for k in ['plain','masked']))}
 
 
-def run(directory, output):
+def run(directory, output, only_observation=None):
     import numpy as np
     directory = directory.resolve()
     if output.exists():
@@ -141,7 +141,11 @@ def run(directory, output):
     range_exact = all(r['exact'] for r in records)
     report['stored_range_reproduction_exact'] = range_exact
     if exact and range_exact:
-        candidate, events = replay_arm('abstain', set(flags))
+        if only_observation is not None:
+            assert only_observation in flags, 'requested observation does not satisfy fixed depth flag'
+        withheld = flags if only_observation is None else [only_observation]
+        report['withheld_ids'] = withheld
+        candidate, events = replay_arm('abstain', set(withheld))
         labels = json.loads((directory/'physical-subjects-frozen.json').read_text())['subjects']
         from itertools import combinations
         subjects = {i: t for t, ids in labels.items() for i in ids}
@@ -173,4 +177,5 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--directory', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
-    a = p.parse_args(); run(a.directory, a.output)
+    p.add_argument('--only-observation', type=int, help='Post-score causal diagnostic: withhold one qualifying range only.')
+    a = p.parse_args(); run(a.directory, a.output, a.only_observation)

@@ -504,3 +504,10 @@ fixed before computing in ef9b646/fc11b8b; their finished plan remains in git hi
 The dated progress entry owns the results and limitations. Post-score photograph
 reviews stay separate from frozen primary labels and never create independent
 acceptance truth. The range flag remains a candidate, not a deployed identity gate.
+
+For the post-score causal diagnostic, add `--only-observation 68640` to a fresh
+run in another new directory. Freeze its diagnostic predicate before computing:
+the control must reproduce exactly, only this qualifying range is withheld,
+the painting must move from object:375 to reviewed painting record object:330,
+and all 15 existing frozen fresh subject links must survive. This isolates one
+range's effect from the other three flags; it is not a new acceptance trial.
