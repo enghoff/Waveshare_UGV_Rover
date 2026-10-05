@@ -82,12 +82,23 @@ Keep the production resolver unchanged. The older cabinet regression still
 prevents blanket deployment, and the missing clear side painting and pure-table
 controls remain owed.
 
-Start the next diagnosis offline. Use the frozen photographed subjects to trace
-where the unchanged resolver loses cross-view support: appearance thresholds,
-geometry, or existing record contamination. Preserve valid parts, ambiguous
-individual chairs and changed person occlusion as separate limitations. A trace
-must reproduce the exact original control before it explains a rejection. Do not
-fit another gate or reinterpret development labels as independent acceptance.
+The exact offline trace shows the background painting rejected by the first
+mapped obstacle despite its stored farther depth. Before computing a new
+candidate, freeze one bounded diagnostic: a valid positive stored range may
+extend a ray's mapped reach to that measured distance, never beyond it. Keep
+every bearing, height, range, appearance and frame-exclusivity gate otherwise
+unchanged. No substituted surface, deletion, record merge or production change.
+
+The diagnostic must reproduce the original control and all recorded map answers,
+check every candidate query for recorded-map invariance, connect at least one
+previously disconnected reviewed background-painting pair, retain all 13 existing
+reviewed useful links and introduce zero reviewed cross-subject links. Failure on
+any count rejects this candidate on this run. Passing is development evidence
+only: the older cabinet regression, wall/phantom controls and independent glass
+truth must be checked before any deployment claim. Subject labels include an
+explicit post-score correction separating two landscape paintings; preserve the
+original frozen judgments and their scores, and report both. Do not turn this
+correction into independent acceptance evidence.
 
 Only after that diagnosis identifies a specific decisive comparison, prepare a
 short hardware recording for the unoccluded background painting and measured
