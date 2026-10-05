@@ -59,6 +59,16 @@ about one wrong in eight:
 A higher bar alone (0.11, slivers ranked) gave 8 absent found and 10 present
 missed across both sets. Counting slivers out is what buys the rest.
 
+## On the rover
+
+Deployed at 0354494, after the rover had been off the network from about 20:28
+until a reboot at 21:31. Run on the rover against the live store (8,789 looks)
+with the old rule (`--floors 0.09 --keep-slivers`) and the new one, the bench gave
+the same counts as the replay: 23 absent found and 1 present missed, then 6 and 8,
+with the same phrases on each side. Through the daemon, `find_thing` now answers
+not found for "a purple elephant" and "a giraffe", and still finds the desk
+(2.7 m), the bed (2.8 m) and a chair (3.4 m).
+
 ## What it leaves open
 
 The bar holds because the count is capped: `Store.searchable` hands a search the
