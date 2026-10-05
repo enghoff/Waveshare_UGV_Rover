@@ -354,9 +354,14 @@ assets under `vendor/`:
 
 ```bash
 ssh orin 'sh ~/ugv/world_state/install_perception.sh'
-ssh orin 'sh ~/ugv/world_state/install_gpu_recovery.sh'
+ssh orin 'sudo -S -p "" sh ~/ugv/world_state/install_gpu_recovery.sh' < secrets/jetson-orin.key
 ssh orin '~/ugv/world_state/restart_perception.sh'
 ```
+
+`install_gpu_recovery.sh` refuses to run without root, and until 2026-10-05 this
+line said so too quietly: the Orin had never had it, so a boot without a GPU left
+the sidecar dying on every look and the voice model's `find_thing` failing with it.
+The log says `gpu_ctl.sh is not installed` on every restart when that is the case.
 
 The supervisor starts `run_perception.sh` from the `jetson` user's crontab. It
 loads models on the first request and attempts GPU recovery before each start.

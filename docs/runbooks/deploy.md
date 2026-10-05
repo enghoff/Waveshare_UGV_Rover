@@ -290,6 +290,7 @@ ssh orin 'sh ~/ugv/ros_nav/install.sh'
 ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav'
 ssh orin 'sudo -S -p "" sh ~/ugv/wifi_roam/install.sh' < secrets/jetson-orin.key
 ssh orin 'sudo -S -p "" sh ~/ugv/dongle_driver/install.sh' < secrets/jetson-orin.key
+ssh orin 'sudo -S -p "" sh ~/ugv/world_state/install_gpu_recovery.sh' < secrets/jetson-orin.key
 ```
 
 `install_opencv.sh` also proves that `LocalDetector` can load after unpacking the
