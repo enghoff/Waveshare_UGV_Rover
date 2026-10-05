@@ -11,10 +11,10 @@ positive result without activating a blanket gate. A
 [single-range diagnostic](../progress/2026-10-05-depth-cause.md) isolates the
 painting's own range as causal, with no other owner change. The
 [stationary recorder check](../progress/2026-10-05-call-recording.md) now passes.
-Next obtain measured foreground/background, transparent and
-narrow-object controls on the rover. Do not choose the farther surface or make
+Next trace the remaining fragmentation offline, then obtain the missing measured
+foreground/background and transparent-object controls. Do not choose the farther surface or make
 minority depth a mandatory identity rejection. Current glass evidence has no
-taped distance; the next decisive evidence requires the rover.
+taped distance; resolving that measurement gap requires the rover.
 
 A remaining drive should answer whether useful same-object views can be connected
 without letting a foreground object become evidence for its background. Use the
@@ -72,51 +72,34 @@ Only then choose an admission policy and freeze its criteria for a separate tria
 The exact recorder and measured controls precede the remaining policy trial. Neither a successful recording nor
 better pixel isolation alone authorises deploying the failed two-witness candidate.
 
-## Next short recording and permission
+## Next diagnosis and remaining hardware evidence
 
-The second recording after sensor recovery is available as
-`depth-drive-20261005-2`. Before any candidate computation, extend only the
-offline replay's map handling: where a pass used multiple archived grids, every
-candidate reach query must return exactly the same answer under every grid used
-in that pass. Abort the candidate on its first disagreement. This proves
-invariance to switching between those recorded contexts; it does not infer a
-wall-clock schedule or an unrecorded map. Keep strict single-map handling as the
-default. Record this conditional diagnostic separately from the earlier trial
-protocol, which refused any mid-pass map refresh.
+The [recovered drive](../progress/2026-10-05-recovered-depth-drive.md) now provides
+actual matching calls and independent reported viewpoints. The fixed four-range
+abstention preserves the 13 reviewed existing links but gains none; both front
+chairs connect consistently while paintings and armchairs remain fragmented.
+Keep the production resolver unchanged. The older cabinet regression still
+prevents blanket deployment, and the missing clear side painting and pure-table
+controls remain owed.
 
-Freeze photographic subject/mask judgments before reading candidate results.
-The second recording's 26 manual-look labels are analyst development judgments,
-not independent acceptance evidence; execution summaries were already seen.
-Measure lost useful subject links and changed cross-subject links under the
-same fixed range rule, preserving missing ranges and all observations. The
-earlier 98% retention criterion remains; passing a small labelled subset cannot
-override the older cabinet regression or supply missing glass distance truth.
+Start the next diagnosis offline. Use the frozen photographed subjects to trace
+where the unchanged resolver loses cross-view support: appearance thresholds,
+geometry, or existing record contamination. Preserve valid parts, ambiguous
+individual chairs and changed person occlusion as separate limitations. A trace
+must reproduce the exact original control before it explains a rejection. Do not
+fit another gate or reinterpret development labels as independent acceptance.
 
-The [first attempt](../progress/2026-10-05-evidence-drive-blocked.md) ended at
-its first route refusal. The rover travelled 0.298 m, then fresh localization
-failed; the planned independent viewpoints were not reached. All recorded
-resolver calls replay exactly, but no new range triggers the candidate rule.
-Do not count this as a policy trial or repeat the same route. Restore and
-confirm localization at the charging position before considering another
-drive, and prepare a fresh live route with its navigation evidence recorded.
-The saved post-stop costmaps do not reconstruct the controller's earlier ticks;
-a navigation fix requires a real reproduction before deployment.
+Only after that diagnosis identifies a specific decisive comparison, prepare a
+short hardware recording for the unoccluded background painting and measured
+transparent-object controls. Freeze the comparison and success criteria before
+requesting the rover. Further movement, including chassis turns, requires a new
+prompt and permission: the owner may reconnect the charger. Request availability
+only when the route, recording and checks are ready to run immediately. Record
+battery, raw rotation feedback and controller ticks, preserve the starting pose,
+and return for charging. The latest reported battery fell from 45% to 10% in
+about two minutes; idle preparation must not consume it.
 
-The owner is reconnecting the charger: movement, including chassis turning,
-requires a new prompt and approval. Ask only once the test route, recording and
-checks are ready to run immediately; idle preparation must not consume the battery.
-
-Once navigation is confirmed, start with the known chair/painting scene and the unchanged resolver. Record one
-parked look, an intermediate look and two side looks along the short route already
-driven on October 5 only if current navigation supports it, retaining raw depth on each fresh inspection. Recheck the
-live map, localization, battery and route before movement. Save the precise start
-pose for the return to charging; stop the trial on route refusal or uncertain
-localization rather than replacing it with an improvised longer drive.
-
-This first short recording supplies foreground/background and narrow-chair views.
-Score only coverage actually obtained; it does not fulfil unmeasured glass,
-pure-table or glare-armchair controls. Verify all recorded checkpoints, saved
-map answers and depth answers before any candidate replay. Freeze subject and
-mask judgments with assignments hidden, then report range-rule false abstentions,
-wrong attachments removed, useful links lost and remaining fragments. A missing
-qualifying error is an inconclusive trial, not permission to adjust the fixed rule.
+Separately, a guard against frozen rotation feedback remains unimplemented. Its
+criteria require reproducing the failed board stream and checking healthy moving
+and stationary recordings before changing or deploying control software. Recovery
+from one power cycle does not establish that the fault cannot recur.

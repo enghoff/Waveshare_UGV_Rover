@@ -1,0 +1,231 @@
+{
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed",
+    "R-WS-16": "settled"
+  },
+  "recording": "depth-drive-20261005-2",
+  "archive": "captures/2026-10-05-depth-drive-2",
+  "input_sha256": {
+    "before.db": "b8012b64c5693633b2c49607af544fc57f9d171d8f27729dac0b0fa65ea3dd13",
+    "after.db": "2a60429fea9f0ba35beb7bd227819005d9b916a866c84659a090a0a0991c6fab",
+    "events.jsonl": "ed861c0c62d40141a57d646844d4b26f33a264621434ea8102e2ee60b15f003b",
+    "manifest.json": "ef39e0d30070cf9906a91129a44df62d4887c4966785811f4d562e54c1383c4d"
+  },
+  "deployed_world_daemon_commit": "1fa507124b44f8f630dc452c774adb37ff3c7553",
+  "source_sha256": {
+    "call_recording.py": "beb8e127daa722d3243772c138a051a98a3e21186908daa26ea7ee9e8fc2b121",
+    "relens.py": "ec89f38d4e8410b2a00b7c0412abf12fb5f83be258851d6ed3cf2b6ef43698b7",
+    "inspector.py": "59e12354190553f97a435d8703c54bd14f372eeecccab08579a377cb83ae0924",
+    "test_hypothesis_check.py": "e71bc4b5dc7c789d415285ff12c116cece1520caf9c6dcffe620711f3bd2225b",
+    "oak.py": "d45136fcf196522fbe17be00e1dd82195f99df711d3531707473304830ef7f2d",
+    "outline.py": "006e7efa3319a9c5ccd67618cf211d6151af529cb943534324c3b53b072827f1",
+    "resolve.py": "a77605bef794351570069a7519c2f4c33809efcf18167b41fb2a69a6dcce3f0b",
+    "test_fakes.py": "f5e3b05c244157b888b88bfc94de061e225b54d191825b1f2b997e23d79c1164",
+    "merging.py": "3027ea97791246ed6b02cda64a091c2c1a2238bfd2d62ee9a860a8fdbc3d0de9",
+    "incremental.py": "20146555eede798d664b36357c985ef153f72b81bf6f59f1276323838aabcab3",
+    "merge_sheet.py": "cb568a36f758537248cfff4aa40985dc3c06e7ac57ebc8417645ad3b79c15d45",
+    "perception_server.py": "e9034a64cbaca00c66af141227b2abbb8d35ecb95e83d7ba3ec1b2c8ff880f99",
+    "collect_world.py": "6af0b53ae0a49b19d48e575aaf79c1a382682df092e509957bdde1b83419c249",
+    "bench_whole.py": "85f9f819e28b237b91d1b36f22c7510866006b4e2fb7b956b2bacdcdeeb1fe8b",
+    "report_incremental.py": "41cbe22a6f4d5f990168f6143ca5dba9458a23febfe8b770ec5068b86d24bbfc",
+    "negative_evidence.py": "7845976b97a8b2e16d23c292bd66e81f09d415780f0df784075c7fd07c3c2cf9",
+    "test_reanchor.py": "e5437c6315aafacc8a32f60ab4fee7e0300475ceb7b4cc72fcfb31b712c76615",
+    "test_reader_groups.py": "56454bd944bbd55524ccf4ccc3e2a0d0999eb92765ab3fab62039b9b1a9aeaf4",
+    "test_search.py": "2cc612a385d378dde9b36bbe01430ac8c559f077853aad21b12bfa629455ed79",
+    "bench_oak.py": "e1e4513098e129f23012a5f1c8719c8281560a4f434c80ffd039f65eedf9a2df",
+    "cached_geometry.py": "7ba0a4cf177638f08fdb516362a266e516cd14d9176092538601f4d14078fe17",
+    "test_relens.py": "e74c3e827d1901591a10992c7c7acdacf27a651c12e99abf726c5b9013d0fcda",
+    "appearance.py": "6020233780e96c2ac40163b76dcb021b35bfa82147e2f854dadea850f34b0016",
+    "hypothesis_check.py": "8b7197b1bf4838a9afa2a12cc15fa48a607a7f3c682da822d5fdbbbb7de9b897",
+    "score_incremental.py": "f34a12f649ec12d7c0da5c49f52b9de3ab13abc6967713080af43819f061de92",
+    "test_cluster.py": "ca95a3e16402a142671cf048d61869009f0c5515dd053a162dc728de7a8af246",
+    "test_merging.py": "7c8e64bf7d5d54b673a582b4e991812e3110aea1e640afa7890e134a19814923",
+    "rebuild.py": "76447b5bad884a8c6b0e79c9b5a01a9702f10f3aa75b7ad963beee6a1b8d9d5c",
+    "test_outline.py": "a9a23b49c0c833d5483be5155f9ed918a81f3fc92bc03fff61de2314ca6de8a5",
+    "test_rebuild.py": "5dbc78e216a948f2abe54912d94cc95971ec2fa732bd05cd90f1425860ad178c",
+    "test_approach.py": "a85d3ae3ee6c1e0be36d45292556802f9aa1b1c499018437f3ea714e0690b53b",
+    "cluster.py": "b7e4d2d66ed241637a62a78ac09fe6486ea125ba2d71741d16bb6bfabb58b4e5",
+    "bench_cluster.py": "4fe7ead777831d481246cda4d5ee175a05b94cfb1b85d09385390b289bd68235",
+    "view.py": "4e9095c94b4fa21e9b94ac04a79e2d69601c40c1c6dbaff29482ecd9da27b96f",
+    "bench_still.py": "f0a230e699996cbf11b819ad25f4f68101ed43d2be38be399130fa0457b7a698",
+    "bench_inspection.py": "ffc5b9c519bb7aeee093a907f09bc4440bc6b6dcf78a83a3564211743fa8cb9f",
+    "headingcheck.py": "f536db600af2d58265d164f444edac641adda2fe2cb519bf31e0ebf79997edc3",
+    "bench_identity.py": "5e27e09c97c249323ed5f08df52f1e15865f0314e8733d4a0f69074d617a47b7",
+    "test_identity.py": "3de53d7ba8c9d6e880f76049ab128161aebe94bc405c31dbe6e83836bf87dd43",
+    "bench_height.py": "9e7d296accff2fe0e821961abc489bc93d906541f2dabf93aacd4e210d918a43",
+    "perceive.py": "0f07d16507eaae41a05a80aa4e804b77bf378973d3567b1c447c9bce8cc888d1",
+    "store.py": "3319e036fb6d425c14516e4756a3872aba6ec75eb7f4cdae3c7d779780768d7a",
+    "schema.py": "205b65491752ece62b68af07107e99cd41c8e1fdcb83be91767e8c5f57a9b9cb",
+    "locate.py": "72cc821345df58dbde143083ee48e18a25ec75dbe940c25f16c5fe22d573568f",
+    "__init__.py": "f55ca30f1140aacf2e24b3df3f8f34f113360d41a6bc4db087b11f6de69f9104",
+    "test_harness.py": "482ad44baadfb8229953e0fc99e52daf08c4f6d144fac35ee33b38d174aa6cf2",
+    "test_call_recording.py": "cb17ae628190d34399b5cf37407ea125ff53ed46d9d905d2dc6d5d4b243899f0",
+    "perception_client.py": "2fe4e7c34aec77636678fd84b163016e3e0bd88a7c66da181a3095c67dcba267",
+    "approach.py": "3c98c46cb25e9abde05d040af7842bfe22c5b50b4e5d3399075326d35e784b61",
+    "test_inspection_look.py": "ed2256f4ade30ea7ce008772bef08e4fc2b56cf304ea1996b779cfd6e104f8e4",
+    "test_locate.py": "d3a36c09d0cbe22161a8ad6b26bb19729757584d4028c820ab329e915c9eb5cd",
+    "bench_incremental.py": "537c38c43448e3ec6d141eb37b286d406758274d15e1daa5552ea6ecd85201f1",
+    "selftest.py": "4baf4b5deba4daa8f34faec3eb923cd0d5ca562c1bfcdd23eb55ec3eba994cac",
+    "search.py": "d25f1d861970e7d2d66d6c272bed18b761f089244db24559c36185cf8cdf7265",
+    "bench_approach.py": "8866fb0c70651e700274d2b3a4f439961fce19b7b9e949237e5d8706f2a90a9a",
+    "reanchor.py": "16af755fb47f1d00c4f66142e5de634ca2e029a2e7ffeb06424e8d38684004d7",
+    "bench_bearing.py": "752763b5e9c0424e6646c2737a397f3415d0c9681820e82219da3d25ec05879a",
+    "reader_groups.py": "33b7ba9c31dd675ce99f28161775ac3a2af517b4358c89a8eff9fc5554437383",
+    "test_incremental.py": "b974a5589f28a11350e33e0c7889877c6824353626c369107ad15d5e3fc57f52",
+    "bench_shutter.py": "c393ff9e8d052e0eb8872faeef4510d3db4377a61f2112902e6a089183d7e72d",
+    "test_resolve.py": "a88eb7dc66ba78eb7b4d871414272fa0330967ef07c02165b3353e4ab404a6b2",
+    "test_turning_ranges.py": "1297d9b4e7db0aec57592d1c35624b646f32a0872b7e8a50f5e208cc1e5352a0",
+    "test_headingcheck.py": "6fce9c2901837a91d5142f35259088fbf774237698b187ccc9975cae64fe2329",
+    "test_inspect.py": "daeaa82023eb5b2cd06e7bd779d43ba9dce927547006f0be869efd352404930b",
+    "test_store.py": "33c8168a0ab17e28dbdd06cc8d587ac451f9f476cea35c96afd7125e4c1ab7fa",
+    "engines.py": "e011bc6a3bdfb9159347f4cf88b9572466844a29a38d540ee9b69d9baee3a5d3",
+    "replay.py": "97ee23ff46dfe4bdfa1e4bab10e3da6eba7f86f652e0b62dd89384a0f62c183c",
+    "depth_client.py": "adf8436196521c5e40048d5c37449e4f0458a5947a1b2750bf54c7b7c4560847",
+    "test_perceive.py": "bc42ffdf185a85298eb9bf900c26b0156d77ba32068b14d04bc6484b81b2a908",
+    "test_oak.py": "1f2c4baad9ab4355cf80c86782471b5b312b050c61d1778b68d56ff5fedfa3f5",
+    "inspection_ranges.py": "73df266c3ebfbffbec8af2da5f938d82c4d634dd425da0fdb87a12e682eef82a",
+    "bench_perceive.py": "fcc9d972ae566ddb99f9c52a6973ad3904be041fed42264fae7632d063ceba67",
+    "export_regions.py": "5889eb1400ae911a0b3a910b41ef61a0ff34e8777d7b7f7f48956effa860a04b"
+  },
+  "criterion_commit": "3bb4b8c",
+  "independent_acceptance": false,
+  "motion": {
+    "outbound_arrivals": 3,
+    "return_arrivals": 3,
+    "turn_arrivals": 2,
+    "final_stopped": true,
+    "final_pwm": [
+      0,
+      0
+    ],
+    "saved_start": {
+      "x_m": -17.377329094530953,
+      "y_m": -15.811446330355395,
+      "heading_deg": -129.09904723932183
+    },
+    "final_map_pose": {
+      "x_m": -17.394,
+      "y_m": -15.696,
+      "heading_deg": -161.1
+    },
+    "map_return_error_m": 0.116,
+    "raw_heading_difference_deg": 32,
+    "navigation_record_odometry_displacement_m": 0.42,
+    "battery_before_percent": 45,
+    "battery_before_v": 11.42,
+    "battery_before_return_percent": 10,
+    "battery_before_return_v": 10.95,
+    "limits": "Navigation estimates, not tape-measured docking. Returned immediately when low battery observed; no further motion."
+  },
+  "imu_recovery": {
+    "after_power_cycle_messages": 148,
+    "full_messages": 6,
+    "distinct_full_imu_tuples": 6,
+    "gyro_z_at_rest": 8,
+    "gyro_z_during_operator_turn": 1292,
+    "integral_start": 336,
+    "integral_end": 1390,
+    "operator_turns_deg": [
+      15,
+      90
+    ],
+    "guard_deployed": false,
+    "limits": "Operator movement occurred during the read-only recovery check; not a purely stationary recording."
+  },
+  "control": {
+    "resolver_passes": 21,
+    "checkpoint_checks": 81,
+    "reach_calls": 21552,
+    "all_live_checkpoints_exact": true,
+    "all_archived_map_answers_exact": true
+  },
+  "depth": {
+    "observations": 142,
+    "frames": 18,
+    "bearing_observations": 142,
+    "raw_depth_frames": 10,
+    "ranges": 48,
+    "available_sampler_answers": 86,
+    "all_48_ranges_exact": true,
+    "all_available_sampler_answers_exact": true,
+    "all_sampler_answers_exact": false,
+    "missing_projection_depth_frames": 6,
+    "missing_projection_depth_unranged_observations": 40,
+    "frames_without_projection": 2,
+    "unranged_observations_without_projection": 16,
+    "flagged_ids": [
+      68944,
+      68970,
+      68992,
+      68998
+    ]
+  },
+  "candidate": {
+    "map_handling": "every candidate query invariant under all recorded pass grids",
+    "actual_reach_calls": 21525,
+    "midpass_map_changes": {
+      "pass": 5368,
+      "changed_cells": 1,
+      "occupied_threshold_crossed": true
+    },
+    "owner_changes": [
+      {
+        "id": 68998,
+        "before": null,
+        "after": "object:245"
+      },
+      {
+        "id": 68970,
+        "before": null,
+        "after": "object:349"
+      },
+      {
+        "id": 68587,
+        "before": "object:464",
+        "after": null
+      }
+    ],
+    "placement_changes": [
+      "object:245",
+      "object:313",
+      "object:349",
+      "object:464"
+    ],
+    "entity_ids_changed": [],
+    "measurement_bytes_preserved_except_four_ranges": true,
+    "timestamp_limit": "Resolver-generated creation/update times differ with offline wall clock. Placement comparison excludes times; observation notes and assignments may change as outputs."
+  },
+  "development_labels": {
+    "labels": 26,
+    "subjects": 8,
+    "same_pairs": 36,
+    "cross_pairs": 289,
+    "control_same_links": 13,
+    "candidate_same_links": 13,
+    "lost_links": 0,
+    "gained_links": 0,
+    "control_cross_links": 0,
+    "candidate_cross_links": 0,
+    "qualifying_reported_pose_pairs": 18,
+    "qualifying_reported_pose_links": 9,
+    "independent_acceptance": false
+  },
+  "coverage_limits": [
+    "No unoccluded side painting detection behind chairs; no qualifying painting-behind-chairs pair.",
+    "No pair of pure-table detections or taped glass distance.",
+    "Armchair correspondence is analyst judgment; green chair has changing person occlusion, purple chair first view cropped.",
+    "Unlabelled older observation 68587 loses assignment; direction of correctness unreviewed.",
+    "New assignments 68970 and 68998 have unresolved individual correspondence; no claimed correct repairs."
+  ],
+  "artifact_sha256": {
+    "physical-subjects-frozen.json": "1a23c2aabab33720ff4b8c48409d240d38426a29000dfc14fdaf301b8a538121",
+    "depth-reproduced.json": "ae359434057e0a7bac131df006262a808742f9e35db7c3a0161408a8688a673f",
+    "association-development-score.json": "994cf0728ce5dac6d04a9921e113022b5b9a462edcad5a135e4bb703ce03ac78",
+    "state-differences.json": "d3b330c0d5cec5f2ad4c756992901d306c79f051a33932ec5be066a04978a55b",
+    "independent-pose-pairs.json": "e890e24e8b3357f4533ff7bc5766c8404a6857be54574780a5cdafd91bc1ad4c",
+    "depth-drive-20261005-2-support\\navigation.json": "bd09f4a0ac30eaa267465e9ee30d62e36920a430c264280c0b6070bb1abd762b",
+    "depth-drive-20261005-2-support\\board.jsonl": "01cac59fdb4a9dbb0dde5cef819f7dd3780fca8478dcc2e66b14a5f55e3c9aae"
+  }
+}

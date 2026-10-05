@@ -530,6 +530,14 @@ Counterfactuals keep all observations. A map changing during one pass blocks the
 frozen-map counterfactual. Missing, incomplete or failed recordings are rejected.
 Saved grid answers are verified even without a counterfactual.
 
+For a separately predeclared conditional diagnostic, `--map-invariant` checks
+every candidate query against every archived grid used in its recorded pass and
+rejects the candidate at the first differing answer. This does not reconstruct
+refresh timing or prove an unrecorded map; strict single-grid handling remains
+the default. Archived grid bytes must match their recorded SHA-256 filenames.
+The [recovered drive](../../docs/progress/2026-10-05-recovered-depth-drive.md)
+records the first such diagnostic and its unresolved subject coverage.
+
 `diagnose_recorded_depth.py --recording <completed-recording> --frames <frame-directory>
 --output <new-json-file>` reproduces retained sampler answers using the actual
 recorded projection arguments. It reports the fixed minority-band flag without
