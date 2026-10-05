@@ -548,3 +548,32 @@ sampler proof false. It does not fabricate ranges or projection evidence.
 Reproduced depth is not independent distance truth. The
 [stationary hardware check](../../docs/progress/2026-10-05-call-recording.md)
 documents the first completed real recording and its limits.
+
+`trace_recorded_subjects.py` captures pre-look placement and exemplar checks for
+frozen subjects while reproducing the entire actual control. It makes no extra
+map queries. `score_recorded_subjects.py` reports pair retention, gains and
+cross-subject links; labels remain development judgments, including explicit
+post-score corrections where necessary.
+
+`replay_measured_visibility.py` tests extending mapped reach to stored positive
+finite depth, without changing measurement bytes. `--known-only` limits this to
+existing-record matching; discovery and placement refitting keep original bounds.
+All recorded candidate queries must be map-invariant. `--older-source` instead
+runs the three old original-range development controls, requires exact previous
+memberships/placements, and reports the same frozen 98% retention and no-new-cross
+criteria. It does not claim recorded historical scheduling or independent labels.
+The [subject diagnosis](../../docs/progress/2026-10-05-subject-fragmentation.md)
+reports both attempts, the mixed historical cross-target pair and non-deployment.
+
+```powershell
+python experiments/entity_association/trace_recorded_subjects.py --directory captures/2026-10-05-depth-drive-2/depth-drive-20261005-2 --labels captures/2026-10-05-depth-drive-2/physical-subjects-corrected.json --output .cache/new-subject-trace
+python experiments/entity_association/replay_measured_visibility.py --directory captures/2026-10-05-depth-drive-2/depth-drive-20261005-2 --output .cache/new-known-visibility --known-only
+python experiments/entity_association/score_recorded_subjects.py --result .cache/new-known-visibility/result.json --labels captures/2026-10-05-depth-drive-2/physical-subjects-corrected.json --output .cache/new-known-visibility-score.json
+python experiments/entity_association/replay_measured_visibility.py --older-source .cache/depth-resolver-first --output .cache/new-known-visibility-older --known-only
+```
+
+The offline replay retains map-invariance failures outside production's caught
+map callback and rejects the entire pass after resolution. Without that outer
+check a disagreement can be swallowed by the rover's intentional map-failure
+fallback. The stronger guard was verified by injecting a disagreement into the
+real stationary recording and repeating the moving range diagnostic exactly.

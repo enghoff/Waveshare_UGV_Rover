@@ -21,7 +21,7 @@ def invariant_answer(contexts, arguments, sequence):
     return answers[0]
 
 
-def run(directory, output, withheld=(), map_invariant=False):
+def run(directory, output, withheld=(), map_invariant=False, candidate_ray_transform=None):
     if output.exists():
         raise ValueError('choose a new output directory')
     manifest = json.loads((directory/'manifest.json').read_text())
@@ -47,6 +47,7 @@ def run(directory, output, withheld=(), map_invariant=False):
                 grid_functions[key]=None
         return grid_functions[key]
     def arm(name, drop):
+        counterfactual = name != 'control'
         with tempfile.TemporaryDirectory(prefix='ugv-call-replay-') as tmp:
             store = WorldStore(tmp)
             try:
@@ -70,7 +71,7 @@ def run(directory, output, withheld=(), map_invariant=False):
                             store.db.execute('INSERT INTO observations ('+','.join(columns)+') VALUES ('+
                                 ','.join('?' for _ in columns)+')',tuple(row.get(k) for k in columns))
                         inserted=maximum
-                    if not drop and 'checkpoint' in event:
+                    if not counterfactual and 'checkpoint' in event:
                         assert checkpoint(store)==event['checkpoint'], ('input checkpoint',event['sequence'],event['kind'])
                         checks+=1
                     if event['kind']=='resolve_begin':
@@ -78,27 +79,44 @@ def run(directory, output, withheld=(), map_invariant=False):
                         while events[last]['kind']=='reach':
                             queries.append(events[last]);last+=1
                         assert events[last]['kind']=='resolve_end'
-                        count=[0]
+                        count=[0];reach_failures=[]
                         maps={q['map_sha256'] for q in queries}
                         grid=None;contexts=[]
-                        if drop:
+                        if counterfactual:
                             if map_invariant:
                                 contexts=[grid_function(key) for key in maps] or [None]
                             else:
                                 assert len(maps)<=1, 'map changed during pass; no frozen counterfactual'
                                 grid=grid_function(next(iter(maps),None))
                         def reach(x,y,bearing):
-                            if drop:
+                            if counterfactual:
                                 count[0]+=1
                                 if map_invariant:
-                                    return invariant_answer(contexts,[x,y,bearing],event['sequence'])
+                                    try:
+                                        return invariant_answer(contexts,[x,y,bearing],event['sequence'])
+                                    except Exception as error:
+                                        # ray_of intentionally catches map failures. Keep the
+                                        # diagnostic failure outside that production boundary.
+                                        reach_failures.append(error)
+                                        raise
                                 return grid(x,y,bearing) if grid else None
                             assert count[0]<len(queries), 'unrecorded reach query'
                             q=queries[count[0]];count[0]+=1
                             assert all(abs(float(a)-float(b))<1e-8 for a,b in zip([x,y,bearing],q['arguments'])), ('reach arguments',q['sequence'])
                             return q['result']
-                        actual=resolve.resolve(store,reach=reach if queries else None)
-                        if not drop:
+                        original_ray = resolve.ray_of
+                        if counterfactual and candidate_ray_transform is not None:
+                            def transformed_ray(observation, reach=None):
+                                ray = original_ray(observation, reach)
+                                return candidate_ray_transform(ray) if ray is not None else None
+                            resolve.ray_of = transformed_ray
+                        try:
+                            actual=resolve.resolve(store,reach=reach if queries else None)
+                        finally:
+                            resolve.ray_of = original_ray
+                        if reach_failures:
+                            raise reach_failures[0]
+                        if not counterfactual:
                             assert count[0]==len(queries), 'unused reach query'
                             assert actual==events[last]['result'], ('resolver outcome',events[last]['sequence'])
                             assert checkpoint(store)==events[last]['checkpoint'], ('output checkpoint',events[last]['sequence'])
@@ -129,8 +147,9 @@ def run(directory, output, withheld=(), map_invariant=False):
         map_checks+=1
     result['archived_map_reach_checks']=map_checks
     result['all_archived_map_answers_exact']=True
-    if withheld:
-        candidate=arm('abstain',set(withheld));result['arms']['abstain']=candidate
+    if withheld or candidate_ray_transform is not None:
+        arm_name='abstain' if candidate_ray_transform is None else 'ray_candidate'
+        candidate=arm(arm_name,set(withheld));result['arms'][arm_name]=candidate
         result['candidate_map_handling']=('every candidate query invariant under all recorded pass grids'
                                          if map_invariant else 'single recorded grid per pass')
         result['withheld_ids']=list(withheld)

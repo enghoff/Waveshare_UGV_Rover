@@ -1,126 +1,76 @@
-# Record the views needed to decide how evidence should enter an entity
+# Resolve visibility admission with a clear and occluded painting recording
 
-R-WS-13 remains open; R-WS-17 and R-WS-18 remain proposed. This is a controlled
-development recording, not an acceptance census. Keep the proposed 5% contamination
-target; independently labelled acceptance remains separate work.
+R-WS-13 remains open; R-WS-17 and R-WS-18 remain proposed. Keep the proposed 5%
+contamination target. Development evidence does not settle acceptance.
 
-The [completed depth resolver study](../progress/2026-10-05-depth-resolver.md)
-corrects one painting attachment in an exact final-state reproduction, while an
-older full-drive sensitivity loses genuine cabinet connections. Preserve that
-positive result without activating a blanket gate. A
-[single-range diagnostic](../progress/2026-10-05-depth-cause.md) isolates the
-painting's own range as causal, with no other owner change. The
-[stationary recorder check](../progress/2026-10-05-call-recording.md) now passes.
-Next trace the remaining fragmentation offline, then obtain the missing measured
-foreground/background and transparent-object controls. Do not choose the farther surface or make
-minority depth a mandatory identity rejection. Current glass evidence has no
-taped distance; resolving that measurement gap requires the rover.
+The [completed subject diagnosis](../progress/2026-10-05-subject-fragmentation.md)
+finds a real background-painting visibility rejection. Broad measured visibility
+recovers a connection but loses reviewed floor-container connections. Limiting it
+to existing-record matching removes that regression and retains 99.2% of the older
+October 1 proxy links, but a new scored cross-target connection involves a mixed
+painting/toolbox/chair crop. Preserve both failed/provisional outcomes. Do not
+activate a blanket range gate, extend production visibility, merge old records or
+relax the fixed criteria on the strength of corrected analyst labels.
 
-A remaining drive should answer whether useful same-object views can be connected
-without letting a foreground object become evidence for its background. Use the
-unchanged resolver. Preserve the map and before/after snapshots, exact inspection
-and background-resolver call order, full frames, raw depth where available, selected
-masks, plain/masked vectors and poses. Photograph-only recordings cannot supply
-the occlusion changes and independent bearings missing from the current evidence.
+## Next short recording
 
-Before a resolver-policy trial, use the verified optional recorder for actual
-inspection and background-resolver calls. Its operation is described in the
-[component README](../../world_state/README.md#optional-inspection-and-resolver-recording).
-Keep normal matching rules unchanged during the evidence drive.
+Use the unchanged production resolver and verified optional call recorder. Obtain
+one distinguishable background painting from two clear positions with at least
+0.4 m baseline and 12 degrees measured bearing parallax, plus an intermediate
+occluded view. Keep the foreground chair/toolbox as a separately recorded region.
+Retain all failed detections, valid parts, mixed masks and missing depth. The
+second short drive lacked an unoccluded side painting region; another photograph
+of the same occlusion does not fulfil that gap.
 
-## Targets and coverage
+The prepared route follows the reached waypoints (-17.462, -15.479),
+(-18.239, -15.030), (-18.550, -14.571), then proposes a short side extension to
+(-19.050, -14.850). The archived grid gives that extension at least 0.743 m
+clearance, against the reported 0.20 m body clearance. This is an offline
+precheck only. Recheck the live map, localization and route before motion;
+any refusal or uncertain localization ends the trial. Do not reset or refit
+maps to make the route pass. If the extension is blocked, return along the
+reached route rather than seeking an improvised alternative.
 
-Complete the missing pure-table and glare-armchair coverage, and obtain genuinely
-clear side views. The first recording had no two pure-table regions, no armchair,
-and no exact matching schedule; its visual diagnosis cannot replace these.
+Save the exact current starting pose, raw board feedback and controller tick
+recording before movement. Capture fresh raw depth and actual matching calls
+at the first waypoint, intermediate position and side position, with camera
+framing directed at the painting. Do not spend the battery collecting unrelated
+armchair views. Start return by 60 seconds after first movement or when reported
+battery reaches 35%, whichever comes first; inspect only after prechecks and
+recording are ready. Start only with at least 60% reported charge and fresh normal
+rotation feedback. These are operational limits, not calibrated battery capacity.
+The last drive's reported charge fell from 45% to 10% in about two minutes.
 
-Choose a distinguishable painting partly hidden by a chair, an armchair affected
-by window glare, the dining table's full and part views, and the rug. For each:
+Motion, including chassis turns, requires a fresh prompt and owner permission;
+the charger may be attached. Request the rover only when these checks, recording
+and return sequence are prepared for immediate use. End at the saved charging
+start, STOP, verify motor output, then copy the complete recording. Do not claim
+tape-measured docking precision from map estimates.
 
-- obtain at least two clear views from positions separated by the existing
-  0.4 m baseline minimum and at least 12 degrees bearing parallax, checking the
-  actual reported poses and images; baseline distance alone is insufficient;
-- obtain an intermediate view connecting the clear view to a degraded, cropped
-  or occluded view;
-- include the foreground chair and background painting separately in the full
-  frames, and a side view where their selected regions no longer overlap;
-- retain every failed detection, ambiguous mask and missing measurement. Do not
-  discard a view because the model files it incorrectly.
+## Freeze and judge the result
 
-Movement uses the rover's existing live navigation checks and a currently clear
-route. An uncertain route ends the recording rather than supplying invented pose
-or ground-truth evidence. No reset, merge or repair should change the model during
-this recording. Capture actual resolver calls so a replay does not depend on an
-inferred background schedule again.
+Review the physical subject and selected pixels with assignments and candidate
+results hidden. Distinguish pure object, valid part, mixed, non-object and unresolved
+individual identity. Preserve explicit corrections alongside original labels.
+A mixed historical crop cannot become independent acceptance truth by analyst
+relabeling after scoring.
 
-## Freeze judgments before measuring
+Reproduce every actual control checkpoint, ordered map query and retained depth
+answer before any candidate replay. Use the matching-only measured-visibility
+candidate frozen in a61f1c4: extend mapped reach only to valid stored depth during
+existing-record matching, with original discovery/refitting and all other gates.
+Reject any candidate query with different answers across the recorded pass grids,
+including failures caught by the production map callback.
 
-Review the physical subject and selected pixels with current entity assignments,
-candidate results and confidence flags hidden. Distinguish pure object, valid part,
-mixed region, non-object and unresolved identity. Keep a separately reviewed mapping
-between viewpoints; repeated sightings of identical chairs are not individual
-identity truth. Analyst labels may support diagnosis but are not independent
-acceptance evidence.
+Retain the 98% existing useful-link minimum and zero new reviewed clean cross-object
+connections. Require a genuine clear/occluded painting connection gained. Report
+all unreviewed changes, failed coverage and missing measurements; a mixed crop
+needs separate treatment, not a forced single-object label. Do not count a small
+successful subset as deployment acceptance or claim complete old-record repair.
 
-Before fitting another promotion rule, ask whether clear views have reliable
-cross-view support, whether intermediate views bridge genuine appearance changes,
-and whether their masks exclude foreground objects. If the masks are already mixed
-in clear views, prioritise region separation and re-encoding those pixels. If clean
-masks still fail across verified views, investigate representation/viewpoint support.
-Only then choose an admission policy and freeze its criteria for a separate trial.
-
-The exact recorder and measured controls precede the remaining policy trial. Neither a successful recording nor
-better pixel isolation alone authorises deploying the failed two-witness candidate.
-
-## Next diagnosis and remaining hardware evidence
-
-The [recovered drive](../progress/2026-10-05-recovered-depth-drive.md) now provides
-actual matching calls and independent reported viewpoints. The fixed four-range
-abstention preserves the 13 reviewed existing links but gains none; both front
-chairs connect consistently while paintings and armchairs remain fragmented.
-Keep the production resolver unchanged. The older cabinet regression still
-prevents blanket deployment, and the missing clear side painting and pure-table
-controls remain owed.
-
-The exact offline trace shows the background painting rejected by the first
-mapped obstacle despite its stored farther depth. Before computing a new
-candidate, freeze one bounded diagnostic: a valid positive stored range may
-extend a ray's mapped reach to that measured distance, never beyond it. Keep
-every bearing, height, range, appearance and frame-exclusivity gate otherwise
-unchanged. No substituted surface, deletion, record merge or production change.
-
-The diagnostic must reproduce the original control and all recorded map answers,
-check every candidate query for recorded-map invariance, connect at least one
-previously disconnected reviewed background-painting pair, retain all 13 existing
-reviewed useful links and introduce zero reviewed cross-subject links. Failure on
-any count rejects this candidate on this run. Passing is development evidence
-only: the older cabinet regression, wall/phantom controls and independent glass
-truth must be checked before any deployment claim. Subject labels include an
-explicit post-score correction separating two landscape paintings; preserve the
-original frozen judgments and their scores, and report both. Do not turn this
-correction into independent acceptance evidence.
-
-The first measured-visibility diagnostic gains the fresh painting connection but
-fails the older October 1 retention check (47 old proxy links lost). Two reviewed
-lost views are of the same pink floor container. Before computing a second arm,
-restrict the same measured visibility extension to matching an existing entity;
-discovery and placement refitting keep the original map bounds. This separates
-the admission fault from changes to new-entity founding and placement. Keep the
-same fresh criteria and the older 98% retention/no-new-cross-target criteria,
-without fitting a distance or height cutoff. A failure still rejects deployment;
-a pass remains a development result requiring independently measured controls.
-
-Only after that diagnosis identifies a specific decisive comparison, prepare a
-short hardware recording for the unoccluded background painting and measured
-transparent-object controls. Freeze the comparison and success criteria before
-requesting the rover. Further movement, including chassis turns, requires a new
-prompt and permission: the owner may reconnect the charger. Request availability
-only when the route, recording and checks are ready to run immediately. Record
-battery, raw rotation feedback and controller ticks, preserve the starting pose,
-and return for charging. The latest reported battery fell from 45% to 10% in
-about two minutes; idle preparation must not consume it.
-
-Separately, a guard against frozen rotation feedback remains unimplemented. Its
-criteria require reproducing the failed board stream and checking healthy moving
-and stationary recordings before changing or deploying control software. Recovery
-from one power cycle does not establish that the fault cannot recur.
+Pure-table/glass views and independently measured transparent-object distance remain
+separate owed controls. The partial/whole armchair representation issue and duplicate
+historical placements need separate work. A guard against frozen rotation feedback
+also remains unimplemented: reproduce failed feedback and healthy moving/stationary
+recordings before proposing control changes. Recovery after one power cycle does
+not establish that the sensor fault cannot recur.

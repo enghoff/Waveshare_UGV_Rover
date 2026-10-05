@@ -1,0 +1,258 @@
+{
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed",
+    "R-WS-16": "settled"
+  },
+  "independent_acceptance": false,
+  "recording": "depth-drive-20261005-2",
+  "correction": "Post-score analyst correction: the same frame 20261005-174049-ced888 shows paintings 68950 and 68951 on opposite sides of snowy forest 68945. Window-side landscape 68918/69018 is distinct from dining-side landscape 68930/68951/68979/69001. Original frozen artifact retained unchanged. Not independent acceptance.",
+  "corrected_subject_count": 9,
+  "corrected_label_count": 26,
+  "corrected_same_pairs": 28,
+  "corrected_cross_pairs": 297,
+  "corrected_qualifying_reported_pose_pairs": 14,
+  "map_guard": {
+    "defect": "Production ray_of catches reach errors, including diagnostic assertion failures.",
+    "fix": "Retain failure outside the caught callback and reject the pass after resolve returns.",
+    "injected_failure_rejected": true,
+    "repeat_control_and_range_candidate_final_checkpoints_unchanged": true
+  },
+  "trace": {
+    "control_exact": true,
+    "passes": 21,
+    "checkpoints": 81,
+    "reach_calls": 21552,
+    "target_traces": 102,
+    "scope": "Pre-look snapshots of relevant old owners; actual map-bounded rays. No extra reach queries.",
+    "painting_blockers": {
+      "68928": [
+        "beyond mapped reach",
+        "plain-minus-masked score exceeds 0.20 at first look"
+      ],
+      "68978": [
+        "beyond mapped reach"
+      ]
+    },
+    "dining_landscape": {
+      "ids": [
+        68930,
+        68951,
+        68979,
+        69001
+      ],
+      "owners": [
+        "object:400",
+        "object:422",
+        "object:341",
+        "object:370"
+      ],
+      "all_pair_plain_min": 0.782,
+      "mechanism": "Existing placements along similar bearings; geometry and whole-frame assignment select different old records. No single appearance threshold rejection explains the four owners."
+    },
+    "purple_armchair": {
+      "first_view_partial": true,
+      "first_vs_object317_appearance": 0.494732042,
+      "first_vs_object359_appearance": 0.564243061,
+      "second_vs_object317_appearance": 0.706954075,
+      "second_vs_object359_appearance": 0.603181932,
+      "mechanism": "First partial view fails appearance for object317; later whole view prefers object317 among geometrically allowed records. Same-subject pair plain0.603 masked0.471, no valid pair fix."
+    }
+  },
+  "candidates": {
+    "broad": {
+      "criterion_commit": "20310bc",
+      "fresh_same_links": 14,
+      "fresh_lost": [],
+      "fresh_gained": [
+        [
+          68948,
+          68978
+        ]
+      ],
+      "fresh_cross_links": [],
+      "fresh_pass": true,
+      "older": {
+        "2026-10-01": {
+          "control_exact": true,
+          "control_same_links": 643,
+          "candidate_same_links": 646,
+          "same_pair_retention": 0.926905132192846,
+          "lost_same_pairs": 47,
+          "new_same_pairs": 50,
+          "new_cross_target_pairs": 0,
+          "assigned_retention_pass": true,
+          "identity_preservation_pass": false,
+          "median_placement_improvement_m": 0.014831728787448206,
+          "target_error_delta_m": {
+            "T1": -0.004581465649987848,
+            "T2": 0.0,
+            "T3": 0.007864183310334838,
+            "T4": -0.09105283933264277,
+            "T6": 0.0
+          },
+          "lost_target_placements": 0,
+          "placement_benefit_pass": false
+        },
+        "2026-10-02 first": {
+          "control_exact": true,
+          "control_same_links": 31,
+          "candidate_same_links": 31,
+          "same_pair_retention": 1.0,
+          "lost_same_pairs": 0,
+          "new_same_pairs": 0,
+          "new_cross_target_pairs": 0,
+          "assigned_retention_pass": true,
+          "identity_preservation_pass": true,
+          "median_placement_improvement_m": 0.0,
+          "target_error_delta_m": {
+            "T1": 0.0,
+            "T2": 0.0,
+            "T6": 0.0
+          },
+          "lost_target_placements": 0,
+          "placement_benefit_pass": false
+        },
+        "2026-10-02 redo": {
+          "control_exact": true,
+          "control_same_links": 51,
+          "candidate_same_links": 51,
+          "same_pair_retention": 1.0,
+          "lost_same_pairs": 0,
+          "new_same_pairs": 0,
+          "new_cross_target_pairs": 0,
+          "assigned_retention_pass": true,
+          "identity_preservation_pass": true,
+          "median_placement_improvement_m": 0.0,
+          "target_error_delta_m": {
+            "T1": 0.0,
+            "T2": 0.0,
+            "T3": 0.0,
+            "T4": 0.0,
+            "T6": 0.0
+          },
+          "lost_target_placements": 0,
+          "placement_benefit_pass": false
+        }
+      },
+      "deployment_supported": false,
+      "older_limits": [
+        "One pass per inspection, not recorded historical call order.",
+        "Historical target mappings are proxies, not independently reviewed region truth.",
+        "Original stored ranges retained; this does not validate distance truth."
+      ]
+    },
+    "matching_only": {
+      "criterion_commit": "a61f1c4",
+      "fresh_same_links": 14,
+      "fresh_lost": [],
+      "fresh_gained": [
+        [
+          68948,
+          68978
+        ]
+      ],
+      "fresh_cross_links": [],
+      "fresh_pass": true,
+      "older": {
+        "2026-10-01": {
+          "control_exact": true,
+          "control_same_links": 643,
+          "candidate_same_links": 679,
+          "same_pair_retention": 0.9922239502332815,
+          "lost_same_pairs": 5,
+          "new_same_pairs": 41,
+          "new_cross_target_pairs": 1,
+          "assigned_retention_pass": true,
+          "identity_preservation_pass": false,
+          "median_placement_improvement_m": 0.0,
+          "target_error_delta_m": {
+            "T1": 0.0,
+            "T2": 0.0,
+            "T3": 0.006657099640410891,
+            "T4": 0.0,
+            "T6": 0.0
+          },
+          "lost_target_placements": 0,
+          "placement_benefit_pass": false
+        },
+        "2026-10-02 first": {
+          "control_exact": true,
+          "control_same_links": 31,
+          "candidate_same_links": 31,
+          "same_pair_retention": 1.0,
+          "lost_same_pairs": 0,
+          "new_same_pairs": 0,
+          "new_cross_target_pairs": 0,
+          "assigned_retention_pass": true,
+          "identity_preservation_pass": true,
+          "median_placement_improvement_m": 0.0,
+          "target_error_delta_m": {
+            "T1": 0.0,
+            "T2": 0.0,
+            "T6": 0.0
+          },
+          "lost_target_placements": 0,
+          "placement_benefit_pass": false
+        },
+        "2026-10-02 redo": {
+          "control_exact": true,
+          "control_same_links": 51,
+          "candidate_same_links": 51,
+          "same_pair_retention": 1.0,
+          "lost_same_pairs": 0,
+          "new_same_pairs": 0,
+          "new_cross_target_pairs": 0,
+          "assigned_retention_pass": true,
+          "identity_preservation_pass": true,
+          "median_placement_improvement_m": 0.0,
+          "target_error_delta_m": {
+            "T1": 0.0,
+            "T2": 0.0,
+            "T3": 0.0,
+            "T4": 0.0,
+            "T6": 0.0
+          },
+          "lost_target_placements": 0,
+          "placement_benefit_pass": false
+        }
+      },
+      "deployment_supported": false,
+      "older_limits": [
+        "One pass per inspection, not recorded historical call order.",
+        "Historical target mappings are proxies, not independently reviewed region truth.",
+        "Original stored ranges retained; this does not validate distance truth."
+      ]
+    }
+  },
+  "post_score_older_review": {
+    "broad_lost_pair": [
+      48360,
+      48604
+    ],
+    "physical_subject": "same pink floor container, viewed in full archived photos and queried boxes",
+    "narrow_new_cross_pair": [
+      48456,
+      48769
+    ],
+    "interpretation": "48456 selects background painting; 48769 broad box contains that painting, red toolbox and chairs. Historical target labels differ; mixed input prevents clean individual identity truth. Preserve scored failure, do not turn review into acceptance pass."
+  },
+  "blocker": "No unoccluded side painting region with independent support in this recording; mixed historical region has no trusted pure-subject ground truth. Need a deliberately recorded clear/occluded control to justify visibility admission. No production change or rover calls during this offline work.",
+  "artifact_sha256": {
+    "captures\\2026-10-05-depth-drive-2\\physical-subjects-frozen.json": "1a23c2aabab33720ff4b8c48409d240d38426a29000dfc14fdaf301b8a538121",
+    "captures\\2026-10-05-depth-drive-2\\physical-subjects-corrected.json": "c97eeb13e626ddb643ce32da4260c7e5530c2baac08cb346c01bc7c94e97ab9a",
+    "captures\\2026-10-05-depth-drive-2\\known-visibility-score.json": "8d42d4d180afa1598c92cbc6201405f0241647237a02d9c71d25841f6d8140d2",
+    "captures\\2026-10-05-depth-drive-2\\measured-visibility-portable-score.json": "fb35f11181c58c9f0b62ef2a74b2161d46fa98512a1e1da05ba0d3144a6ba6e6",
+    ".cache\\depth-drive2-subject-trace\\subject-trace.json": "a06f55488e4da5ef297eed3cb9ffeff9d56e7e4a840d78df3e2868b36ebb70ab",
+    ".cache\\depth-drive2-invariant-checked\\result.json": "885bb52b0142df691746099a0e32092947db1da8a175f947d274036070c83bc4",
+    ".cache\\measured-visibility-older\\result.json": "0596a1e06c04434772e107f4611fb060a6a24a12e257cfde415d644bab77c9ce",
+    ".cache\\known-visibility-older\\result.json": "1640ee753a1b2e6e858640f4e4221ed93aad17be84fc772fc0a74fe4df9d17ba"
+  },
+  "analysis_source_sha256": {
+    "experiments/entity_association/trace_recorded_subjects.py": "3d161de5f0e6afe3351eca1113272606ac8419012115d24f026c69293f146a8e",
+    "experiments/entity_association/replay_call_recording.py": "4753ff4051237e086c1b5d88ac9ec67ab63d10daa6772dc65099b7af5a908a55",
+    "experiments/entity_association/replay_measured_visibility.py": "8d80b08c0ae63cdebc1939b26b0eb0a5ff06a338274654a21166962d267ee2f2",
+    "experiments/entity_association/score_recorded_subjects.py": "bd87f288a052f878b83c4fc314746b072f82f3bd324c01bb86af0e0f5c8fae8f"
+  }
+}

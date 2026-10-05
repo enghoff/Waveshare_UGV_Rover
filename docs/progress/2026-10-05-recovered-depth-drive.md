@@ -1,5 +1,12 @@
 # The recovered rover completes the recording; range abstention leaves fragmentation unchanged
 
+Correction: the original six-view landscape label combined two distinct paintings.
+The [later subject diagnosis](2026-10-05-subject-fragmentation.md) separates them
+using a frame showing both. The original labels and scores below remain unchanged
+as the record of that mistake; corrected scores still retain 13 links and gain
+none under range abstention. The later entry also strengthens and repeats the
+map-invariance check against the resolver's map-error catch.
+
 The rover completed the prepared short route and returned for charging. Withholding
 four flagged distances preserved all 13 existing connections among 26 reviewed
 views, but added none. Both front dining chairs stayed consistently identified;
