@@ -31,6 +31,8 @@ nothing would look broken.
 from __future__ import annotations
 
 import base64
+import collections
+import math
 import os
 import sys
 import zlib
@@ -95,31 +97,78 @@ def grid_of(payload: dict[str, Any]) -> "frontier.Grid":
                           for value in raw])
 
 
+def body_of(payload: dict[str, Any]) -> tuple[float, float]:
+    """The clearance a route needs, and how far a goal may be moved, from `nav_grid`.
+
+    Both are the navigation bridge's own (`walking_body` in ros_nav/nav_moves.py):
+    the distance from a wall the planner keeps the rover's centre, and how far
+    the bridge moves a goal onto floor where the body fits before it plans.
+    `(0.0, 0.0)` when the map came without them -- a bridge from before
+    2026-10-05, or a costmap that has not said what the body is -- which is the
+    walk as a point, the way this module walked before then.
+    """
+    def number(name: str) -> float:
+        try:
+            return max(0.0, float(payload.get(name) or 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+    return number("inscribed_radius_m"), number("goal_fit_reach_m")
+
+
 class Reach:
     """Which floor the rover can walk to from where it stands, and how far.
 
-    One breadth-first walk over cells the mapper calls confidently free, held so
-    that the two things that need it -- ranking frontiers, and finding somewhere
-    to stand and look at a thing -- ask for it once between them. The walk is
-    `frontier.py`'s, four-connected and conservative for its reason: an
-    eight-connected walk slips diagonally through a 7 cm gap this rover is
-    30 cm too wide for.
+    One breadth-first walk, held so that the two things that need it -- ranking
+    frontiers, and finding somewhere to stand and look at a thing -- ask for it
+    once between them. The walk is `frontier.py`'s, four-connected and
+    conservative for its reason: an eight-connected walk slips diagonally
+    through a 7 cm gap this rover is 30 cm too wide for.
 
-    `standing` is None when the rover is not on floor the map calls free, which
-    happens for real -- a rover parked half under a sofa, or a pose that has
-    drifted into a wall -- and every movement goal has to be refused while it
-    lasts, because nothing here can plan a route out of a place the walk cannot
-    start from.
+    **It walks with the rover's body, not as a point.** Walked as a point over
+    every free cell, it went through gaps the planner will not: Nav2 lays the
+    rover's centre on its costmap and refuses any cell within `inscribed_m` of a
+    wall, so a gap narrower than twice that is closed to it. Every frontier an
+    autonomous run chose before 2026-10-05 -- seven, on two days -- was in a
+    pocket by the charger reached only through a 30-40 cm gap; the walk called
+    each about five metres away, and each failed, twice after Nav2 had found a
+    38 m way round and driven off along it. So the walk crosses only free cells
+    at least that far from anything occupied, which is the planner's own test
+    for the centre of the body.
+
+    A goal off that floor is still reachable if it is within `goal_reach_m` of
+    it, because the bridge moves a goal that far onto floor where the body fits
+    before it plans (`goal_fit.py`); a frontier is always next to unknown ground
+    and often next to a wall, so without that allowance nearly none would be.
+    The allowance is walked over free cells, so it never reaches through a wall
+    into the next room.
+
+    Replayed over every drive the autonomy record held on 2026-10-05, with the
+    rover's 0.20 m and the bridge's 0.5 m: all 183 that arrived are still
+    reachable, and 10 of the 27 that failed are not -- all seven frontiers, and
+    three viewpoints with nowhere near them for the body.
+
+    `standing` is None when there is no such floor within half a metre of the
+    rover -- a rover parked half under a sofa, or a pose that has drifted into a
+    wall -- and every movement goal has to be refused while it lasts, because
+    nothing here can plan a route out of a place the walk cannot start from.
+    The bridge's own back-off looks the same half metre for a place to go.
     """
 
-    def __init__(self, grid: "frontier.Grid", where: tuple[float, float]) -> None:
+    def __init__(self, grid: "frontier.Grid", where: tuple[float, float],
+                 inscribed_m: float = 0.0, goal_reach_m: float = 0.0) -> None:
         self.grid = grid
         self.where = where
+        self.inscribed_m = inscribed_m
+        self.goal_reach_m = goal_reach_m
         self.free, self.unknown = frontier.classify(grid)
-        self.standing = frontier.standing_on(grid, self.free, where)
-        self.distance = ([-1] * (grid.width * grid.height) if self.standing is None
-                         else frontier.reachable_from(grid, self.free,
-                                                      self.standing))
+        self.roomy = _clear_of_walls(grid, self.free, inscribed_m)
+        self.standing = frontier.standing_on(grid, self.roomy, where)
+        if self.standing is None:
+            self.distance = [-1] * (grid.width * grid.height)
+        else:
+            walked = frontier.reachable_from(grid, self.roomy, self.standing)
+            self.distance = _moved_onto(grid, self.free, self.roomy, walked,
+                                        goal_reach_m)
 
     def reachable(self, x: float, y: float) -> float | None:
         """How far the rover must walk over known floor to stand at a point.
@@ -233,6 +282,73 @@ class Reach:
         out.sort(key=lambda one: (round(one[2], 3), round(one[0], 3),
                                   round(one[1], 3)))
         return out
+
+
+def _clear_of_walls(grid: "frontier.Grid", free: bytearray,
+                    radius_m: float) -> bytearray:
+    """The free cells whose centre is further than `radius_m` from anything occupied.
+
+    The inflation layer's 253 ring, drawn on the occupancy grid: a cell is closed
+    if an occupied cell's centre is within the radius of its own, measured
+    centre to centre as the costmap measures it. The tolerance is for the map's
+    resolution arriving as a 32-bit float -- four cells at 0.050000001 m is a
+    hair over 0.2, and the costmap counts that cell inside the ring.
+    """
+    if radius_m <= 0.0:
+        return free
+    limit = radius_m / grid.resolution + 1e-3
+    reach = int(limit)
+    disc = [(dcol, drow) for drow in range(-reach, reach + 1)
+            for dcol in range(-reach, reach + 1)
+            if math.hypot(dcol, drow) <= limit]
+    width, height = grid.width, grid.height
+    out = bytearray(free)
+    for here, value in enumerate(grid.data):
+        if value < frontier.OCCUPIED_AT:
+            continue
+        row, col = divmod(here, width)
+        for dcol, drow in disc:
+            c, r = col + dcol, row + drow
+            if 0 <= c < width and 0 <= r < height:
+                out[r * width + c] = 0
+    return out
+
+
+def _moved_onto(grid: "frontier.Grid", free: bytearray, roomy: bytearray,
+                walked: list, reach_m: float) -> list:
+    """The walk, extended to goals the bridge would move onto the floor it reached.
+
+    A free cell off that floor -- too near a wall for the body -- takes the walk
+    to the nearest reached cell, plus the steps between, if they are within
+    `reach_m`. Four-connected over free cells for the walk's own reason, which
+    also keeps the allowance from reaching through a wall. A roomy cell the walk
+    did not reach is never entered: the bridge would leave a goal there where it
+    is, and the planner could not get to it.
+    """
+    if reach_m <= 0.0:
+        return walked
+    limit = int(reach_m / grid.resolution + 1e-3)
+    width, height = grid.width, grid.height
+    out = list(walked)
+    shifted = [0] * len(walked)
+    # Nearest walk first, so that between two reached cells equally near a goal
+    # the one the rover gets to sooner is the one it is credited with.
+    queue = collections.deque(sorted((here for here, d in enumerate(walked)
+                                      if d >= 0), key=lambda here: walked[here]))
+    while queue:
+        here = queue.popleft()
+        if shifted[here] >= limit:
+            continue
+        row, col = divmod(here, width)
+        for there, inside in ((here - 1, col > 0), (here + 1, col + 1 < width),
+                              (here - width, row > 0),
+                              (here + width, row + 1 < height)):
+            if not inside or out[there] >= 0 or not free[there] or roomy[there]:
+                continue
+            out[there] = out[here] + 1
+            shifted[there] = shifted[here] + 1
+            queue.append(there)
+    return out
 
 
 def frontiers(grid: "frontier.Grid", where: tuple[float, float],

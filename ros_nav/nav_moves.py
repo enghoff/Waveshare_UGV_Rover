@@ -360,9 +360,34 @@ class NavMoves:
         answer = future.result()
         if answer is None or len(answer.values) < 2:
             return None
+        self.inscribed_m = goal_fit.inscribed_radius(
+            answer.values[0].string_value, answer.values[1].double_value)
         self.body = goal_fit.polygon_from(answer.values[0].string_value,
                                           answer.values[1].double_value)
         return self.body
+
+    def walking_body(self):
+        """What a walk over the occupancy grid needs in order to agree with Nav2.
+
+        Sent with the map (`nav_bridge.grid`) for the autonomy executive, which
+        decides whether a place can be reached by walking the grid and has no
+        planner to ask. Walked as a point, that walk went through gaps the
+        planner refuses: every frontier an autonomous run chose before 2026-10-05
+        was in a pocket reached through a 30-40 cm gap, and every one failed --
+        twice by driving off on a 38 m way round. Two numbers close it, both the
+        bridge's own: the clearance the planner keeps from walls, and how far
+        `fit_goal` will move a goal onto floor where the body fits.
+
+        Empty when the costmap node has not said what the body is. The ready
+        check keeps a map request from waiting on a costmap that is not up, and
+        an empty answer leaves the walk as it was rather than guessing a body.
+        """
+        if self.body is None and not self.footprint_client.service_is_ready():
+            return {}
+        if self.footprint() is None or self.inscribed_m is None:
+            return {}
+        return {"inscribed_radius_m": round(self.inscribed_m, 4),
+                "goal_fit_reach_m": goal_fit.REACH_M}
 
     def costmap(self):
         """The global costmap as the planner currently holds it, or None.

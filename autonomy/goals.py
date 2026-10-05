@@ -227,7 +227,10 @@ def explore_frontier(situation: Situation) -> list[Candidate]:
         return []
     found, summary = mapgrid.frontiers(grid, where)
     out: list[Candidate] = []
-    for one in found[:FRONTIER_LIMIT]:
+    counted = 0
+    for one in found:
+        if counted >= FRONTIER_LIMIT:
+            break
         x, y = float(one["x"]), float(one["y"])
         # Two estimates of what standing there reveals, and the smaller wins.
         # Boundary times sensing depth is what the scanner sweeps through the
@@ -237,14 +240,28 @@ def explore_frontier(situation: Situation) -> list[Candidate]:
         swept = float(one["size_m"]) * mapgrid.SENSE_DEPTH_M
         there = reach.unknown_area_m2(x, y)
         area = min(swept, there)
-        travel = float(one["distance_m"])
+        # **The walk to it is the rover's body's, not the survey's.** The survey
+        # ranks as a point (`frontier.py` says why), and a point gets through
+        # gaps the planner will not: see `mapgrid.Reach`. A frontier the body
+        # cannot reach is still offered, so that its refusal is in the record,
+        # but -- as in `improve_geometry` -- it does not take one of the places:
+        # on 2026-10-05 six of the eight nearest frontiers were in one pocket
+        # the rover could not get into.
+        walked = reach.reachable(x, y)
+        walked = None if walked is None else round(walked, 2)
+        point = float(one["distance_m"])
+        travel = point if walked is None else walked
+        if walked is not None:
+            counted += 1
         time_s = GOAL_OVERHEAD_S + travel / SPEED_MS
         out.append(Candidate(
             id=f"explore_frontier@{x:.2f},{y:.2f}",
             type="explore_frontier",
             why=(f"{one['size_m']:.1f} m of the map's edge is "
-                 f"{travel:.1f} m away, with about {area:.0f} m2 of unmapped "
-                 f"floor behind it"),
+                 + (f"{travel:.1f} m away" if walked is not None else
+                    f"{point:.1f} m away for a point, but not for the rover's "
+                    f"body")
+                 + f", with about {area:.0f} m2 of unmapped floor behind it"),
             expects=(f"a scan from ({x:.2f}, {y:.2f}) facing "
                      f"{math.degrees(float(one['yaw'])):.0f} degrees, turning "
                      f"unknown ground into floor or wall"),
@@ -264,8 +281,9 @@ def explore_frontier(situation: Situation) -> list[Candidate]:
                          "unknown_within_reach_m2": round(there, 1),
                          "frontier_cells": one["cells"],
                          "unknown_share": mapgrid.unknown_share(summary),
-                         "survey_cost": one["cost"]},
-            constraints={"reachable_m": travel,
+                         "survey_cost": one["cost"],
+                         "point_walk_m": point},
+            constraints={"reachable_m": walked,
                          "on_free_floor": reach.is_free(x, y),
                          "needs_movement": True,
                          "goal": {"x_m": round(x, 3), "y_m": round(y, 3)}}))

@@ -166,6 +166,18 @@ estimate of how much new floor standing there would actually reveal — the
 frontier's width times how far the scanner is worth believing, capped by the
 unmapped ground really within reach of the goal.
 
+**What can be reached is walked with the rover's body** (`mapgrid.Reach`). The
+walk crosses only free cells further from anything occupied than the planner
+keeps the rover's centre, and a goal off that floor counts if it is within the
+distance the bridge moves a goal onto floor where the body fits. Both numbers
+come with the map from the navigation bridge (`inscribed_radius_m`, 0.20 m, and
+`goal_fit_reach_m`, 0.5 m); a map without them is walked as a point, as before.
+Walked as a point, the survey's own walk went through gaps the planner will
+not, and every frontier a run chose before 2026-10-05 was in a pocket by the
+charger behind a 30-40 cm one: seven drives, all failed, two after Nav2 drove
+off on a 38 m way round. A frontier the body cannot reach is still offered and refused as unreachable, so
+the record says so, and it does not take one of the eight places.
+
 `improve_geometry` is somewhere to stand that would make a thing's position come
 out better. **A bearing pins a thing across the line of sight and says nothing
 along it**, so two looks from nearly the same place leave the same long thin
@@ -250,9 +262,10 @@ what was hoped for. **ABORT** is any of that going wrong, and closes the episode
 `interrupted` with the reason.
 
 **A place navigation could not get to is not driven at again for half an
-hour.** The run's walk over the map counts free cells, and Nav2 plans with the
-rover's whole body, so a goal the walk calls five metres away can have no route
-the rover fits through. When a drive fails or times out, the executive writes
+hour.** The run's walk keeps the body's clearance, but it is still a walk over
+the map, not the planner: the costmap can change between a decision and its
+drive, and the bridge's own check of a goal is stricter than the walk's (the
+whole body, not its centre). When a drive fails or times out, the executive writes
 the goal's place down (`cooling.after_failed_drive`), and any goal within half
 a metre of it is refused as "could not get there", the way the rover's own
 exploring blacklists a frontier it could not reach.

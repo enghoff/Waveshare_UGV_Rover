@@ -184,6 +184,7 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
             GetParameters, "/global_costmap/global_costmap/get_parameters",
             callback_group=self.group)
         self.body = None
+        self.inscribed_m = None
 
         self.actions = {
             "goto": ActionClient(self, NavigateToPose, "navigate_to_pose",
@@ -565,6 +566,8 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
                 "x_m": where[0], "y_m": where[1], "heading_deg":
                 math.degrees(where[2])},
             "trail": trail,
+            # Outside the lock: the first one asks the costmap node.
+            **self.walking_body(),
         }
 
     # --- writes ---------------------------------------------------------------

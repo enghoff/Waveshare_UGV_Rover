@@ -234,3 +234,40 @@ def polygon_from(footprint_text, robot_radius, sides=12):
                  robot_radius * math.sin(2.0 * math.pi * i / sides))
                 for i in range(sides)]
     return None
+
+
+def inscribed_radius(footprint_text, robot_radius):
+    """How far the costmap's 253 ring reaches out from an obstacle, in metres.
+
+    The planner lays the rover's *centre* on the costmap and treats 253 as
+    contact, so this is the clearance a route needs on each side: a gap is
+    passable only if it is wider than twice this. A walk over the occupancy grid
+    that is meant to agree with the planner has to keep this far from walls, and
+    the autonomy executive's does (`autonomy/mapgrid.py`).
+
+    Nav2's rule: a polygon's is the nearest its outline comes to the centre, and
+    a bare radius is the radius -- not the twelve-sided stand-in above, whose
+    edges come 3% closer. Measured on the rover's global costmap on 2026-10-05
+    with `robot_radius: 0.200`: every 253 cell is within 0.200 m of a lethal one,
+    and nothing below 253 is nearer than 0.206 m.
+    """
+    text = (footprint_text or "").strip()
+    if text and text not in ("[]", '""', "''"):
+        try:
+            points = json.loads(text)
+        except ValueError:
+            points = None
+        if points and len(points) >= 3:
+            nearest = None
+            for i, (x0, y0) in enumerate(points):
+                x1, y1 = points[(i + 1) % len(points)]
+                dx, dy = float(x1) - float(x0), float(y1) - float(y0)
+                length2 = dx * dx + dy * dy
+                share = 0.0 if length2 == 0.0 else max(0.0, min(1.0, (
+                    -float(x0) * dx - float(y0) * dy) / length2))
+                away = math.hypot(float(x0) + share * dx, float(y0) + share * dy)
+                nearest = away if nearest is None else min(nearest, away)
+            return nearest
+    if robot_radius and robot_radius > 0.0:
+        return float(robot_radius)
+    return None

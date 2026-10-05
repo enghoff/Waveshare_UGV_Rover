@@ -691,6 +691,66 @@ def _ros_messages():
         sys.modules[name] = module
 
 
+def test_the_map_says_what_clearance_the_planner_keeps():
+    """The map goes out with the body a walk over it has to respect.
+
+    The autonomy executive decides what it can reach by walking the occupancy
+    grid, and walked as a point that went through a 30-40 cm gap the planner
+    will not: every frontier a run chose before 2026-10-05 was behind one, and
+    every one failed. The fix is two numbers the bridge already holds -- the
+    clearance the planner keeps from walls and how far `fit_goal` moves a goal --
+    sent with the map, so the executive carries no copy of either.
+    """
+    section("the map says what clearance the planner keeps")
+    sys.path.insert(0, HERE)
+    _ros_messages()
+    try:
+        import types
+        import goal_fit
+        import nav_moves
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+
+    check("a bare radius keeps the radius, the inscribed ring the costmap "
+          "measured", goal_fit.inscribed_radius("[]", 0.200), 0.200)
+    check("...not the twelve-sided stand-in's, which is 3% short",
+          round(goal_fit.inscribed_radius("[]", 0.200), 3) > 0.195, True)
+    check("a rectangle keeps its half-width",
+          round(goal_fit.inscribed_radius(
+              "[[0.20, 0.14], [0.20, -0.14], [-0.16, -0.14], [-0.16, 0.14]]",
+              0.0), 3), 0.14)
+    check("...and no body at all is no answer",
+          goal_fit.inscribed_radius("[]", 0.0), None)
+
+    class Bridge(nav_moves.NavMoves):
+        def __init__(self, ready):
+            self.body = None
+            self.inscribed_m = None
+            self.asked = 0
+            self.footprint_client = types.SimpleNamespace(
+                service_is_ready=lambda: ready)
+
+        def footprint(self):
+            self.asked += 1
+            self.inscribed_m = goal_fit.inscribed_radius("[]", 0.200)
+            self.body = goal_fit.polygon_from("[]", 0.200)
+            return self.body
+
+    up = Bridge(ready=True)
+    check("with the costmap up, the map carries the clearance and the "
+          "allowance", up.walking_body(),
+          {"inscribed_radius_m": 0.2, "goal_fit_reach_m": goal_fit.REACH_M})
+    down = Bridge(ready=False)
+    check("with it not up, the map says nothing rather than guess",
+          down.walking_body(), {})
+    check("...and does not wait on it", down.asked, 0)
+    source = _bridge_source()
+    if source:
+        check("the map reply carries it",
+              "**self.walking_body()" in source, True)
+
+
 def test_a_drive_asked_from_beside_a_wall_backs_off_and_goes():
     """A `drive_to` from a spot the planner will not plan from frees itself once.
 
@@ -855,6 +915,7 @@ TESTS = (
     test_a_rim_of_unknown_round_the_rover_is_still_open,
     test_a_goal_that_goes_nowhere_is_given_up,
     test_a_rover_it_cannot_plan_from_is_not_a_finished_house,
+    test_the_map_says_what_clearance_the_planner_keeps,
     test_a_drive_asked_from_beside_a_wall_backs_off_and_goes,
     test_exploring_finishes_and_covers_the_house,
 )

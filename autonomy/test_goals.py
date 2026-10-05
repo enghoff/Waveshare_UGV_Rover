@@ -83,6 +83,33 @@ def _situation(rows=ROOM, **kwargs) -> Situation:
     return Situation(a_situation(rows, **kwargs))
 
 
+#: What the navigation bridge says about the body with every map since
+#: 2026-10-05: the planner keeps the rover's centre 0.20 m from walls, and a goal
+#: is moved up to half a metre onto floor where the body fits.
+BODY = {"inscribed_radius_m": 0.20, "goal_fit_reach_m": 0.5}
+
+
+def _with_body(body: dict, **said) -> Situation:
+    body["map"] = {**body["map"], **(said or BODY)}
+    return Situation(body)
+
+
+def _pocket(gap_cells: int) -> list[str]:
+    """A room, a wall with a gap in it, and a pocket open to unmapped ground.
+
+    Drawn at 5 cm, the resolution the rover maps at, because the gap is the
+    whole point and at 10 cm a cell is half the clearance being tested.
+    """
+    width = 40
+    left = (width - gap_cells) // 2
+    room = ["#" + "." * (width - 2) + "#"] * 20
+    room = room[:10] + ["#" + "." * 18 + "R" + "." * 19 + "#"] + room[11:]
+    return (["#" * width] + room
+            + ["#" * left + "." * gap_cells + "#" * (width - left - gap_cells)]
+            + ["#" + "." * (width - 2) + "#"] * 12
+            + ["#" + "?" * (width - 2) + "#"] * 6)
+
+
 def test_it_cannot_reach_the_rover() -> None:
     """The generators are arithmetic over a situation, and nothing else.
 
@@ -137,6 +164,104 @@ def test_the_frontiers_are_the_rovers_own_and_not_a_second_opinion() -> None:
     check("...at the place it offered",
           candidates[0].constraints["goal"],
           {"x_m": round(found[0]["x"], 3), "y_m": round(found[0]["y"], 3)})
+
+
+def test_a_gap_the_body_does_not_fit_through_is_not_a_way_there() -> None:
+    """A frontier reached through a gap narrower than the planner allows is refused.
+
+    The planner refuses any cell within 0.20 m of a wall for the rover's centre,
+    so a 30 cm gap is closed to it however open it looks to a point; a 50 cm one
+    is not. Walked as a point, the first is a frontier a couple of metres away,
+    which is the fault the rover had (see the next test).
+    """
+    import scoring
+
+    narrow = a_situation(_pocket(6), resolution_m=0.05)
+    as_point = goals.explore_frontier(Situation(narrow))
+    check("walked as a point, the pocket behind a 30 cm gap is somewhere to go",
+          [one.constraints["reachable_m"] is not None for one in as_point],
+          [True])
+    here = _with_body(a_situation(_pocket(6), resolution_m=0.05))
+    refused = goals.explore_frontier(here)
+    check("walked with the body, it is not", [one.constraints["reachable_m"]
+                                              for one in refused], [None])
+    check("...it is still offered, so the refusal is in the record",
+          [one.type for one in refused], ["explore_frontier"])
+    check("...and says why", "not for the rover's body" in refused[0].why, True)
+    check("...the walk a point would have taken is kept beside it",
+          refused[0].gain_detail["point_walk_m"],
+          as_point[0].constraints["reachable_m"])
+    check("...and the scorer refuses it as unreachable for the body",
+          [veto["why"] for veto in scoring.vetoes(refused[0], here)
+           if veto["veto"] == "unreachable"],
+          ["there is no route to it over floor the map calls free that the "
+           "rover's body fits through"])
+
+    wide = _with_body(a_situation(_pocket(10), resolution_m=0.05))
+    through = goals.explore_frontier(wide)
+    check("a 50 cm gap is a way through for the body",
+          [one.constraints["reachable_m"] is not None for one in through],
+          [True])
+    check("...and the body's walk to it is never shorter than a point's",
+          through[0].constraints["reachable_m"] >= through[0].gain_detail[
+              "point_walk_m"], True)
+    # The room's left wall is the column of cells at x 0.00-0.05 m.
+    check("a goal 10 cm from a wall is still reachable: the bridge moves it",
+          wide.reach.reachable(0.125, 1.6) is not None, True)
+    check("...but not without the allowance the bridge said it gives",
+          _with_body(a_situation(_pocket(10), resolution_m=0.05),
+                     inscribed_radius_m=0.20).reach.reachable(0.125, 1.6), None)
+
+
+def test_the_pocket_by_the_charger_is_not_somewhere_to_drive() -> None:
+    """The two recorded decisions that chose it, replayed on their own maps.
+
+    **The fault, from the record.** Every frontier an autonomous run had chosen
+    before 2026-10-05 -- seven, on 2026-10-03 and in M3 session 2 -- was in a
+    pocket by the charger that the lidar sees into through a 30-40 cm gap. The
+    executive's walk called each about five metres away; Nav2 had no way
+    through the gap, found a 38 m way round twice, drove off along it, and gave
+    up. Three in a row ended the run of 2026-10-03. Here: as recorded, the
+    frontier it chose is reachable at that distance; with the body the bridge now
+    describes, it is not, and a place the same run did drive to still is.
+    """
+    import gzip
+    import json
+
+    import scoring
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures",
+                        "pocket-by-the-charger.json.gz")
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        cases = json.load(handle)["cases"]
+    for case in cases:
+        name = "episode %d" % case["episode"]
+
+        def recorded() -> dict:
+            body = a_situation(FINISHED)
+            body["map"] = dict(case["map"])
+            body["nav"]["pose"] = dict(case["pose"])
+            return body
+
+        chose = case["chose"]
+        as_was = {one.id: one for one in
+                  goals.explore_frontier(Situation(recorded()))}
+        walked = as_was[chose["id"]].constraints["reachable_m"]
+        check(name + ": as recorded, the frontier it chose was about five "
+              "metres' walk", walked is not None and 4.5 < walked < 6.0, True)
+        here = _with_body(recorded())
+        now = {one.id: one for one in goals.explore_frontier(here)}
+        check(name + ": walked with the body it is unreachable",
+              now[chose["id"]].constraints["reachable_m"], None)
+        check(name + ": ...and refused",
+              "unreachable" in [veto["veto"] for veto in
+                                scoring.vetoes(now[chose["id"]], here)], True)
+        check(name + ": ...while the place the run did drive to is still "
+              "somewhere to go",
+              here.reach.reachable(case["arrived"]["x_m"],
+                                   case["arrived"]["y_m"]) is not None, True)
+        check(name + ": ...and the rover is standing somewhere it can walk from",
+              here.reach.standing is not None, True)
 
 
 # --- going where a thing would come out better -------------------------------
@@ -295,6 +420,8 @@ TESTS = (
     test_a_doorway_onto_unmapped_ground_is_worth_driving_to,
     test_a_finished_room_offers_nothing_to_explore,
     test_the_frontiers_are_the_rovers_own_and_not_a_second_opinion,
+    test_a_gap_the_body_does_not_fit_through_is_not_a_way_there,
+    test_the_pocket_by_the_charger_is_not_somewhere_to_drive,
     test_a_look_across_the_uncertainty_beats_a_look_along_it,
     test_no_placement_is_ever_predicted_better_than_this_rover_manages,
     test_a_thing_nobody_has_measured_the_distance_to_wants_the_depth_camera,

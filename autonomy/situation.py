@@ -211,7 +211,8 @@ class Situation:
         if self._reach is None:
             grid, where = self.grid, self.where
             if grid is not None and where is not None:
-                self._reach = mapgrid.Reach(grid, where)
+                self._reach = mapgrid.Reach(
+                    grid, where, *mapgrid.body_of(self.body.get("map") or {}))
         return self._reach
 
     # --- how the rover is ------------------------------------------------------
@@ -253,9 +254,12 @@ class Situation:
         elif self.where is None:
             wrong["no_pose"] = "the rover did not report where it is"
         elif self.reach is not None and self.reach.standing is None:
-            wrong["off_the_floor"] = ("the rover is not standing on floor the "
-                                      "map calls free, so no route can be "
-                                      "walked from where it is")
+            wrong["off_the_floor"] = ("the rover is not standing on, or half a "
+                                      "metre from, floor the map calls free"
+                                      + (" with room for its body"
+                                         if self.reach.inscribed_m else "")
+                                      + ", so no route can be walked from "
+                                        "where it is")
         return wrong
 
     def busy(self) -> str:

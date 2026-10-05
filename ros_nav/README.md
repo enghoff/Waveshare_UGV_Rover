@@ -143,6 +143,14 @@ Exploration chooses reachable frontiers and abandons a goal that makes no useful
 progress. It stops when the time budget expires, no useful frontier remains, or
 the user cancels it. Status reports why it stopped and how much it drove.
 
+The occupancy map the bridge sends (`nav_grid` on the daemon) carries the body a
+walk over it has to respect: `inscribed_radius_m`, how far the planner keeps the
+rover's centre from anything occupied (0.20 m, read off the costmap node), and
+`goal_fit_reach_m`, how far a goal is moved onto floor where the body fits
+(0.5 m). The autonomy executive walks the map with both, so it does not choose
+places only a point could get to. Both are missing until the costmap node has
+answered once.
+
 ## Known limits
 
 - A rover standing on a small island of mapped floor — which is what a cleared

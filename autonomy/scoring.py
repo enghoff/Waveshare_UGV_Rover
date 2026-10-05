@@ -271,9 +271,12 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
     facts = candidate.constraints
 
     if facts.get("needs_movement") and facts.get("reachable_m") is None:
+        walked_with_body = (situation.reach is not None
+                            and bool(situation.reach.inscribed_m))
         out.append({"veto": "unreachable",
                     "why": "there is no route to it over floor the map calls "
-                           "free"})
+                           "free" + (" that the rover's body fits through"
+                                     if walked_with_body else "")})
     if facts.get("needs_movement") and not facts.get("on_free_floor", True):
         out.append({"veto": "not on known floor",
                     "why": "the place it would drive to is not ground the "
