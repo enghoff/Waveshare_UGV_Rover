@@ -576,11 +576,11 @@ Most of M3 is still physical:
   ([2026-10-05](../progress/2026-10-05-m3-session-1.md), 8.7 minutes over two runs);
   M0a's runs were its own protocol and do not count towards them. Nothing below
   criterion 3 can be answered without them. Open each with no action limit.
-- **Getting out of the costmap.** Session 1's second run ended stuck beside a
-  wall: navigation refused every drive until the rover turned or backed up, and
-  a run may only `drive_to`, `world_inspect` and `stop`. Reproduce the refusal from
-  that run's record, then either admit a bounded turn on the spot or have
-  `drive_to` make the turn itself. R-AUT-13's ending needs this first.
+- **Getting out of the costmap, on the rover.** Session 1's second run ended
+  stuck beside a wall; `drive_to` now backs off once and asks again
+  ([2026-10-05](../progress/2026-10-05-out-of-the-costmap-and-a-still-gimbal.md)),
+  proven on a recorded costmap and deployed, but not yet seen on hardware. The next
+  session that reaches that state shows it.
 - **The stop and takeover trials that did not finish.** The console's stop button
   was only exercised on a slow turn, and its repeat at speed was cut short by the
   battery; it sends the same request that was measured at speed. A hung executive
