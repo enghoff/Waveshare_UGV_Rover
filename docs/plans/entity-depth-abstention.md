@@ -43,3 +43,16 @@ If the fixed abstention loses useful measurements, keep surface ambiguity as a
 reported property and investigate its role in association separately. A failed
 abstention does not justify choosing the far surface, inflating every geometric
 claim, or relaxing the identity target. Do not drive the rover during this work.
+
+
+## Supplementary check fixed before computing it
+
+Apply the same unchanged rule to the separately recorded 2026-10-03 taped-target
+looks using their stored outlines and lens headers. Use the original target
+mapping and wall frame; identify stationary looks from the original leg windows.
+Report moving and still results separately. Require all stationary reconstructed
+ranges to agree with stored ones within 2 mm before interpreting those results,
+and retain at least 90% of stationary readings within 0.25 m of the tape. Report
+gross-error removal, but fewer than two gross control errors supplies insufficient
+evidence of general error removal. Do not reinterpret a lack of flags as a failed
+rule, and do not claim an identity-policy pass from a range test.
