@@ -1,0 +1,6263 @@
+{
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "predicate_commit": "c0b1c42",
+  "ablation_predicate_commit": "441bf76",
+  "independent_acceptance": false,
+  "deployed": false,
+  "hardware_validated": false,
+  "fresh": {
+    "baseline": {
+      "same_together": 284,
+      "different_together": 3,
+      "waiting": 39,
+      "regions": 146,
+      "objects": 16,
+      "per_object": {
+        "armchair_on_cabinet_wall": {
+          "regions": 12,
+          "waiting": 3,
+          "pieces": 1,
+          "memberships": {
+            "object:314": 9
+          }
+        },
+        "armchair_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 0,
+          "pieces": 2,
+          "memberships": {
+            "object:359": 2,
+            "object:317": 1
+          }
+        },
+        "cabinet_under_snow_painting": {
+          "regions": 14,
+          "waiting": 2,
+          "pieces": 3,
+          "memberships": {
+            "object:323": 1,
+            "object:242": 10,
+            "object:372": 1
+          }
+        },
+        "ceiling_fan_dining_room": {
+          "regions": 11,
+          "waiting": 4,
+          "pieces": 1,
+          "memberships": {
+            "object:309": 7
+          }
+        },
+        "dining_table": {
+          "regions": 8,
+          "waiting": 3,
+          "pieces": 3,
+          "memberships": {
+            "object:415": 3,
+            "object:350": 1,
+            "object:247": 1
+          }
+        },
+        "painting_blue_vertical_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 2,
+          "pieces": 1,
+          "memberships": {
+            "object:384": 1
+          }
+        },
+        "painting_building_by_water_left_of_cabinet": {
+          "regions": 13,
+          "waiting": 2,
+          "pieces": 3,
+          "memberships": {
+            "object:335": 8,
+            "object:354": 1,
+            "object:437": 2
+          }
+        },
+        "painting_cattle_right_of_cabinet": {
+          "regions": 20,
+          "waiting": 2,
+          "pieces": 4,
+          "memberships": {
+            "object:249": 11,
+            "object:370": 5,
+            "object:422": 1,
+            "object:340": 1
+          }
+        },
+        "painting_green_scene_on_dining_wall": {
+          "regions": 18,
+          "waiting": 8,
+          "pieces": 5,
+          "memberships": {
+            "object:351": 5,
+            "object:302": 1,
+            "object:415": 1,
+            "object:246": 2,
+            "object:375": 1
+          }
+        },
+        "painting_high_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 0,
+          "pieces": 1,
+          "memberships": {
+            "object:315": 3
+          }
+        },
+        "painting_snowy_trees_above_cabinet": {
+          "regions": 16,
+          "waiting": 1,
+          "pieces": 2,
+          "memberships": {
+            "object:248": 10,
+            "object:373": 5
+          }
+        },
+        "pendant_near_cabinet": {
+          "regions": 3,
+          "waiting": 0,
+          "pieces": 2,
+          "memberships": {
+            "object:298": 2,
+            "object:241": 1
+          }
+        },
+        "person_dark_shirt_light_trousers": {
+          "regions": 3,
+          "waiting": 3,
+          "pieces": 0,
+          "memberships": {}
+        },
+        "rug_under_dining_table": {
+          "regions": 9,
+          "waiting": 1,
+          "pieces": 2,
+          "memberships": {
+            "object:353": 3,
+            "object:378": 5
+          }
+        },
+        "small_window_on_dining_right_wall": {
+          "regions": 7,
+          "waiting": 5,
+          "pieces": 1,
+          "memberships": {
+            "object:349": 2
+          }
+        },
+        "white_shaded_lamp_by_opposite_wall_armchair": {
+          "regions": 3,
+          "waiting": 3,
+          "pieces": 0,
+          "memberships": {}
+        }
+      }
+    },
+    "hypotheses": {
+      "same_together": 264,
+      "different_together": 0,
+      "waiting": 42,
+      "regions": 146,
+      "objects": 16,
+      "per_object": {
+        "armchair_on_cabinet_wall": {
+          "regions": 12,
+          "waiting": 4,
+          "pieces": 3,
+          "memberships": {
+            "object:314": 6,
+            "object:320": 1,
+            "object:423": 1
+          }
+        },
+        "armchair_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 0,
+          "pieces": 2,
+          "memberships": {
+            "object:359": 2,
+            "object:317": 1
+          }
+        },
+        "cabinet_under_snow_painting": {
+          "regions": 14,
+          "waiting": 2,
+          "pieces": 3,
+          "memberships": {
+            "object:323": 1,
+            "object:242": 10,
+            "object:372": 1
+          }
+        },
+        "ceiling_fan_dining_room": {
+          "regions": 11,
+          "waiting": 4,
+          "pieces": 1,
+          "memberships": {
+            "object:309": 7
+          }
+        },
+        "dining_table": {
+          "regions": 8,
+          "waiting": 3,
+          "pieces": 3,
+          "memberships": {
+            "object:415": 3,
+            "object:350": 1,
+            "object:247": 1
+          }
+        },
+        "painting_blue_vertical_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 0,
+          "pieces": 1,
+          "memberships": {
+            "object:384": 3
+          }
+        },
+        "painting_building_by_water_left_of_cabinet": {
+          "regions": 13,
+          "waiting": 2,
+          "pieces": 3,
+          "memberships": {
+            "object:335": 8,
+            "object:354": 1,
+            "object:437": 2
+          }
+        },
+        "painting_cattle_right_of_cabinet": {
+          "regions": 20,
+          "waiting": 2,
+          "pieces": 4,
+          "memberships": {
+            "object:249": 11,
+            "object:370": 5,
+            "object:422": 1,
+            "object:340": 1
+          }
+        },
+        "painting_green_scene_on_dining_wall": {
+          "regions": 18,
+          "waiting": 10,
+          "pieces": 3,
+          "memberships": {
+            "object:351": 6,
+            "object:302": 1,
+            "object:375": 1
+          }
+        },
+        "painting_high_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 0,
+          "pieces": 1,
+          "memberships": {
+            "object:315": 3
+          }
+        },
+        "painting_snowy_trees_above_cabinet": {
+          "regions": 16,
+          "waiting": 2,
+          "pieces": 2,
+          "memberships": {
+            "object:248": 10,
+            "object:373": 4
+          }
+        },
+        "pendant_near_cabinet": {
+          "regions": 3,
+          "waiting": 0,
+          "pieces": 2,
+          "memberships": {
+            "object:298": 2,
+            "object:241": 1
+          }
+        },
+        "person_dark_shirt_light_trousers": {
+          "regions": 3,
+          "waiting": 3,
+          "pieces": 0,
+          "memberships": {}
+        },
+        "rug_under_dining_table": {
+          "regions": 9,
+          "waiting": 2,
+          "pieces": 2,
+          "memberships": {
+            "object:353": 2,
+            "object:378": 5
+          }
+        },
+        "small_window_on_dining_right_wall": {
+          "regions": 7,
+          "waiting": 5,
+          "pieces": 1,
+          "memberships": {
+            "object:349": 2
+          }
+        },
+        "white_shaded_lamp_by_opposite_wall_armchair": {
+          "regions": 3,
+          "waiting": 3,
+          "pieces": 0,
+          "memberships": {}
+        }
+      }
+    },
+    "confirmed": {
+      "same_together": 218,
+      "different_together": 0,
+      "waiting": 69,
+      "regions": 146,
+      "objects": 16,
+      "per_object": {
+        "armchair_on_cabinet_wall": {
+          "regions": 12,
+          "waiting": 5,
+          "pieces": 2,
+          "memberships": {
+            "object:314": 6,
+            "object:320": 1
+          }
+        },
+        "armchair_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 3,
+          "pieces": 0,
+          "memberships": {}
+        },
+        "cabinet_under_snow_painting": {
+          "regions": 14,
+          "waiting": 3,
+          "pieces": 2,
+          "memberships": {
+            "object:323": 1,
+            "object:242": 10
+          }
+        },
+        "ceiling_fan_dining_room": {
+          "regions": 11,
+          "waiting": 4,
+          "pieces": 1,
+          "memberships": {
+            "object:309": 7
+          }
+        },
+        "dining_table": {
+          "regions": 8,
+          "waiting": 7,
+          "pieces": 1,
+          "memberships": {
+            "object:350": 1
+          }
+        },
+        "painting_blue_vertical_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 2,
+          "pieces": 1,
+          "memberships": {
+            "object:384": 1
+          }
+        },
+        "painting_building_by_water_left_of_cabinet": {
+          "regions": 13,
+          "waiting": 3,
+          "pieces": 3,
+          "memberships": {
+            "object:335": 8,
+            "object:354": 1,
+            "object:437": 1
+          }
+        },
+        "painting_cattle_right_of_cabinet": {
+          "regions": 20,
+          "waiting": 3,
+          "pieces": 4,
+          "memberships": {
+            "object:249": 10,
+            "object:370": 5,
+            "object:422": 1,
+            "object:340": 1
+          }
+        },
+        "painting_green_scene_on_dining_wall": {
+          "regions": 18,
+          "waiting": 15,
+          "pieces": 1,
+          "memberships": {
+            "object:351": 3
+          }
+        },
+        "painting_high_on_opposite_wall": {
+          "regions": 3,
+          "waiting": 1,
+          "pieces": 1,
+          "memberships": {
+            "object:315": 2
+          }
+        },
+        "painting_snowy_trees_above_cabinet": {
+          "regions": 16,
+          "waiting": 3,
+          "pieces": 2,
+          "memberships": {
+            "object:248": 10,
+            "object:373": 3
+          }
+        },
+        "pendant_near_cabinet": {
+          "regions": 3,
+          "waiting": 0,
+          "pieces": 2,
+          "memberships": {
+            "object:298": 2,
+            "object:241": 1
+          }
+        },
+        "person_dark_shirt_light_trousers": {
+          "regions": 3,
+          "waiting": 3,
+          "pieces": 0,
+          "memberships": {}
+        },
+        "rug_under_dining_table": {
+          "regions": 9,
+          "waiting": 9,
+          "pieces": 0,
+          "memberships": {}
+        },
+        "small_window_on_dining_right_wall": {
+          "regions": 7,
+          "waiting": 5,
+          "pieces": 1,
+          "memberships": {
+            "object:349": 2
+          }
+        },
+        "white_shaded_lamp_by_opposite_wall_armchair": {
+          "regions": 3,
+          "waiting": 3,
+          "pieces": 0,
+          "memberships": {}
+        }
+      }
+    },
+    "baseline_object_coverage": {
+      "without_assigned_labelled_view": 2,
+      "multiple_records_with_two_labelled_views": 5
+    },
+    "hypothesis_object_coverage": {
+      "without_assigned_labelled_view": 2,
+      "multiple_records_with_two_labelled_views": 4
+    },
+    "confirmed_object_coverage": {
+      "without_assigned_labelled_view": 4,
+      "multiple_records_with_two_labelled_views": 2
+    },
+    "correct_confirmed_retention": 0.7676056338028169,
+    "correct_hypothesis_retention": 0.9295774647887324,
+    "new_wrong_confirmed_pairs": [],
+    "new_wrong_hypothesis_pairs": [],
+    "checks": {
+      "wrong_confirmed_pairs_reduced": true,
+      "no_new_wrong_confirmed_pairs": true,
+      "correct_confirmed_retention_at_least_90_percent": false,
+      "correct_hypothesis_retention_at_least_95_percent": false,
+      "no_more_missing_labelled_objects": true,
+      "no_more_fragmented_labelled_objects": true
+    },
+    "passes": false,
+    "folds": null
+  },
+  "older": {
+    "baseline": {
+      "same_together": 3716,
+      "different_together": 710,
+      "main_waiting": 0,
+      "main_looks": 365,
+      "per_object": {
+        "object:242": {
+          "looks": 48,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:246": {
+          "looks": 25,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.52
+        },
+        "object:249": {
+          "looks": 51,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.8196078431372549
+        },
+        "object:259": {
+          "looks": 12,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:275": {
+          "looks": 9,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:276": {
+          "looks": 4,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:307": {
+          "looks": 6,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:332": {
+          "looks": 31,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.6774193548387096
+        },
+        "object:335": {
+          "looks": 29,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:343": {
+          "looks": 12,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:374": {
+          "looks": 6,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:377": {
+          "looks": 6,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:383": {
+          "looks": 17,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.47058823529411764
+        },
+        "object:386": {
+          "looks": 5,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:387": {
+          "looks": 17,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:402": {
+          "looks": 21,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:407": {
+          "looks": 7,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:413": {
+          "looks": 4,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        }
+      }
+    },
+    "hypotheses": {
+      "same_together": 2004,
+      "different_together": 216,
+      "main_waiting": 26,
+      "main_looks": 365,
+      "per_object": {
+        "object:242": {
+          "looks": 48,
+          "waiting": 3,
+          "pieces_with_two_looks": 3,
+          "pair_recall": 0.45478723404255317
+        },
+        "object:246": {
+          "looks": 25,
+          "waiting": 3,
+          "pieces_with_two_looks": 4,
+          "pair_recall": 0.24333333333333335
+        },
+        "object:249": {
+          "looks": 51,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.6713725490196079
+        },
+        "object:259": {
+          "looks": 12,
+          "waiting": 4,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.3181818181818182
+        },
+        "object:275": {
+          "looks": 9,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.5
+        },
+        "object:276": {
+          "looks": 4,
+          "waiting": 2,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.16666666666666666
+        },
+        "object:307": {
+          "looks": 6,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:332": {
+          "looks": 31,
+          "waiting": 2,
+          "pieces_with_two_looks": 5,
+          "pair_recall": 0.1827956989247312
+        },
+        "object:335": {
+          "looks": 29,
+          "waiting": 0,
+          "pieces_with_two_looks": 4,
+          "pair_recall": 0.2881773399014778
+        },
+        "object:343": {
+          "looks": 12,
+          "waiting": 2,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.5454545454545454
+        },
+        "object:374": {
+          "looks": 6,
+          "waiting": 2,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.4
+        },
+        "object:377": {
+          "looks": 6,
+          "waiting": 0,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.26666666666666666
+        },
+        "object:383": {
+          "looks": 17,
+          "waiting": 0,
+          "pieces_with_two_looks": 3,
+          "pair_recall": 0.27205882352941174
+        },
+        "object:386": {
+          "looks": 5,
+          "waiting": 2,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.1
+        },
+        "object:387": {
+          "looks": 17,
+          "waiting": 3,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.4264705882352941
+        },
+        "object:402": {
+          "looks": 21,
+          "waiting": 3,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.6476190476190476
+        },
+        "object:407": {
+          "looks": 7,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        },
+        "object:413": {
+          "looks": 4,
+          "waiting": 0,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 1.0
+        }
+      }
+    },
+    "confirmed": {
+      "same_together": 131,
+      "different_together": 2,
+      "main_waiting": 296,
+      "main_looks": 365,
+      "per_object": {
+        "object:242": {
+          "looks": 48,
+          "waiting": 45,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.0026595744680851063
+        },
+        "object:246": {
+          "looks": 25,
+          "waiting": 23,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.0033333333333333335
+        },
+        "object:249": {
+          "looks": 51,
+          "waiting": 42,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.02196078431372549
+        },
+        "object:259": {
+          "looks": 12,
+          "waiting": 9,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.015151515151515152
+        },
+        "object:275": {
+          "looks": 9,
+          "waiting": 7,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:276": {
+          "looks": 4,
+          "waiting": 4,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:307": {
+          "looks": 6,
+          "waiting": 5,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:332": {
+          "looks": 31,
+          "waiting": 29,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:335": {
+          "looks": 29,
+          "waiting": 10,
+          "pieces_with_two_looks": 2,
+          "pair_recall": 0.229064039408867
+        },
+        "object:343": {
+          "looks": 12,
+          "waiting": 11,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:374": {
+          "looks": 6,
+          "waiting": 5,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:377": {
+          "looks": 6,
+          "waiting": 4,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.06666666666666667
+        },
+        "object:383": {
+          "looks": 17,
+          "waiting": 12,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.022058823529411766
+        },
+        "object:386": {
+          "looks": 5,
+          "waiting": 5,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:387": {
+          "looks": 17,
+          "waiting": 17,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:402": {
+          "looks": 21,
+          "waiting": 20,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        },
+        "object:407": {
+          "looks": 7,
+          "waiting": 5,
+          "pieces_with_two_looks": 1,
+          "pair_recall": 0.047619047619047616
+        },
+        "object:413": {
+          "looks": 4,
+          "waiting": 4,
+          "pieces_with_two_looks": 0,
+          "pair_recall": 0.0
+        }
+      }
+    },
+    "baseline_object_coverage": {
+      "without_assigned_labelled_view": 0,
+      "multiple_records_with_two_labelled_views": 4
+    },
+    "hypothesis_object_coverage": {
+      "without_assigned_labelled_view": 0,
+      "multiple_records_with_two_labelled_views": 9
+    },
+    "confirmed_object_coverage": {
+      "without_assigned_labelled_view": 4,
+      "multiple_records_with_two_labelled_views": 1
+    },
+    "correct_confirmed_retention": 0.035252960172228204,
+    "correct_hypothesis_retention": 0.5392895586652314,
+    "new_wrong_confirmed_pairs": [],
+    "new_wrong_hypothesis_pairs": [
+      [
+        61582,
+        62256
+      ]
+    ],
+    "checks": {
+      "wrong_confirmed_pairs_reduced": true,
+      "no_new_wrong_confirmed_pairs": true,
+      "correct_confirmed_retention_at_least_90_percent": false,
+      "correct_hypothesis_retention_at_least_95_percent": false,
+      "no_more_missing_labelled_objects": true,
+      "no_more_fragmented_labelled_objects": false
+    },
+    "passes": false,
+    "folds": {
+      "0": {
+        "hypotheses": {
+          "same_together": 750,
+          "same_apart": 1043,
+          "different_together": 81,
+          "different_apart": 29799,
+          "precision": 0.9025270758122743,
+          "recall": 0.4182933630786392,
+          "f1": 0.5716463414634146,
+          "main_looks": 159,
+          "main_waiting": 12,
+          "odd_kept_in_original_home": 11,
+          "odd_count": 20,
+          "objects_scored": 8,
+          "objects_split": 4,
+          "macro_object_pair_recall": 0.49011878921180957,
+          "per_object": {
+            "object:242": {
+              "looks": 48,
+              "waiting": 3,
+              "pieces_with_two_looks": 3,
+              "pair_recall": 0.45478723404255317
+            },
+            "object:259": {
+              "looks": 12,
+              "waiting": 4,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.3181818181818182
+            },
+            "object:276": {
+              "looks": 4,
+              "waiting": 2,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.16666666666666666
+            },
+            "object:307": {
+              "looks": 6,
+              "waiting": 0,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 1.0
+            },
+            "object:335": {
+              "looks": 29,
+              "waiting": 0,
+              "pieces_with_two_looks": 4,
+              "pair_recall": 0.2881773399014778
+            },
+            "object:377": {
+              "looks": 6,
+              "waiting": 0,
+              "pieces_with_two_looks": 2,
+              "pair_recall": 0.26666666666666666
+            },
+            "object:387": {
+              "looks": 17,
+              "waiting": 3,
+              "pieces_with_two_looks": 2,
+              "pair_recall": 0.4264705882352941
+            },
+            "object:407": {
+              "looks": 7,
+              "waiting": 0,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 1.0
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 99,
+          "same_apart": 1694,
+          "different_together": 1,
+          "different_apart": 29879,
+          "precision": 0.99,
+          "recall": 0.05521472392638037,
+          "f1": 0.1045958795562599,
+          "main_looks": 159,
+          "main_waiting": 122,
+          "odd_kept_in_original_home": 0,
+          "odd_count": 20,
+          "objects_scored": 8,
+          "objects_split": 1,
+          "macro_object_pair_recall": 0.04514510541427269,
+          "per_object": {
+            "object:242": {
+              "looks": 48,
+              "waiting": 45,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.0026595744680851063
+            },
+            "object:259": {
+              "looks": 12,
+              "waiting": 9,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.015151515151515152
+            },
+            "object:276": {
+              "looks": 4,
+              "waiting": 4,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:307": {
+              "looks": 6,
+              "waiting": 5,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:335": {
+              "looks": 29,
+              "waiting": 10,
+              "pieces_with_two_looks": 2,
+              "pair_recall": 0.229064039408867
+            },
+            "object:377": {
+              "looks": 6,
+              "waiting": 4,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.06666666666666667
+            },
+            "object:387": {
+              "looks": 17,
+              "waiting": 17,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:407": {
+              "looks": 7,
+              "waiting": 5,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.047619047619047616
+            }
+          }
+        }
+      },
+      "1": {
+        "hypotheses": {
+          "same_together": 1254,
+          "same_apart": 1265,
+          "different_together": 135,
+          "different_apart": 31328,
+          "precision": 0.9028077753779697,
+          "recall": 0.4978165938864629,
+          "f1": 0.6417604912998977,
+          "main_looks": 206,
+          "main_waiting": 14,
+          "odd_kept_in_original_home": 7,
+          "odd_count": 26,
+          "objects_scored": 10,
+          "objects_split": 5,
+          "macro_object_pair_recall": 0.45626339978806774,
+          "per_object": {
+            "object:246": {
+              "looks": 25,
+              "waiting": 3,
+              "pieces_with_two_looks": 4,
+              "pair_recall": 0.24333333333333335
+            },
+            "object:249": {
+              "looks": 51,
+              "waiting": 0,
+              "pieces_with_two_looks": 2,
+              "pair_recall": 0.6713725490196079
+            },
+            "object:275": {
+              "looks": 9,
+              "waiting": 0,
+              "pieces_with_two_looks": 2,
+              "pair_recall": 0.5
+            },
+            "object:332": {
+              "looks": 31,
+              "waiting": 2,
+              "pieces_with_two_looks": 5,
+              "pair_recall": 0.1827956989247312
+            },
+            "object:343": {
+              "looks": 12,
+              "waiting": 2,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.5454545454545454
+            },
+            "object:374": {
+              "looks": 6,
+              "waiting": 2,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.4
+            },
+            "object:383": {
+              "looks": 17,
+              "waiting": 0,
+              "pieces_with_two_looks": 3,
+              "pair_recall": 0.27205882352941174
+            },
+            "object:386": {
+              "looks": 5,
+              "waiting": 2,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.1
+            },
+            "object:402": {
+              "looks": 21,
+              "waiting": 3,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.6476190476190476
+            },
+            "object:413": {
+              "looks": 4,
+              "waiting": 0,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 1.0
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 32,
+          "same_apart": 2487,
+          "different_together": 1,
+          "different_apart": 31462,
+          "precision": 0.9696969696969697,
+          "recall": 0.012703453751488685,
+          "f1": 0.025078369905956112,
+          "main_looks": 206,
+          "main_waiting": 174,
+          "odd_kept_in_original_home": 1,
+          "odd_count": 26,
+          "objects_scored": 10,
+          "objects_split": 0,
+          "macro_object_pair_recall": 0.004735294117647059,
+          "per_object": {
+            "object:246": {
+              "looks": 25,
+              "waiting": 23,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.0033333333333333335
+            },
+            "object:249": {
+              "looks": 51,
+              "waiting": 42,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.02196078431372549
+            },
+            "object:275": {
+              "looks": 9,
+              "waiting": 7,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:332": {
+              "looks": 31,
+              "waiting": 29,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:343": {
+              "looks": 12,
+              "waiting": 11,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:374": {
+              "looks": 6,
+              "waiting": 5,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:383": {
+              "looks": 17,
+              "waiting": 12,
+              "pieces_with_two_looks": 1,
+              "pair_recall": 0.022058823529411766
+            },
+            "object:386": {
+              "looks": 5,
+              "waiting": 5,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:402": {
+              "looks": 21,
+              "waiting": 20,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            },
+            "object:413": {
+              "looks": 4,
+              "waiting": 4,
+              "pieces_with_two_looks": 0,
+              "pair_recall": 0.0
+            }
+          }
+        }
+      }
+    }
+  },
+  "reproduction": {
+    "fresh_exact_memberships": 4026,
+    "fresh_entity_state_differences": 0,
+    "older_matches_prior_replay": true,
+    "previous_baseline_sha256": "94d9d9be403f8ce5711a470d7f4ac65deac57c2fae0e9ad759262000df080366",
+    "older_live_snapshot_exactness": false,
+    "limitation": "The older rebuilt replay is the established baseline, not the raw live snapshot: it assigns 2,887 of 3,540 rows; the saved snapshot assigns 2,979. Names also differ."
+  },
+  "arms": {
+    "fresh-control": {
+      "hashes": {
+        "database": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+        "map": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59",
+        "before": "73b0887a531a32306dacd4d3f29bb006dd859a5e39e2fe7e15412404aa6be2f9",
+        "draft": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0"
+      },
+      "result_sha256": "14736ddc716dd283efa03ede87c5c954ad11d2dd65a5070468286aac10576506",
+      "end_db_sha256": "8041dbaa1ed4dbe4d9dcdbd39860c428fc9ab1a90952729a264535bca7be8c0c",
+      "measurement_proof": {
+        "observations": 4026,
+        "preserved": true
+      },
+      "final_counts": {
+        "observations": 4026,
+        "assigned": 3276,
+        "confirmed": 3276,
+        "tentative": 0
+      },
+      "stats": {},
+      "clear": {
+        "hypotheses": {
+          "same_together": 284,
+          "different_together": 3,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 1,
+              "memberships": {
+                "object:314": 9
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 1
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 2
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 2,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 8,
+              "pieces": 5,
+              "memberships": {
+                "object:351": 5,
+                "object:302": 1,
+                "object:415": 1,
+                "object:246": 2,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 5
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 3,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 284,
+          "different_together": 3,
+          "waiting": 39,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 1,
+              "memberships": {
+                "object:314": 9
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 1
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 2
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 2,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 8,
+              "pieces": 5,
+              "memberships": {
+                "object:351": 5,
+                "object:302": 1,
+                "object:415": 1,
+                "object:246": 2,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 5
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 3,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      },
+      "all_draft": {
+        "hypotheses": {
+          "same_together": 407,
+          "different_together": 34,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 1,
+              "memberships": {
+                "object:314": 9
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 1,
+              "pieces": 6,
+              "memberships": {
+                "object:321": 2,
+                "object:347": 6,
+                "object:415": 1,
+                "object:313": 3,
+                "object:346": 1,
+                "object:245": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:347": 2
+              }
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 0,
+              "pieces": 5,
+              "memberships": {
+                "object:297": 3,
+                "object:415": 1,
+                "object:326": 8,
+                "object:250": 1,
+                "object:399": 1
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 10
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:380": 1
+              }
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 1
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 2
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 2,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 8,
+              "pieces": 5,
+              "memberships": {
+                "object:351": 5,
+                "object:302": 1,
+                "object:415": 1,
+                "object:246": 2,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 5
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:388": 4
+              }
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 3,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 407,
+          "different_together": 34,
+          "waiting": 42,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 1,
+              "memberships": {
+                "object:314": 9
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 1,
+              "pieces": 6,
+              "memberships": {
+                "object:321": 2,
+                "object:347": 6,
+                "object:415": 1,
+                "object:313": 3,
+                "object:346": 1,
+                "object:245": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:347": 2
+              }
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 0,
+              "pieces": 5,
+              "memberships": {
+                "object:297": 3,
+                "object:415": 1,
+                "object:326": 8,
+                "object:250": 1,
+                "object:399": 1
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 10
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:380": 1
+              }
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 1
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 2
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 2,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 8,
+              "pieces": 5,
+              "memberships": {
+                "object:351": 5,
+                "object:302": 1,
+                "object:415": 1,
+                "object:246": 2,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 5
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:388": 4
+              }
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 3,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      }
+    },
+    "fresh-candidate": {
+      "hashes": {
+        "database": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+        "map": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59",
+        "before": "73b0887a531a32306dacd4d3f29bb006dd859a5e39e2fe7e15412404aa6be2f9",
+        "draft": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0"
+      },
+      "result_sha256": "2a15b57ee667cd98f179e2f7e621159449768bd1636313e7b8166a03bb4516b4",
+      "end_db_sha256": "196e802968e67b206d546fec40136eccf5b01bfe73c46ae9e370f95c01c4a36b",
+      "measurement_proof": {
+        "observations": 4026,
+        "preserved": true
+      },
+      "final_counts": {
+        "observations": 4026,
+        "assigned": 3266,
+        "confirmed": 3208,
+        "tentative": 58
+      },
+      "stats": {
+        "tentative_attachments": 167,
+        "tentative_exemplar_updates_withheld": 167,
+        "position_history_reads": 247,
+        "promoted": 109,
+        "founders": 4,
+        "confirmed_exemplar_updates": 4
+      },
+      "clear": {
+        "hypotheses": {
+          "same_together": 264,
+          "different_together": 0,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 4,
+              "pieces": 3,
+              "memberships": {
+                "object:314": 6,
+                "object:320": 1,
+                "object:423": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 2
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 2,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 10,
+              "pieces": 3,
+              "memberships": {
+                "object:351": 6,
+                "object:302": 1,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 4
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 2,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 218,
+          "different_together": 0,
+          "waiting": 69,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 5,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 6,
+                "object:320": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 7,
+              "pieces": 1,
+              "memberships": {
+                "object:350": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 1
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 10,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 15,
+              "pieces": 1,
+              "memberships": {
+                "object:351": 3
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 2
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 3
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 9,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      },
+      "all_draft": {
+        "hypotheses": {
+          "same_together": 381,
+          "different_together": 25,
+          "waiting": 47,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 4,
+              "pieces": 3,
+              "memberships": {
+                "object:314": 6,
+                "object:320": 1,
+                "object:423": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:321": 7,
+                "object:347": 4,
+                "object:415": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:321": 2
+              }
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 0,
+              "pieces": 5,
+              "memberships": {
+                "object:297": 3,
+                "object:415": 2,
+                "object:326": 5,
+                "object:246": 3,
+                "object:346": 1
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 10
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:380": 1
+              }
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 2
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 2,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 10,
+              "pieces": 3,
+              "memberships": {
+                "object:351": 6,
+                "object:302": 1,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 4
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:388": 4
+              }
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 2,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 298,
+          "different_together": 0,
+          "waiting": 94,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 5,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 6,
+                "object:320": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 9,
+              "pieces": 2,
+              "memberships": {
+                "object:321": 5,
+                "object:347": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 2,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 6,
+              "pieces": 2,
+              "memberships": {
+                "object:297": 3,
+                "object:326": 5
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 9
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 7,
+              "pieces": 1,
+              "memberships": {
+                "object:350": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 1
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 10,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 15,
+              "pieces": 1,
+              "memberships": {
+                "object:351": 3
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 2
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 3
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 4,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 9,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      }
+    },
+    "older-control": {
+      "hashes": {
+        "database": "c2e78689dcaec2cef150f352d9a11cbbfd803acdb879d4a312a5ec505c6547e6",
+        "map": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59"
+      },
+      "result_sha256": "72253ac5242161987e17df41e606140e63222ca1a5f4a222f6a43b2cffe1be64",
+      "end_db_sha256": "72378d6f9632c4305cf66da04713d4a3201aad85484c2adbea7c3707235eae3d",
+      "measurement_proof": {
+        "observations": 3540,
+        "preserved": true
+      },
+      "final_counts": {
+        "observations": 3540,
+        "assigned": 2887,
+        "confirmed": 2887,
+        "tentative": 0
+      },
+      "stats": {},
+      "clear": {},
+      "all_draft": {}
+    },
+    "older-candidate": {
+      "hashes": {
+        "database": "c2e78689dcaec2cef150f352d9a11cbbfd803acdb879d4a312a5ec505c6547e6",
+        "map": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59"
+      },
+      "result_sha256": "b0206059c9072cac63817355ccb561f3205b128cd3187353e1e232db97d6602e",
+      "end_db_sha256": "8a92f215d239429c22dc518243793195714199f849fecd16eecbe918504e8d70",
+      "measurement_proof": {
+        "observations": 3540,
+        "preserved": true
+      },
+      "final_counts": {
+        "observations": 3540,
+        "assigned": 2797,
+        "confirmed": 936,
+        "tentative": 1861
+      },
+      "stats": {
+        "promoted": 649,
+        "founders": 287,
+        "confirmed_exemplar_updates": 287,
+        "tentative_attachments": 2510,
+        "position_history_reads": 2915,
+        "tentative_exemplar_updates_withheld": 2440
+      },
+      "clear": {},
+      "all_draft": {}
+    },
+    "fresh-freeze-appearance": {
+      "hashes": {
+        "database": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+        "map": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59",
+        "before": "73b0887a531a32306dacd4d3f29bb006dd859a5e39e2fe7e15412404aa6be2f9",
+        "draft": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0"
+      },
+      "result_sha256": "2ec0972468b00ca9833ffbd00b07585a80b83820e794ea78a996239234d08045",
+      "end_db_sha256": "a88850cedb9002eb61b217669b24f6d0aaf4cfb8311d18d3662ce391fe402323",
+      "measurement_proof": {
+        "observations": 4026,
+        "preserved": true
+      },
+      "final_counts": {
+        "observations": 4026,
+        "assigned": 3266,
+        "confirmed": 3266,
+        "tentative": 0
+      },
+      "stats": {
+        "tentative_attachments": 169,
+        "appearance_updates_frozen": 169,
+        "founders": 2
+      },
+      "clear": {
+        "hypotheses": {
+          "same_together": 250,
+          "different_together": 0,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 8,
+                "object:320": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 9,
+                "object:316": 2,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:335": 9,
+                "object:354": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 8,
+                "object:370": 6,
+                "object:340": 1,
+                "object:422": 2
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 9,
+              "pieces": 4,
+              "memberships": {
+                "object:351": 5,
+                "object:302": 1,
+                "object:246": 2,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 3
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 3,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 250,
+          "different_together": 0,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 8,
+                "object:320": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 9,
+                "object:316": 2,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:335": 9,
+                "object:354": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 8,
+                "object:370": 6,
+                "object:340": 1,
+                "object:422": 2
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 9,
+              "pieces": 4,
+              "memberships": {
+                "object:351": 5,
+                "object:302": 1,
+                "object:246": 2,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 3
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 3,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      },
+      "all_draft": {
+        "hypotheses": {
+          "same_together": 360,
+          "different_together": 19,
+          "waiting": 47,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 8,
+                "object:320": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 4,
+              "pieces": 4,
+              "memberships": {
+                "object:321": 3,
+                "object:347": 3,
+                "object:313": 4,
+                "object:415": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 9,
+                "object:316": 2,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:347": 2
+              }
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 0,
+              "pieces": 5,
+              "memberships": {
+                "object:297": 3,
+                "object:415": 2,
+                "object:326": 7,
+                "object:246": 1,
+                "object:346": 1
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 10
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:380": 1
+              }
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:335": 9,
+                "object:354": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 8,
+                "object:370": 6,
+                "object:340": 1,
+                "object:422": 2
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 9,
+              "pieces": 4,
+              "memberships": {
+                "object:351": 5,
+                "object:302": 1,
+                "object:246": 2,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 3
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:388": 4
+              }
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 3,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 360,
+          "different_together": 19,
+          "waiting": 47,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 8,
+                "object:320": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 4,
+              "pieces": 4,
+              "memberships": {
+                "object:321": 3,
+                "object:347": 3,
+                "object:313": 4,
+                "object:415": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 9,
+                "object:316": 2,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:347": 2
+              }
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 0,
+              "pieces": 5,
+              "memberships": {
+                "object:297": 3,
+                "object:415": 2,
+                "object:326": 7,
+                "object:246": 1,
+                "object:346": 1
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 10
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:380": 1
+              }
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:335": 9,
+                "object:354": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 8,
+                "object:370": 6,
+                "object:340": 1,
+                "object:422": 2
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 9,
+              "pieces": 4,
+              "memberships": {
+                "object:351": 5,
+                "object:302": 1,
+                "object:246": 2,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 3
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:388": 4
+              }
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 1,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 3,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      }
+    },
+    "fresh-freeze-model": {
+      "hashes": {
+        "database": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+        "map": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59",
+        "before": "73b0887a531a32306dacd4d3f29bb006dd859a5e39e2fe7e15412404aa6be2f9",
+        "draft": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0"
+      },
+      "result_sha256": "22981c80aac009148b869e49601e72e9db1d8a30fbcf62ae5a6c15cae66fc037",
+      "end_db_sha256": "a170d776cf60d581f8623b34df03dbe3f02ae4333a5546711d4b35d181a9e050",
+      "measurement_proof": {
+        "observations": 4026,
+        "preserved": true
+      },
+      "final_counts": {
+        "observations": 4026,
+        "assigned": 3262,
+        "confirmed": 3262,
+        "tentative": 0
+      },
+      "stats": {
+        "tentative_attachments": 165,
+        "appearance_updates_frozen": 165,
+        "position_updates_frozen": 151,
+        "founders": 2
+      },
+      "clear": {
+        "hypotheses": {
+          "same_together": 256,
+          "different_together": 0,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 6,
+                "object:320": 3
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:323": 2,
+                "object:242": 8,
+                "object:316": 2,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:335": 9,
+                "object:354": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 9,
+              "pieces": 4,
+              "memberships": {
+                "object:351": 3,
+                "object:302": 1,
+                "object:375": 2,
+                "object:246": 3
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 11,
+                "object:373": 2
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 2,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 256,
+          "different_together": 0,
+          "waiting": 42,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 6,
+                "object:320": 3
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:323": 2,
+                "object:242": 8,
+                "object:316": 2,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:335": 9,
+                "object:354": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 9,
+              "pieces": 4,
+              "memberships": {
+                "object:351": 3,
+                "object:302": 1,
+                "object:375": 2,
+                "object:246": 3
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 11,
+                "object:373": 2
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 2,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      },
+      "all_draft": {
+        "hypotheses": {
+          "same_together": 381,
+          "different_together": 19,
+          "waiting": 49,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 6,
+                "object:320": 3
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 4,
+              "pieces": 3,
+              "memberships": {
+                "object:321": 6,
+                "object:347": 4,
+                "object:415": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:323": 2,
+                "object:242": 8,
+                "object:316": 2,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:321": 2
+              }
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:297": 3,
+                "object:415": 1,
+                "object:326": 8,
+                "object:346": 1
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 10
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:380": 1
+              }
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:335": 9,
+                "object:354": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 9,
+              "pieces": 4,
+              "memberships": {
+                "object:351": 3,
+                "object:302": 1,
+                "object:375": 2,
+                "object:246": 3
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 11,
+                "object:373": 2
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:388": 4
+              }
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 2,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 381,
+          "different_together": 19,
+          "waiting": 49,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 6,
+                "object:320": 3
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 4,
+              "pieces": 3,
+              "memberships": {
+                "object:321": 6,
+                "object:347": 4,
+                "object:415": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:323": 2,
+                "object:242": 8,
+                "object:316": 2,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:321": 2
+              }
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 1,
+              "pieces": 4,
+              "memberships": {
+                "object:297": 3,
+                "object:415": 1,
+                "object:326": 8,
+                "object:346": 1
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 10
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:380": 1
+              }
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:335": 9,
+                "object:354": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 9,
+              "pieces": 4,
+              "memberships": {
+                "object:351": 3,
+                "object:302": 1,
+                "object:375": 2,
+                "object:246": 3
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 11,
+                "object:373": 2
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:388": 4
+              }
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 2,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      }
+    },
+    "fresh-bridge": {
+      "hashes": {
+        "database": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+        "map": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59",
+        "before": "73b0887a531a32306dacd4d3f29bb006dd859a5e39e2fe7e15412404aa6be2f9",
+        "draft": "514e36abb500a6108163a8e0dde3a032b3cc755f66b52dda9b17e6ab8d9235a0"
+      },
+      "result_sha256": "9e63629ff8af5b91bab5e180285824eb82e458d408862e4fd422ba36ad9dc22c",
+      "end_db_sha256": "f0931a42b617c69b23ddd3c5fb9befbea5e09585f54f9b93d24f0a6a8f90f5db",
+      "measurement_proof": {
+        "observations": 4026,
+        "preserved": true
+      },
+      "final_counts": {
+        "observations": 4026,
+        "assigned": 3267,
+        "confirmed": 3209,
+        "tentative": 58
+      },
+      "stats": {
+        "tentative_attachments": 168,
+        "tentative_exemplar_updates_withheld": 168,
+        "position_history_reads": 249,
+        "bridge_promotions": 1,
+        "promoted": 110,
+        "bridge_no_anchor": 40,
+        "bridge_no_fix": 68,
+        "founders": 4,
+        "confirmed_exemplar_updates": 4
+      },
+      "clear": {
+        "hypotheses": {
+          "same_together": 270,
+          "different_together": 0,
+          "waiting": 41,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:314": 7,
+                "object:320": 1,
+                "object:423": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 2
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 2,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 10,
+              "pieces": 3,
+              "memberships": {
+                "object:351": 6,
+                "object:302": 1,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 4
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 2,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 224,
+          "different_together": 0,
+          "waiting": 68,
+          "regions": 146,
+          "objects": 16,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 4,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 7,
+                "object:320": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 7,
+              "pieces": 1,
+              "memberships": {
+                "object:350": 1
+              }
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 1
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 10,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 15,
+              "pieces": 1,
+              "memberships": {
+                "object:351": 3
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 2
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 3
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 9,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      },
+      "all_draft": {
+        "hypotheses": {
+          "same_together": 387,
+          "different_together": 25,
+          "waiting": 46,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:314": 7,
+                "object:320": 1,
+                "object:423": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 2,
+              "memberships": {
+                "object:359": 2,
+                "object:317": 1
+              }
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:321": 7,
+                "object:347": 4,
+                "object:415": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10,
+                "object:372": 1
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:321": 2
+              }
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 0,
+              "pieces": 5,
+              "memberships": {
+                "object:297": 3,
+                "object:415": 2,
+                "object:326": 5,
+                "object:246": 3,
+                "object:346": 1
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 10
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:415": 3,
+                "object:350": 1,
+                "object:247": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:380": 1
+              }
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 3
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 2,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 2
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 2,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 11,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 10,
+              "pieces": 3,
+              "memberships": {
+                "object:351": 6,
+                "object:302": 1,
+                "object:375": 1
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 3
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 4
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 0,
+              "pieces": 1,
+              "memberships": {
+                "object:388": 4
+              }
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 2,
+              "pieces": 2,
+              "memberships": {
+                "object:353": 2,
+                "object:378": 5
+              }
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        },
+        "confirmed": {
+          "same_together": 304,
+          "different_together": 0,
+          "waiting": 93,
+          "regions": 201,
+          "objects": 23,
+          "per_object": {
+            "armchair_on_cabinet_wall": {
+              "regions": 12,
+              "waiting": 4,
+              "pieces": 2,
+              "memberships": {
+                "object:314": 7,
+                "object:320": 1
+              }
+            },
+            "armchair_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "brown_door_behind_dining_set": {
+              "regions": 15,
+              "waiting": 9,
+              "pieces": 2,
+              "memberships": {
+                "object:321": 5,
+                "object:347": 1
+              }
+            },
+            "cabinet_under_snow_painting": {
+              "regions": 14,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:323": 1,
+                "object:242": 10
+              }
+            },
+            "ceiling_fan_dining_room": {
+              "regions": 11,
+              "waiting": 4,
+              "pieces": 1,
+              "memberships": {
+                "object:309": 7
+              }
+            },
+            "dining_chair_at_left_end_of_table": {
+              "regions": 2,
+              "waiting": 2,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "dining_chair_front_left": {
+              "regions": 14,
+              "waiting": 6,
+              "pieces": 2,
+              "memberships": {
+                "object:297": 3,
+                "object:326": 5
+              }
+            },
+            "dining_chair_front_right": {
+              "regions": 11,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:250": 9
+              }
+            },
+            "dining_table": {
+              "regions": 8,
+              "waiting": 7,
+              "pieces": 1,
+              "memberships": {
+                "object:350": 1
+              }
+            },
+            "glazed_exterior_opening": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "orange_white_power_extension_on_floor": {
+              "regions": 1,
+              "waiting": 1,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "painting_blue_vertical_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 2,
+              "pieces": 1,
+              "memberships": {
+                "object:384": 1
+              }
+            },
+            "painting_building_by_water_left_of_cabinet": {
+              "regions": 13,
+              "waiting": 3,
+              "pieces": 3,
+              "memberships": {
+                "object:335": 8,
+                "object:354": 1,
+                "object:437": 1
+              }
+            },
+            "painting_cattle_right_of_cabinet": {
+              "regions": 20,
+              "waiting": 3,
+              "pieces": 4,
+              "memberships": {
+                "object:249": 10,
+                "object:370": 5,
+                "object:422": 1,
+                "object:340": 1
+              }
+            },
+            "painting_green_scene_on_dining_wall": {
+              "regions": 18,
+              "waiting": 15,
+              "pieces": 1,
+              "memberships": {
+                "object:351": 3
+              }
+            },
+            "painting_high_on_opposite_wall": {
+              "regions": 3,
+              "waiting": 1,
+              "pieces": 1,
+              "memberships": {
+                "object:315": 2
+              }
+            },
+            "painting_snowy_trees_above_cabinet": {
+              "regions": 16,
+              "waiting": 3,
+              "pieces": 2,
+              "memberships": {
+                "object:248": 10,
+                "object:373": 3
+              }
+            },
+            "pendant_near_cabinet": {
+              "regions": 10,
+              "waiting": 0,
+              "pieces": 3,
+              "memberships": {
+                "object:298": 2,
+                "object:241": 1,
+                "object:329": 7
+              }
+            },
+            "person_dark_shirt_light_trousers": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "right_hallway_doorframe": {
+              "regions": 4,
+              "waiting": 4,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "rug_under_dining_table": {
+              "regions": 9,
+              "waiting": 9,
+              "pieces": 0,
+              "memberships": {}
+            },
+            "small_window_on_dining_right_wall": {
+              "regions": 7,
+              "waiting": 5,
+              "pieces": 1,
+              "memberships": {
+                "object:349": 2
+              }
+            },
+            "white_shaded_lamp_by_opposite_wall_armchair": {
+              "regions": 3,
+              "waiting": 3,
+              "pieces": 0,
+              "memberships": {}
+            }
+          }
+        }
+      }
+    },
+    "older-bridge": {
+      "hashes": {
+        "database": "c2e78689dcaec2cef150f352d9a11cbbfd803acdb879d4a312a5ec505c6547e6",
+        "map": "7a467cda446e453ad3cba49fa67a285bf8764c4fe2c96c530d1583017b3e3e59"
+      },
+      "result_sha256": "6cba988c2529a9bbf1ce83c08adbc5836592c27b6e22545ca4ff048924eaae47",
+      "end_db_sha256": "c24f4c41a16ff1e78579dd9c05d051d4609a36d5771042437f1982a5193880f0",
+      "measurement_proof": {
+        "observations": 3540,
+        "preserved": true
+      },
+      "final_counts": {
+        "observations": 3540,
+        "assigned": 2829,
+        "confirmed": 1809,
+        "tentative": 1020
+      },
+      "stats": {
+        "bridge_promotions": 155,
+        "promoted": 1536,
+        "founders": 273,
+        "confirmed_exemplar_updates": 273,
+        "tentative_attachments": 2556,
+        "position_history_reads": 3652,
+        "tentative_exemplar_updates_withheld": 2496,
+        "bridge_no_anchor": 62637,
+        "bridge_no_fix": 154999
+      },
+      "clear": {},
+      "all_draft": {}
+    }
+  },
+  "bridge": {
+    "predicate_commit": "febca34",
+    "fresh": {
+      "baseline": {
+        "same_together": 284,
+        "different_together": 3,
+        "waiting": 39,
+        "regions": 146,
+        "objects": 16,
+        "per_object": {
+          "armchair_on_cabinet_wall": {
+            "regions": 12,
+            "waiting": 3,
+            "pieces": 1,
+            "memberships": {
+              "object:314": 9
+            }
+          },
+          "armchair_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 0,
+            "pieces": 2,
+            "memberships": {
+              "object:359": 2,
+              "object:317": 1
+            }
+          },
+          "cabinet_under_snow_painting": {
+            "regions": 14,
+            "waiting": 2,
+            "pieces": 3,
+            "memberships": {
+              "object:323": 1,
+              "object:242": 10,
+              "object:372": 1
+            }
+          },
+          "ceiling_fan_dining_room": {
+            "regions": 11,
+            "waiting": 4,
+            "pieces": 1,
+            "memberships": {
+              "object:309": 7
+            }
+          },
+          "dining_table": {
+            "regions": 8,
+            "waiting": 3,
+            "pieces": 3,
+            "memberships": {
+              "object:415": 3,
+              "object:350": 1,
+              "object:247": 1
+            }
+          },
+          "painting_blue_vertical_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 2,
+            "pieces": 1,
+            "memberships": {
+              "object:384": 1
+            }
+          },
+          "painting_building_by_water_left_of_cabinet": {
+            "regions": 13,
+            "waiting": 2,
+            "pieces": 3,
+            "memberships": {
+              "object:335": 8,
+              "object:354": 1,
+              "object:437": 2
+            }
+          },
+          "painting_cattle_right_of_cabinet": {
+            "regions": 20,
+            "waiting": 2,
+            "pieces": 4,
+            "memberships": {
+              "object:249": 11,
+              "object:370": 5,
+              "object:422": 1,
+              "object:340": 1
+            }
+          },
+          "painting_green_scene_on_dining_wall": {
+            "regions": 18,
+            "waiting": 8,
+            "pieces": 5,
+            "memberships": {
+              "object:351": 5,
+              "object:302": 1,
+              "object:415": 1,
+              "object:246": 2,
+              "object:375": 1
+            }
+          },
+          "painting_high_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 0,
+            "pieces": 1,
+            "memberships": {
+              "object:315": 3
+            }
+          },
+          "painting_snowy_trees_above_cabinet": {
+            "regions": 16,
+            "waiting": 1,
+            "pieces": 2,
+            "memberships": {
+              "object:248": 10,
+              "object:373": 5
+            }
+          },
+          "pendant_near_cabinet": {
+            "regions": 3,
+            "waiting": 0,
+            "pieces": 2,
+            "memberships": {
+              "object:298": 2,
+              "object:241": 1
+            }
+          },
+          "person_dark_shirt_light_trousers": {
+            "regions": 3,
+            "waiting": 3,
+            "pieces": 0,
+            "memberships": {}
+          },
+          "rug_under_dining_table": {
+            "regions": 9,
+            "waiting": 1,
+            "pieces": 2,
+            "memberships": {
+              "object:353": 3,
+              "object:378": 5
+            }
+          },
+          "small_window_on_dining_right_wall": {
+            "regions": 7,
+            "waiting": 5,
+            "pieces": 1,
+            "memberships": {
+              "object:349": 2
+            }
+          },
+          "white_shaded_lamp_by_opposite_wall_armchair": {
+            "regions": 3,
+            "waiting": 3,
+            "pieces": 0,
+            "memberships": {}
+          }
+        }
+      },
+      "hypotheses": {
+        "same_together": 270,
+        "different_together": 0,
+        "waiting": 41,
+        "regions": 146,
+        "objects": 16,
+        "per_object": {
+          "armchair_on_cabinet_wall": {
+            "regions": 12,
+            "waiting": 3,
+            "pieces": 3,
+            "memberships": {
+              "object:314": 7,
+              "object:320": 1,
+              "object:423": 1
+            }
+          },
+          "armchair_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 0,
+            "pieces": 2,
+            "memberships": {
+              "object:359": 2,
+              "object:317": 1
+            }
+          },
+          "cabinet_under_snow_painting": {
+            "regions": 14,
+            "waiting": 2,
+            "pieces": 3,
+            "memberships": {
+              "object:323": 1,
+              "object:242": 10,
+              "object:372": 1
+            }
+          },
+          "ceiling_fan_dining_room": {
+            "regions": 11,
+            "waiting": 4,
+            "pieces": 1,
+            "memberships": {
+              "object:309": 7
+            }
+          },
+          "dining_table": {
+            "regions": 8,
+            "waiting": 3,
+            "pieces": 3,
+            "memberships": {
+              "object:415": 3,
+              "object:350": 1,
+              "object:247": 1
+            }
+          },
+          "painting_blue_vertical_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 0,
+            "pieces": 1,
+            "memberships": {
+              "object:384": 3
+            }
+          },
+          "painting_building_by_water_left_of_cabinet": {
+            "regions": 13,
+            "waiting": 2,
+            "pieces": 3,
+            "memberships": {
+              "object:335": 8,
+              "object:354": 1,
+              "object:437": 2
+            }
+          },
+          "painting_cattle_right_of_cabinet": {
+            "regions": 20,
+            "waiting": 2,
+            "pieces": 4,
+            "memberships": {
+              "object:249": 11,
+              "object:370": 5,
+              "object:422": 1,
+              "object:340": 1
+            }
+          },
+          "painting_green_scene_on_dining_wall": {
+            "regions": 18,
+            "waiting": 10,
+            "pieces": 3,
+            "memberships": {
+              "object:351": 6,
+              "object:302": 1,
+              "object:375": 1
+            }
+          },
+          "painting_high_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 0,
+            "pieces": 1,
+            "memberships": {
+              "object:315": 3
+            }
+          },
+          "painting_snowy_trees_above_cabinet": {
+            "regions": 16,
+            "waiting": 2,
+            "pieces": 2,
+            "memberships": {
+              "object:248": 10,
+              "object:373": 4
+            }
+          },
+          "pendant_near_cabinet": {
+            "regions": 3,
+            "waiting": 0,
+            "pieces": 2,
+            "memberships": {
+              "object:298": 2,
+              "object:241": 1
+            }
+          },
+          "person_dark_shirt_light_trousers": {
+            "regions": 3,
+            "waiting": 3,
+            "pieces": 0,
+            "memberships": {}
+          },
+          "rug_under_dining_table": {
+            "regions": 9,
+            "waiting": 2,
+            "pieces": 2,
+            "memberships": {
+              "object:353": 2,
+              "object:378": 5
+            }
+          },
+          "small_window_on_dining_right_wall": {
+            "regions": 7,
+            "waiting": 5,
+            "pieces": 1,
+            "memberships": {
+              "object:349": 2
+            }
+          },
+          "white_shaded_lamp_by_opposite_wall_armchair": {
+            "regions": 3,
+            "waiting": 3,
+            "pieces": 0,
+            "memberships": {}
+          }
+        }
+      },
+      "confirmed": {
+        "same_together": 224,
+        "different_together": 0,
+        "waiting": 68,
+        "regions": 146,
+        "objects": 16,
+        "per_object": {
+          "armchair_on_cabinet_wall": {
+            "regions": 12,
+            "waiting": 4,
+            "pieces": 2,
+            "memberships": {
+              "object:314": 7,
+              "object:320": 1
+            }
+          },
+          "armchair_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 3,
+            "pieces": 0,
+            "memberships": {}
+          },
+          "cabinet_under_snow_painting": {
+            "regions": 14,
+            "waiting": 3,
+            "pieces": 2,
+            "memberships": {
+              "object:323": 1,
+              "object:242": 10
+            }
+          },
+          "ceiling_fan_dining_room": {
+            "regions": 11,
+            "waiting": 4,
+            "pieces": 1,
+            "memberships": {
+              "object:309": 7
+            }
+          },
+          "dining_table": {
+            "regions": 8,
+            "waiting": 7,
+            "pieces": 1,
+            "memberships": {
+              "object:350": 1
+            }
+          },
+          "painting_blue_vertical_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 2,
+            "pieces": 1,
+            "memberships": {
+              "object:384": 1
+            }
+          },
+          "painting_building_by_water_left_of_cabinet": {
+            "regions": 13,
+            "waiting": 3,
+            "pieces": 3,
+            "memberships": {
+              "object:335": 8,
+              "object:354": 1,
+              "object:437": 1
+            }
+          },
+          "painting_cattle_right_of_cabinet": {
+            "regions": 20,
+            "waiting": 3,
+            "pieces": 4,
+            "memberships": {
+              "object:249": 10,
+              "object:370": 5,
+              "object:422": 1,
+              "object:340": 1
+            }
+          },
+          "painting_green_scene_on_dining_wall": {
+            "regions": 18,
+            "waiting": 15,
+            "pieces": 1,
+            "memberships": {
+              "object:351": 3
+            }
+          },
+          "painting_high_on_opposite_wall": {
+            "regions": 3,
+            "waiting": 1,
+            "pieces": 1,
+            "memberships": {
+              "object:315": 2
+            }
+          },
+          "painting_snowy_trees_above_cabinet": {
+            "regions": 16,
+            "waiting": 3,
+            "pieces": 2,
+            "memberships": {
+              "object:248": 10,
+              "object:373": 3
+            }
+          },
+          "pendant_near_cabinet": {
+            "regions": 3,
+            "waiting": 0,
+            "pieces": 2,
+            "memberships": {
+              "object:298": 2,
+              "object:241": 1
+            }
+          },
+          "person_dark_shirt_light_trousers": {
+            "regions": 3,
+            "waiting": 3,
+            "pieces": 0,
+            "memberships": {}
+          },
+          "rug_under_dining_table": {
+            "regions": 9,
+            "waiting": 9,
+            "pieces": 0,
+            "memberships": {}
+          },
+          "small_window_on_dining_right_wall": {
+            "regions": 7,
+            "waiting": 5,
+            "pieces": 1,
+            "memberships": {
+              "object:349": 2
+            }
+          },
+          "white_shaded_lamp_by_opposite_wall_armchair": {
+            "regions": 3,
+            "waiting": 3,
+            "pieces": 0,
+            "memberships": {}
+          }
+        }
+      },
+      "baseline_object_coverage": {
+        "without_assigned_labelled_view": 2,
+        "multiple_records_with_two_labelled_views": 5
+      },
+      "hypothesis_object_coverage": {
+        "without_assigned_labelled_view": 2,
+        "multiple_records_with_two_labelled_views": 4
+      },
+      "confirmed_object_coverage": {
+        "without_assigned_labelled_view": 4,
+        "multiple_records_with_two_labelled_views": 2
+      },
+      "correct_confirmed_retention": 0.7887323943661971,
+      "correct_hypothesis_retention": 0.9507042253521126,
+      "new_wrong_confirmed_pairs": [],
+      "new_wrong_hypothesis_pairs": [],
+      "checks": {
+        "wrong_confirmed_pairs_reduced": true,
+        "no_new_wrong_confirmed_pairs": true,
+        "correct_confirmed_retention_at_least_90_percent": false,
+        "correct_hypothesis_retention_at_least_95_percent": true,
+        "no_more_missing_labelled_objects": true,
+        "no_more_fragmented_labelled_objects": true
+      },
+      "passes": false,
+      "folds": null
+    },
+    "older": {
+      "baseline": {
+        "same_together": 3716,
+        "different_together": 710,
+        "main_waiting": 0,
+        "main_looks": 365,
+        "per_object": {
+          "object:242": {
+            "looks": 48,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:246": {
+            "looks": 25,
+            "waiting": 0,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.52
+          },
+          "object:249": {
+            "looks": 51,
+            "waiting": 0,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.8196078431372549
+          },
+          "object:259": {
+            "looks": 12,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:275": {
+            "looks": 9,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:276": {
+            "looks": 4,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:307": {
+            "looks": 6,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:332": {
+            "looks": 31,
+            "waiting": 0,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.6774193548387096
+          },
+          "object:335": {
+            "looks": 29,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:343": {
+            "looks": 12,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:374": {
+            "looks": 6,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:377": {
+            "looks": 6,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:383": {
+            "looks": 17,
+            "waiting": 0,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.47058823529411764
+          },
+          "object:386": {
+            "looks": 5,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:387": {
+            "looks": 17,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:402": {
+            "looks": 21,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:407": {
+            "looks": 7,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:413": {
+            "looks": 4,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          }
+        }
+      },
+      "hypotheses": {
+        "same_together": 1806,
+        "different_together": 217,
+        "main_waiting": 17,
+        "main_looks": 365,
+        "per_object": {
+          "object:242": {
+            "looks": 48,
+            "waiting": 0,
+            "pieces_with_two_looks": 4,
+            "pair_recall": 0.4122340425531915
+          },
+          "object:246": {
+            "looks": 25,
+            "waiting": 5,
+            "pieces_with_two_looks": 4,
+            "pair_recall": 0.13666666666666666
+          },
+          "object:249": {
+            "looks": 51,
+            "waiting": 0,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.5223529411764706
+          },
+          "object:259": {
+            "looks": 12,
+            "waiting": 4,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.3181818181818182
+          },
+          "object:275": {
+            "looks": 9,
+            "waiting": 0,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.4444444444444444
+          },
+          "object:276": {
+            "looks": 4,
+            "waiting": 2,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.16666666666666666
+          },
+          "object:307": {
+            "looks": 6,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:332": {
+            "looks": 31,
+            "waiting": 1,
+            "pieces_with_two_looks": 4,
+            "pair_recall": 0.21935483870967742
+          },
+          "object:335": {
+            "looks": 29,
+            "waiting": 0,
+            "pieces_with_two_looks": 5,
+            "pair_recall": 0.30049261083743845
+          },
+          "object:343": {
+            "looks": 12,
+            "waiting": 0,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.3787878787878788
+          },
+          "object:374": {
+            "looks": 6,
+            "waiting": 2,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.4
+          },
+          "object:377": {
+            "looks": 6,
+            "waiting": 0,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.13333333333333333
+          },
+          "object:383": {
+            "looks": 17,
+            "waiting": 0,
+            "pieces_with_two_looks": 3,
+            "pair_recall": 0.27205882352941174
+          },
+          "object:386": {
+            "looks": 5,
+            "waiting": 2,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.1
+          },
+          "object:387": {
+            "looks": 17,
+            "waiting": 1,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.5073529411764706
+          },
+          "object:402": {
+            "looks": 21,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.9047619047619048
+          },
+          "object:407": {
+            "looks": 7,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          },
+          "object:413": {
+            "looks": 4,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          }
+        }
+      },
+      "confirmed": {
+        "same_together": 1241,
+        "different_together": 77,
+        "main_waiting": 174,
+        "main_looks": 365,
+        "per_object": {
+          "object:242": {
+            "looks": 48,
+            "waiting": 6,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.35638297872340424
+          },
+          "object:246": {
+            "looks": 25,
+            "waiting": 22,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.01
+          },
+          "object:249": {
+            "looks": 51,
+            "waiting": 3,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.4964705882352941
+          },
+          "object:259": {
+            "looks": 12,
+            "waiting": 9,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.015151515151515152
+          },
+          "object:275": {
+            "looks": 9,
+            "waiting": 2,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.4166666666666667
+          },
+          "object:276": {
+            "looks": 4,
+            "waiting": 4,
+            "pieces_with_two_looks": 0,
+            "pair_recall": 0.0
+          },
+          "object:307": {
+            "looks": 6,
+            "waiting": 5,
+            "pieces_with_two_looks": 0,
+            "pair_recall": 0.0
+          },
+          "object:332": {
+            "looks": 31,
+            "waiting": 29,
+            "pieces_with_two_looks": 0,
+            "pair_recall": 0.0
+          },
+          "object:335": {
+            "looks": 29,
+            "waiting": 5,
+            "pieces_with_two_looks": 3,
+            "pair_recall": 0.2955665024630542
+          },
+          "object:343": {
+            "looks": 12,
+            "waiting": 10,
+            "pieces_with_two_looks": 0,
+            "pair_recall": 0.0
+          },
+          "object:374": {
+            "looks": 6,
+            "waiting": 5,
+            "pieces_with_two_looks": 0,
+            "pair_recall": 0.0
+          },
+          "object:377": {
+            "looks": 6,
+            "waiting": 4,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.06666666666666667
+          },
+          "object:383": {
+            "looks": 17,
+            "waiting": 12,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.022058823529411766
+          },
+          "object:386": {
+            "looks": 5,
+            "waiting": 5,
+            "pieces_with_two_looks": 0,
+            "pair_recall": 0.0
+          },
+          "object:387": {
+            "looks": 17,
+            "waiting": 4,
+            "pieces_with_two_looks": 2,
+            "pair_recall": 0.4117647058823529
+          },
+          "object:402": {
+            "looks": 21,
+            "waiting": 20,
+            "pieces_with_two_looks": 0,
+            "pair_recall": 0.0
+          },
+          "object:407": {
+            "looks": 7,
+            "waiting": 5,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 0.047619047619047616
+          },
+          "object:413": {
+            "looks": 4,
+            "waiting": 0,
+            "pieces_with_two_looks": 1,
+            "pair_recall": 1.0
+          }
+        }
+      },
+      "baseline_object_coverage": {
+        "without_assigned_labelled_view": 0,
+        "multiple_records_with_two_labelled_views": 4
+      },
+      "hypothesis_object_coverage": {
+        "without_assigned_labelled_view": 0,
+        "multiple_records_with_two_labelled_views": 10
+      },
+      "confirmed_object_coverage": {
+        "without_assigned_labelled_view": 2,
+        "multiple_records_with_two_labelled_views": 4
+      },
+      "correct_confirmed_retention": 0.3339612486544672,
+      "correct_hypothesis_retention": 0.4860064585575888,
+      "new_wrong_confirmed_pairs": [],
+      "new_wrong_hypothesis_pairs": [
+        [
+          60737,
+          61365
+        ],
+        [
+          60758,
+          61365
+        ],
+        [
+          60768,
+          61365
+        ],
+        [
+          60913,
+          61943
+        ],
+        [
+          60913,
+          63514
+        ],
+        [
+          61179,
+          63247
+        ],
+        [
+          61214,
+          61365
+        ],
+        [
+          61230,
+          61365
+        ],
+        [
+          61286,
+          61365
+        ],
+        [
+          61362,
+          61943
+        ],
+        [
+          61362,
+          63514
+        ],
+        [
+          61365,
+          62659
+        ],
+        [
+          61365,
+          62867
+        ],
+        [
+          61365,
+          62899
+        ],
+        [
+          61582,
+          62256
+        ],
+        [
+          61621,
+          63100
+        ],
+        [
+          61621,
+          63433
+        ],
+        [
+          61934,
+          63510
+        ],
+        [
+          61943,
+          63514
+        ],
+        [
+          62343,
+          63510
+        ],
+        [
+          62450,
+          63510
+        ],
+        [
+          62484,
+          63510
+        ],
+        [
+          62700,
+          63442
+        ],
+        [
+          62799,
+          63528
+        ],
+        [
+          62799,
+          63610
+        ],
+        [
+          62926,
+          63442
+        ],
+        [
+          62935,
+          63528
+        ],
+        [
+          62935,
+          63610
+        ],
+        [
+          63060,
+          63442
+        ],
+        [
+          63077,
+          63528
+        ],
+        [
+          63077,
+          63610
+        ],
+        [
+          63087,
+          63528
+        ],
+        [
+          63087,
+          63610
+        ],
+        [
+          63109,
+          63528
+        ],
+        [
+          63109,
+          63610
+        ],
+        [
+          63207,
+          63528
+        ],
+        [
+          63207,
+          63610
+        ],
+        [
+          63217,
+          63528
+        ],
+        [
+          63217,
+          63610
+        ],
+        [
+          63317,
+          63528
+        ],
+        [
+          63317,
+          63610
+        ]
+      ],
+      "checks": {
+        "wrong_confirmed_pairs_reduced": true,
+        "no_new_wrong_confirmed_pairs": true,
+        "correct_confirmed_retention_at_least_90_percent": false,
+        "correct_hypothesis_retention_at_least_95_percent": false,
+        "no_more_missing_labelled_objects": true,
+        "no_more_fragmented_labelled_objects": false
+      },
+      "passes": false,
+      "folds": {
+        "0": {
+          "hypotheses": {
+            "same_together": 716,
+            "same_apart": 1077,
+            "different_together": 76,
+            "different_apart": 29804,
+            "precision": 0.9040404040404041,
+            "recall": 0.3993307306190742,
+            "f1": 0.5539651837524178,
+            "main_looks": 159,
+            "main_waiting": 7,
+            "odd_kept_in_original_home": 9,
+            "odd_count": 20,
+            "objects_scored": 8,
+            "objects_split": 4,
+            "macro_object_pair_recall": 0.47978267659361484,
+            "per_object": {
+              "object:242": {
+                "looks": 48,
+                "waiting": 0,
+                "pieces_with_two_looks": 4,
+                "pair_recall": 0.4122340425531915
+              },
+              "object:259": {
+                "looks": 12,
+                "waiting": 4,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.3181818181818182
+              },
+              "object:276": {
+                "looks": 4,
+                "waiting": 2,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.16666666666666666
+              },
+              "object:307": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              },
+              "object:335": {
+                "looks": 29,
+                "waiting": 0,
+                "pieces_with_two_looks": 5,
+                "pair_recall": 0.30049261083743845
+              },
+              "object:377": {
+                "looks": 6,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.13333333333333333
+              },
+              "object:387": {
+                "looks": 17,
+                "waiting": 1,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.5073529411764706
+              },
+              "object:407": {
+                "looks": 7,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "confirmed": {
+            "same_together": 581,
+            "same_apart": 1212,
+            "different_together": 11,
+            "different_apart": 29869,
+            "precision": 0.981418918918919,
+            "recall": 0.32403792526491915,
+            "f1": 0.48721174004192874,
+            "main_looks": 159,
+            "main_waiting": 53,
+            "odd_kept_in_original_home": 1,
+            "odd_count": 20,
+            "objects_scored": 8,
+            "objects_split": 3,
+            "macro_object_pair_recall": 0.1491439270632551,
+            "per_object": {
+              "object:242": {
+                "looks": 48,
+                "waiting": 6,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.35638297872340424
+              },
+              "object:259": {
+                "looks": 12,
+                "waiting": 9,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.015151515151515152
+              },
+              "object:276": {
+                "looks": 4,
+                "waiting": 4,
+                "pieces_with_two_looks": 0,
+                "pair_recall": 0.0
+              },
+              "object:307": {
+                "looks": 6,
+                "waiting": 5,
+                "pieces_with_two_looks": 0,
+                "pair_recall": 0.0
+              },
+              "object:335": {
+                "looks": 29,
+                "waiting": 5,
+                "pieces_with_two_looks": 3,
+                "pair_recall": 0.2955665024630542
+              },
+              "object:377": {
+                "looks": 6,
+                "waiting": 4,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.06666666666666667
+              },
+              "object:387": {
+                "looks": 17,
+                "waiting": 4,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.4117647058823529
+              },
+              "object:407": {
+                "looks": 7,
+                "waiting": 5,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.047619047619047616
+              }
+            }
+          }
+        },
+        "1": {
+          "hypotheses": {
+            "same_together": 1090,
+            "same_apart": 1429,
+            "different_together": 141,
+            "different_apart": 31322,
+            "precision": 0.8854589764419172,
+            "recall": 0.43271139341008336,
+            "f1": 0.5813333333333334,
+            "main_looks": 206,
+            "main_waiting": 10,
+            "odd_kept_in_original_home": 8,
+            "odd_count": 26,
+            "objects_scored": 10,
+            "objects_split": 6,
+            "macro_object_pair_recall": 0.4378427498076454,
+            "per_object": {
+              "object:246": {
+                "looks": 25,
+                "waiting": 5,
+                "pieces_with_two_looks": 4,
+                "pair_recall": 0.13666666666666666
+              },
+              "object:249": {
+                "looks": 51,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.5223529411764706
+              },
+              "object:275": {
+                "looks": 9,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.4444444444444444
+              },
+              "object:332": {
+                "looks": 31,
+                "waiting": 1,
+                "pieces_with_two_looks": 4,
+                "pair_recall": 0.21935483870967742
+              },
+              "object:343": {
+                "looks": 12,
+                "waiting": 0,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.3787878787878788
+              },
+              "object:374": {
+                "looks": 6,
+                "waiting": 2,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.4
+              },
+              "object:383": {
+                "looks": 17,
+                "waiting": 0,
+                "pieces_with_two_looks": 3,
+                "pair_recall": 0.27205882352941174
+              },
+              "object:386": {
+                "looks": 5,
+                "waiting": 2,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.1
+              },
+              "object:402": {
+                "looks": 21,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.9047619047619048
+              },
+              "object:413": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          },
+          "confirmed": {
+            "same_together": 660,
+            "same_apart": 1859,
+            "different_together": 66,
+            "different_apart": 31397,
+            "precision": 0.9090909090909091,
+            "recall": 0.26200873362445415,
+            "f1": 0.4067796610169492,
+            "main_looks": 206,
+            "main_waiting": 121,
+            "odd_kept_in_original_home": 4,
+            "odd_count": 26,
+            "objects_scored": 10,
+            "objects_split": 1,
+            "macro_object_pair_recall": 0.19451960784313727,
+            "per_object": {
+              "object:246": {
+                "looks": 25,
+                "waiting": 22,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.01
+              },
+              "object:249": {
+                "looks": 51,
+                "waiting": 3,
+                "pieces_with_two_looks": 2,
+                "pair_recall": 0.4964705882352941
+              },
+              "object:275": {
+                "looks": 9,
+                "waiting": 2,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.4166666666666667
+              },
+              "object:332": {
+                "looks": 31,
+                "waiting": 29,
+                "pieces_with_two_looks": 0,
+                "pair_recall": 0.0
+              },
+              "object:343": {
+                "looks": 12,
+                "waiting": 10,
+                "pieces_with_two_looks": 0,
+                "pair_recall": 0.0
+              },
+              "object:374": {
+                "looks": 6,
+                "waiting": 5,
+                "pieces_with_two_looks": 0,
+                "pair_recall": 0.0
+              },
+              "object:383": {
+                "looks": 17,
+                "waiting": 12,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 0.022058823529411766
+              },
+              "object:386": {
+                "looks": 5,
+                "waiting": 5,
+                "pieces_with_two_looks": 0,
+                "pair_recall": 0.0
+              },
+              "object:402": {
+                "looks": 21,
+                "waiting": 20,
+                "pieces_with_two_looks": 0,
+                "pair_recall": 0.0
+              },
+              "object:413": {
+                "looks": 4,
+                "waiting": 0,
+                "pieces_with_two_looks": 1,
+                "pair_recall": 1.0
+              }
+            }
+          }
+        }
+      }
+    },
+    "passes": false
+  },
+  "passes": false,
+  "artifacts": {
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-bridge/result.json": "9e63629ff8af5b91bab5e180285824eb82e458d408862e4fd422ba36ad9dc22c",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-bridge/end.db": "f0931a42b617c69b23ddd3c5fb9befbea5e09585f54f9b93d24f0a6a8f90f5db",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-candidate/result.json": "2a15b57ee667cd98f179e2f7e621159449768bd1636313e7b8166a03bb4516b4",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-candidate/end.db": "196e802968e67b206d546fec40136eccf5b01bfe73c46ae9e370f95c01c4a36b",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-candidate/missed-clear-support.json": "819c34012c6f13db21c924d9bd5f48f36d3de71949d7274ff44397912a78b027",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-candidate/missed-clear-support.jpg": "08132238bdfba4d33170eccb7956d19a067768ddcc8a4e2aef0ed4c83845851b",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-control/result.json": "14736ddc716dd283efa03ede87c5c954ad11d2dd65a5070468286aac10576506",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-control/end.db": "8041dbaa1ed4dbe4d9dcdbd39860c428fc9ab1a90952729a264535bca7be8c0c",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-freeze-appearance/result.json": "2ec0972468b00ca9833ffbd00b07585a80b83820e794ea78a996239234d08045",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-freeze-appearance/end.db": "a88850cedb9002eb61b217669b24f6d0aaf4cfb8311d18d3662ce391fe402323",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-freeze-model/result.json": "22981c80aac009148b869e49601e72e9db1d8a30fbcf62ae5a6c15cae66fc037",
+    "captures/2026-10-04-reader-validation/tentative-evidence/fresh-freeze-model/end.db": "a170d776cf60d581f8623b34df03dbe3f02ae4333a5546711d4b35d181a9e050",
+    "captures/2026-10-04-reader-validation/tentative-evidence/older-bridge/result.json": "6cba988c2529a9bbf1ce83c08adbc5836592c27b6e22545ca4ff048924eaae47",
+    "captures/2026-10-04-reader-validation/tentative-evidence/older-bridge/end.db": "c24f4c41a16ff1e78579dd9c05d051d4609a36d5771042437f1982a5193880f0",
+    "captures/2026-10-04-reader-validation/tentative-evidence/older-candidate/result.json": "b0206059c9072cac63817355ccb561f3205b128cd3187353e1e232db97d6602e",
+    "captures/2026-10-04-reader-validation/tentative-evidence/older-candidate/end.db": "8a92f215d239429c22dc518243793195714199f849fecd16eecbe918504e8d70",
+    "captures/2026-10-04-reader-validation/tentative-evidence/older-control/result.json": "72253ac5242161987e17df41e606140e63222ca1a5f4a222f6a43b2cffe1be64",
+    "captures/2026-10-04-reader-validation/tentative-evidence/older-control/end.db": "72378d6f9632c4305cf66da04713d4a3201aad85484c2adbea7c3707235eae3d",
+    "captures/2026-10-04-reader-validation/tentative-evidence/prior-older-baseline.json": "94d9d9be403f8ce5711a470d7f4ac65deac57c2fae0e9ad759262000df080366"
+  }
+}

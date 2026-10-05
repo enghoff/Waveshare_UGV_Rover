@@ -52,6 +52,11 @@ def test_the_world_state_calls_reach_the_store():
             empty = rover.call("world_state_summary", {})
             check("an empty world answers", empty["ok"], True)
             check("...with nothing in it", empty["summary"]["entities"], 0)
+            preview = rover.call("world_state_groups", {})
+            check("an empty grouping preview reaches the store",
+                  (preview["ok"], preview["preview_only"], preview["groups"]), (True, True, []))
+            check("a grouping preview cannot be applied",
+                  rover.call("world_state_groups", {"apply": True})["ok"], False)
             check("...and says which model would answer an inspection",
                   "fake" in empty["backend"], True)
 

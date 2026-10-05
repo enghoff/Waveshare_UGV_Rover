@@ -1,0 +1,45 @@
+{
+  "independent_acceptance": false,
+  "policy": "head/body views of one person; disputed observation 61656 excluded",
+  "source_revision": "50858c172d7bc78d832f7062a52969c57ba9e2db",
+  "schema_migration_guard": "covered separately after initial replay; source stores in replay already have current schema",
+  "all_original_memberships_identical": true,
+  "all_checkpoint_scores_identical_to_previous_bench": true,
+  "checkpoints": [
+    {
+      "frame": 103,
+      "baseline_same": 124,
+      "grouped_same": 124,
+      "baseline_wrong": 22,
+      "grouped_wrong": 22
+    },
+    {
+      "frame": 206,
+      "baseline_same": 394,
+      "grouped_same": 394,
+      "baseline_wrong": 120,
+      "grouped_wrong": 120
+    },
+    {
+      "frame": 310,
+      "baseline_same": 1105,
+      "grouped_same": 1165,
+      "baseline_wrong": 247,
+      "grouped_wrong": 247
+    },
+    {
+      "frame": 413,
+      "baseline_same": 2174,
+      "grouped_same": 2218,
+      "baseline_wrong": 472,
+      "grouped_wrong": 472
+    },
+    {
+      "frame": 516,
+      "baseline_same": 3716,
+      "grouped_same": 3932,
+      "baseline_wrong": 710,
+      "grouped_wrong": 710
+    }
+  ]
+}

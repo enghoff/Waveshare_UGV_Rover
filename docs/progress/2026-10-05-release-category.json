@@ -1,0 +1,132 @@
+{
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "independent_acceptance": false,
+  "deployed": false,
+  "hardware_validated": false,
+  "predicate_commit": "13a4d45",
+  "predicate": {
+    "statistic": "cosine of the release to its best phrase minus its cosine to its record's kind; 0 when the kinds match",
+    "record_kind": "commonest best phrase among the record's largest kept cluster, ties to the higher mean cosine",
+    "gate": 0.0,
+    "rule": "release only where the statistic exceeds the gate, that is where the kinds differ",
+    "pass": "among judged right and wrong releases the gate keeps at least 50% of wrong releases and still releases at least 80% of right releases",
+    "review": "frozen release_audit.json on the fresh proposal",
+    "confirm": "the same rule and thresholds on both older folds, judged by the older look labels; both must pass",
+    "auc": "reported only; no threshold or phrase list is chosen from it",
+    "phrases": "PHRASES, fixed before embedding; written by an agent who had seen the review sheets"
+  },
+  "phrases": [
+    "a photo of a dining chair",
+    "a photo of an armchair",
+    "a photo of an office chair",
+    "a photo of a framed painting on a wall",
+    "a photo of a rug",
+    "a photo of a tiled floor",
+    "a photo of a wall",
+    "a photo of a ceiling",
+    "a photo of a door",
+    "a photo of an open doorway",
+    "a photo of a window",
+    "a photo of a cabinet",
+    "a photo of a ceiling fan",
+    "a photo of a hanging lamp",
+    "a photo of a floor lamp",
+    "a photo of a person",
+    "a photo of a bed",
+    "a photo of a wardrobe",
+    "a photo of a table",
+    "a photo of a desk",
+    "a photo of a cardboard box",
+    "a photo of a cable",
+    "a photo of a bin",
+    "a photo of a shelf",
+    "a photo of a light switch",
+    "a photo of a kitchen"
+  ],
+  "phrase_vectors": {
+    "path": "captures/2026-10-04-reader-validation/release-audit/phrases.json",
+    "sha256": "8eab823e62c1243f32186d941ffb7ef246ea809a339c4f653b5159277c87a0e5",
+    "source": "rover perception sidecar /embed, tensorrt, same backend as every stored vector",
+    "phrase_cosine_median": 0.84,
+    "phrase_cosine_max": 0.96
+  },
+  "review": {
+    "right": 71,
+    "wrong": 83,
+    "unmeasured": {
+      "right": 14,
+      "wrong": 4
+    },
+    "right_still_released": 62,
+    "wrong_kept": 25,
+    "right_still_released_share": 0.8732394366197183,
+    "wrong_kept_share": 0.30120481927710846,
+    "after_gate_released": {
+      "right": 62,
+      "wrong": 58
+    },
+    "auc": 0.6751230273205499,
+    "passes": false
+  },
+  "confirm": {
+    "release-0.json": {
+      "right": 17,
+      "wrong": 11,
+      "unmeasured": {},
+      "right_still_released": 12,
+      "wrong_kept": 7,
+      "right_still_released_share": 0.7058823529411765,
+      "wrong_kept_share": 0.6363636363636364,
+      "after_gate_released": {
+        "right": 12,
+        "wrong": 4
+      },
+      "auc": 0.6978609625668449,
+      "passes": false,
+      "overlap_with_review": 22
+    },
+    "release-1.json": {
+      "right": 15,
+      "wrong": 7,
+      "unmeasured": {},
+      "right_still_released": 11,
+      "wrong_kept": 4,
+      "right_still_released_share": 0.7333333333333333,
+      "wrong_kept_share": 0.5714285714285714,
+      "after_gate_released": {
+        "right": 11,
+        "wrong": 3
+      },
+      "auc": 0.7238095238095238,
+      "passes": false,
+      "overlap_with_review": 18
+    }
+  },
+  "passes": false,
+  "review_sha256": "3da9632a85f5e4c60bfa8de99e0ea10282d197f088360a04a1212bbe5a5984a3",
+  "labels_sha256": "451daeca301a7940b3de1913752d4ca4741a20803d8ff4f4dacf2879eb8bcf75",
+  "raw_result": {
+    "path": "captures/2026-10-04-reader-validation/release-audit/category.json",
+    "sha256": "520cd31e0752e773fe59003ed25625a764928723cef9e56f3c75e66ef8ab4420"
+  },
+  "explanation_after_failure": {
+    "wrong_released_commonest": {
+      "painting record, release read as window": 6,
+      "armchair record, release read as office chair": 5,
+      "rug record, release read as floor": 4,
+      "dining chair record, release read as doorway": 3,
+      "floor record, release read as rug": 3
+    },
+    "right_kept": 9
+  },
+  "limitations": [
+    "26 phrases written by an agent who had seen the review sheets; not tuned on any score.",
+    "The older folds share 165 of the fresh releases' observations; the confirmation is a second labeller, not a second recording.",
+    "Merging confusable kinds (rug and floor, door and doorway, the chair kinds) would be tuning on this outcome and was not done.",
+    "Development snapshot only; not independent acceptance."
+  ]
+}

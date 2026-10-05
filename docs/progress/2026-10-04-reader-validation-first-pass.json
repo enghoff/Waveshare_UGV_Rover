@@ -1,0 +1,33 @@
+{
+  "provenance": "coding-agent draft from all 27 raw photographs and 101 overlapping/unclear region outlines; existing entity assignments not consulted",
+  "independent_acceptance": false,
+  "confirmed_by_owner": false,
+  "regions": 232,
+  "review_status": {
+    "draft_clear": 153,
+    "needs_review": 79
+  },
+  "verdicts": {
+    "object": 201,
+    "mixed": 18,
+    "surface": 8,
+    "unclear": 5
+  },
+  "review_groups": {
+    "overlapping_regions": 16,
+    "kitchen_boundary": 12,
+    "chairs": 27,
+    "architectural_features": 11,
+    "pendants": 8,
+    "small_objects": 5
+  },
+  "source_database_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+  "outline_checked_regions": 101,
+  "draft_csv_sha256": "cee36d88d8114eca4e23100c1d3bd699e632c1ae4c983189231f8a51a7ef765e",
+  "original_csv_sha256": "933449b0c6e595aa3e10d8d8efda091a76e67cd5822c710d48ffab5675d6f1e2",
+  "review_question_count": 6,
+  "all_source_ids_and_boxes_preserved": true,
+  "original_sheet_unmodified_and_blank": true,
+  "all_review_links_checked": true,
+  "candidate_scored": false
+}

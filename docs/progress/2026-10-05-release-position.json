@@ -1,0 +1,109 @@
+{
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "independent_acceptance": false,
+  "deployed": false,
+  "hardware_validated": false,
+  "predicate_commit": "3b46ce5",
+  "predicate": {
+    "statistic": "max of the available bearing, range and height z of the release against its record's largest kept cluster, refitted from the stored placement",
+    "gate_z": 2.5,
+    "gate": "release only where the statistic exceeds gate_z; the repair's existing veto value, not tuned here",
+    "unmeasured": "no ray or no fit: reported separately, never gated",
+    "pass": "among measured right and wrong releases the gate keeps at least 50% of wrong releases and still releases at least 80% of right releases",
+    "review": "frozen release_audit.json on the fresh proposal",
+    "confirm": "the same gate and thresholds on both older folds, for releases whose identity the older look labels settle; both must pass",
+    "auc": "reported only; no threshold is chosen from it"
+  },
+  "review": {
+    "right": 71,
+    "wrong": 83,
+    "unmeasured": {
+      "right": 14,
+      "wrong": 4
+    },
+    "right_still_released": 19,
+    "wrong_kept": 68,
+    "right_still_released_share": 0.2676056338028169,
+    "wrong_kept_share": 0.8192771084337349,
+    "after_gate_released": {
+      "right": 19,
+      "wrong": 15
+    },
+    "auc": 0.6329543526217546,
+    "passes": false
+  },
+  "confirm": {
+    "release-0.json": {
+      "right": 17,
+      "wrong": 11,
+      "unmeasured": {},
+      "right_still_released": 7,
+      "wrong_kept": 8,
+      "right_still_released_share": 0.4117647058823529,
+      "wrong_kept_share": 0.7272727272727273,
+      "after_gate_released": {
+        "right": 7,
+        "wrong": 3
+      },
+      "auc": 0.5641711229946524,
+      "passes": false,
+      "overlap_with_review": 22
+    },
+    "release-1.json": {
+      "right": 15,
+      "wrong": 7,
+      "unmeasured": {},
+      "right_still_released": 9,
+      "wrong_kept": 4,
+      "right_still_released_share": 0.6,
+      "wrong_kept_share": 0.5714285714285714,
+      "after_gate_released": {
+        "right": 9,
+        "wrong": 3
+      },
+      "auc": 0.5095238095238095,
+      "passes": false,
+      "overlap_with_review": 18
+    }
+  },
+  "passes": false,
+  "review_sha256": "3da9632a85f5e4c60bfa8de99e0ea10282d197f088360a04a1212bbe5a5984a3",
+  "labels_sha256": "451daeca301a7940b3de1913752d4ca4741a20803d8ff4f4dacf2879eb8bcf75",
+  "raw_result": {
+    "path": "captures/2026-10-04-reader-validation/release-audit/position.json",
+    "sha256": "3af9a19a32d50de500fe6d27605f9156804e892dec8154e49e11b64f91338681"
+  },
+  "exploratory_after_failure": {
+    "auc_by_axis": {
+      "combined": 0.633,
+      "bearing": 0.605,
+      "range": 0.396,
+      "height": 0.6
+    },
+    "range_measured": {
+      "releases": 50,
+      "of": 200,
+      "judged_right": 15,
+      "judged_wrong": 23,
+      "combined_auc": 0.606
+    },
+    "any_threshold_passes": false,
+    "closest": "z 0.57 releases 73% of right and keeps 46% of wrong",
+    "median_statistic": {
+      "different_object": 1.54,
+      "two_objects": 0.74,
+      "same_object": 0.77,
+      "same_kind_chair": 0.77
+    }
+  },
+  "limitations": [
+    "The older folds share 165 of the fresh releases' observations; the confirmation is a second labeller, not a second recording.",
+    "Exploratory checks were run after the predeclared test failed and select nothing.",
+    "Placements are refitted from kept clusters whose own purity is not established.",
+    "Development snapshot only; not independent acceptance."
+  ]
+}

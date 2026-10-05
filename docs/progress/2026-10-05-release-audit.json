@@ -1,0 +1,109 @@
+{
+  "requirements": {
+    "R-WS-13": "open",
+    "R-WS-17": "proposed",
+    "R-WS-18": "proposed"
+  },
+  "independent_acceptance": false,
+  "deployed": false,
+  "hardware_validated": false,
+  "reviewer": "coding agent; owner has not reviewed",
+  "proposal_sha256": "5714a97c7d4c2fb2909797e212848992818499620cd69404eb3e1b6a5050e6d3",
+  "source_database_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+  "frozen_tsv_sha256": "462b6199def3b0187e544da69aeb0d5a973d36a9a7c44b090227046254abc629",
+  "review_sha256": "3da9632a85f5e4c60bfa8de99e0ea10282d197f088360a04a1212bbe5a5984a3",
+  "summary": {
+    "releases": 200,
+    "verdicts": {
+      "OUT": 60,
+      "MIX": 18,
+      "SAME": 67,
+      "SURFACE": 5,
+      "UNC": 23,
+      "JUNK": 7,
+      "CLASS": 20
+    },
+    "outcome": {
+      "right": 85,
+      "wrong": 87,
+      "neutral": 5,
+      "unclear": 23
+    },
+    "single_member_records": {
+      "releases": 8,
+      "outcome": {
+        "right": 8
+      }
+    },
+    "pair_changing_outcome": {
+      "right": 77,
+      "wrong": 87,
+      "neutral": 5,
+      "unclear": 23
+    },
+    "moderate_confidence": {
+      "SAME": 33,
+      "CLASS": 1,
+      "OUT": 5
+    }
+  },
+  "same_object_by_kind": {
+    "rug edges": 16,
+    "paintings": 13,
+    "ceiling fans and pendant lamps": 8,
+    "people": 5,
+    "kitchen or doorway views": 5,
+    "doors": 4,
+    "black cabinet": 3,
+    "small windows": 2,
+    "other": 11
+  },
+  "frame_edge": {
+    "wrong": [
+      44,
+      87
+    ],
+    "right": [
+      36,
+      85
+    ]
+  },
+  "under_1pct_of_frame": {
+    "wrong": [
+      20,
+      87
+    ],
+    "right": [
+      15,
+      85
+    ]
+  },
+  "post_freeze_label_comparison": {
+    "covered": 30,
+    "older": 26,
+    "fresh": "agree, allowing mixed versus painting for 64625 and 64638",
+    "older_agree": 16,
+    "older_unclear_in_review": 5,
+    "older_mixed_vs_object": [
+      62987,
+      63703
+    ],
+    "older_disagree": {
+      "61656": "label cow painting; review a different painting; label_review.json already disputes the label",
+      "63521": "label grey gold-framed painting; on closer look the label is right and the review wrong",
+      "62297": "label not a dining chair; review a dining chair close at frame edge; unresolved"
+    }
+  },
+  "artifacts": {
+    "captures/2026-10-04-reader-validation/release-audit/frozen-verdicts.tsv": "462b6199def3b0187e544da69aeb0d5a973d36a9a7c44b090227046254abc629",
+    "captures/2026-10-04-reader-validation/release-audit/index.json": "48a87a57fe77b0c5e9b4a13658df8cc30bbdcdfb7880511d9d796c3093a15679",
+    "captures/2026-10-04-reader-validation/release-audit/post-freeze-disagreements.jpg": "2f52d51e8b8ed23891a4936b03f33645b07bede1e34199954f9156919c1f9d25"
+  },
+  "limitations": [
+    "One coding agent judging low-resolution crops; 33 of 67 same-object verdicts are moderate.",
+    "One of three checked disagreements with older labels went against the review.",
+    "Records that are themselves two objects are judged against their majority.",
+    "Position was not used; whether it separates right from wrong releases is untested.",
+    "Development snapshot only; not independent acceptance."
+  ]
+}

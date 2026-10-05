@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+import numpy as np
 
 spec = importlib.util.spec_from_file_location("audit", Path(__file__).with_name("audit.py"))
 audit = importlib.util.module_from_spec(spec)
@@ -32,6 +33,27 @@ class AccountingTests(unittest.TestCase):
     def test_duplicate_halves_are_held_out_together(self):
         self.assertEqual(self.e.fold_of[self.e.object_of["object:246"]],
                          self.e.fold_of[self.e.object_of["object:351"]])
+
+    def test_feature_ablation_zeros_omitted_channels(self):
+        for i,row in self.e.rows.items():
+            row['vectors_from']='test'
+            for key in ('dino_blob','dino_alone_blob','siglip_blob'):
+                row[key]=np.asarray([1.,float(i)/10],dtype='<f4').tobytes()
+        model=self.e.fit(None,columns=(1,))
+        self.assertEqual(model['coef'][0],0.)
+        self.assertEqual(model['coef'][2],0.)
+        self.assertNotEqual(model['coef'][1],0.)
+        self.assertEqual(model['held_out_objects'],[])
+        self.assertEqual(self.e.fit(None),self.e.fit(None,columns=(0,1,2)))
+        extra={i:np.array([0.,1.]) for i in self.e.rows}
+        control=self.e.fit(None,columns=(0,1,2),additional=extra)
+        np.testing.assert_allclose(control['coef'][:3],self.e.fit(None)['coef'])
+        self.assertEqual(control['coef'][3],0.)
+        self.assertEqual(control['training_pairs'],self.e.fit(None)['training_pairs'])
+
+    def test_invalid_or_repeated_feature_columns_are_refused(self):
+        for columns in ((),(3,),(1,1)):
+            with self.assertRaises(ValueError):self.e.fit(None,columns=columns)
 
     def test_pairs_partition_exactly_once_across_folds(self):
         self.assertEqual(len(self.e.pairs), len({(p[0], p[1]) for p in self.e.pairs}))

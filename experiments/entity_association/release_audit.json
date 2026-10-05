@@ -1,0 +1,1659 @@
+{
+ "status": "coding-agent visual review, frozen before comparison with any label; owner has not reviewed it",
+ "date": "2026-10-05",
+ "proposal": "captures/2026-10-04-reader-validation/split-only/release-fresh.json",
+ "proposal_sha256": "5714a97c7d4c2fb2909797e212848992818499620cd69404eb3e1b6a5050e6d3",
+ "database_sha256": "07ada3fee17d8700f673e22660dd08a8af6408226638585e7f42f2b262dd202d",
+ "frozen_tsv_sha256": "462b6199def3b0187e544da69aeb0d5a973d36a9a7c44b090227046254abc629",
+ "method": "Each release judged from its full frame, its selected pixels and its plain box, beside up to eight retained members of its original record (release_audit.py sheets). Judged against what the record mostly shows, not against any label. Labels were consulted only after the frozen hash was taken.",
+ "verdicts": {
+  "OUT": "a different object from what the record mostly shows: release right",
+  "MIX": "the selected pixels span two objects, usually something in front of the record's object: release right",
+  "JUNK": "glare, a window blown out, or a view through a doorway; not an object: release right",
+  "SAME": "the record's own object, typically distant, cut by the frame edge, in glare or at night: release wrong",
+  "CLASS": "a dining chair or armchair like the record's; which individual one no picture settles: release breaks a same-kind link",
+  "SURFACE": "bare floor in a floor record: neutral",
+  "UNC": "could not be told from the pixels"
+ },
+ "items": [
+  {
+   "n": 1,
+   "observation": 60725,
+   "parent": "object:246",
+   "verdict": "OUT",
+   "record_shows": "landscape painting",
+   "release_shows": "dining chair back, dark"
+  },
+  {
+   "n": 2,
+   "observation": 62987,
+   "parent": "object:246",
+   "verdict": "MIX",
+   "record_shows": "landscape painting",
+   "release_shows": "chair back in front of painting, mostly chair"
+  },
+  {
+   "n": 3,
+   "observation": 63716,
+   "parent": "object:246",
+   "verdict": "OUT",
+   "record_shows": "landscape painting",
+   "release_shows": "dining chair back slats"
+  },
+  {
+   "n": 4,
+   "observation": 60742,
+   "parent": "object:313",
+   "verdict": "SAME",
+   "record_shows": "dark door (with chair in front)",
+   "release_shows": "dark door edge at frame edge"
+  },
+  {
+   "n": 5,
+   "observation": 61154,
+   "parent": "object:313",
+   "verdict": "OUT",
+   "record_shows": "dark door (with chair in front)",
+   "release_shows": "chair back only"
+  },
+  {
+   "n": 6,
+   "observation": 61157,
+   "parent": "object:313",
+   "verdict": "MIX",
+   "record_shows": "dark door (with chair in front)",
+   "release_shows": "distant door with chair top, low res"
+  },
+  {
+   "n": 7,
+   "observation": 60773,
+   "parent": "object:254",
+   "verdict": "SURFACE",
+   "record_shows": "floor",
+   "release_shows": "sunlit floor with rug edge"
+  },
+  {
+   "n": 8,
+   "observation": 60887,
+   "parent": "object:254",
+   "verdict": "SURFACE",
+   "record_shows": "floor",
+   "release_shows": "floor strip at a doorway in green room"
+  },
+  {
+   "n": 9,
+   "observation": 61011,
+   "parent": "object:254",
+   "verdict": "SURFACE",
+   "record_shows": "floor",
+   "release_shows": "corridor floor"
+  },
+  {
+   "n": 10,
+   "observation": 63230,
+   "parent": "object:254",
+   "verdict": "OUT",
+   "record_shows": "floor",
+   "release_shows": "green-bordered rug edge"
+  },
+  {
+   "n": 11,
+   "observation": 60785,
+   "parent": "object:295",
+   "verdict": "SAME",
+   "record_shows": "green-bordered rug",
+   "release_shows": "rug"
+  },
+  {
+   "n": 12,
+   "observation": 63114,
+   "parent": "object:295",
+   "verdict": "OUT",
+   "record_shows": "green-bordered rug",
+   "release_shows": "bare floor beside rug, tiny rug edge"
+  },
+  {
+   "n": 13,
+   "observation": 63741,
+   "parent": "object:295",
+   "verdict": "SAME",
+   "record_shows": "green-bordered rug",
+   "release_shows": "rug"
+  },
+  {
+   "n": 14,
+   "observation": 63958,
+   "parent": "object:295",
+   "verdict": "SAME",
+   "record_shows": "green-bordered rug",
+   "release_shows": "rug corner, far"
+  },
+  {
+   "n": 15,
+   "observation": 60796,
+   "parent": "object:260",
+   "verdict": "UNC",
+   "record_shows": "dark stick (fan blade?) close-ups, 3 members, one a green blob",
+   "release_shows": "ceiling fan hub in corridor far view"
+  },
+  {
+   "n": 16,
+   "observation": 60801,
+   "parent": "object:257",
+   "verdict": "JUNK",
+   "record_shows": "(no kept members)",
+   "release_shows": "overexposed glare blob on floor"
+  },
+  {
+   "n": 17,
+   "observation": 60806,
+   "parent": "object:266",
+   "verdict": "OUT",
+   "record_shows": "floor",
+   "release_shows": "wooden door edge"
+  },
+  {
+   "n": 18,
+   "observation": 60812,
+   "parent": "object:263",
+   "verdict": "JUNK",
+   "record_shows": "(no kept members)",
+   "release_shows": "white glare strip, green room"
+  },
+  {
+   "n": 19,
+   "observation": 60842,
+   "parent": "object:263",
+   "verdict": "JUNK",
+   "record_shows": "(no kept members)",
+   "release_shows": "window glare at frame corner"
+  },
+  {
+   "n": 20,
+   "observation": 60919,
+   "parent": "object:263",
+   "verdict": "OUT",
+   "record_shows": "(no kept members)",
+   "release_shows": "painting fragment at frame edge, green wall"
+  },
+  {
+   "n": 21,
+   "observation": 60856,
+   "parent": "object:264",
+   "verdict": "MIX",
+   "record_shows": "(no kept members)",
+   "release_shows": "bright window with chair back in front"
+  },
+  {
+   "n": 22,
+   "observation": 60870,
+   "parent": "object:270",
+   "verdict": "OUT",
+   "record_shows": "black office chair",
+   "release_shows": "light-wood wardrobe edge"
+  },
+  {
+   "n": 23,
+   "observation": 60893,
+   "parent": "object:259",
+   "verdict": "SURFACE",
+   "record_shows": "floor, green room",
+   "release_shows": "floor strip"
+  },
+  {
+   "n": 24,
+   "observation": 60911,
+   "parent": "object:341",
+   "verdict": "OUT",
+   "record_shows": "small dark-framed painting",
+   "release_shows": "thin horizontal strip far away (cabinet top?)"
+  },
+  {
+   "n": 25,
+   "observation": 63144,
+   "parent": "object:341",
+   "verdict": "SAME",
+   "record_shows": "small dark-framed painting above black cabinet",
+   "release_shows": "same painting above black cabinet",
+   "moderate": true
+  },
+  {
+   "n": 26,
+   "observation": 63944,
+   "parent": "object:341",
+   "verdict": "MIX",
+   "record_shows": "small dark-framed painting above black cabinet",
+   "release_shows": "painting plus black cabinet below it"
+  },
+  {
+   "n": 27,
+   "observation": 60921,
+   "parent": "object:273",
+   "verdict": "OUT",
+   "record_shows": "open doorway into teal room",
+   "release_shows": "the white door leaf beside the opening"
+  },
+  {
+   "n": 28,
+   "observation": 60922,
+   "parent": "object:274",
+   "verdict": "JUNK",
+   "record_shows": "(single-member record)",
+   "release_shows": "view through doorway into teal room, glare"
+  },
+  {
+   "n": 29,
+   "observation": 60926,
+   "parent": "object:288",
+   "verdict": "SAME",
+   "record_shows": "small diamond-shaped plaque on green wall",
+   "release_shows": "beige diamond plaque near window",
+   "moderate": true
+  },
+  {
+   "n": 30,
+   "observation": 60929,
+   "parent": "object:290",
+   "verdict": "MIX",
+   "record_shows": "(record dissolved: wardrobe+blanket)",
+   "release_shows": "dark wardrobe plus blue bedcover"
+  },
+  {
+   "n": 31,
+   "observation": 60983,
+   "parent": "object:290",
+   "verdict": "OUT",
+   "record_shows": "(record dissolved: wardrobe+blanket)",
+   "release_shows": "blue bedcover only"
+  },
+  {
+   "n": 32,
+   "observation": 61019,
+   "parent": "object:290",
+   "verdict": "MIX",
+   "record_shows": "(record dissolved: wardrobe+blanket)",
+   "release_shows": "dark wardrobe plus blue bedcover; same wardrobe as 60929"
+  },
+  {
+   "n": 33,
+   "observation": 60935,
+   "parent": "object:279",
+   "verdict": "MIX",
+   "record_shows": "green door",
+   "release_shows": "dark wardrobe/doorway with a strip of green door"
+  },
+  {
+   "n": 34,
+   "observation": 60947,
+   "parent": "object:287",
+   "verdict": "UNC",
+   "record_shows": "L-shaped beige plaque on green wall",
+   "release_shows": "beige plaque cut by frame edge; which of two plaques unclear"
+  },
+  {
+   "n": 35,
+   "observation": 60967,
+   "parent": "object:281",
+   "verdict": "OUT",
+   "record_shows": "(single-member record)",
+   "release_shows": "green door; same door as record 279 (release could let it rejoin)"
+  },
+  {
+   "n": 36,
+   "observation": 60994,
+   "parent": "object:284",
+   "verdict": "JUNK",
+   "record_shows": "unclear 2-member record (dark panel, green strip)",
+   "release_shows": "overexposed window/curtain glare"
+  },
+  {
+   "n": 37,
+   "observation": 61006,
+   "parent": "object:278",
+   "verdict": "SAME",
+   "record_shows": "bed (dark frame, blue cover)",
+   "release_shows": "bed footboard with blue cover"
+  },
+  {
+   "n": 38,
+   "observation": 61025,
+   "parent": "object:292",
+   "verdict": "OUT",
+   "record_shows": "(single-member record)",
+   "release_shows": "corner of the bed; the bed is record 278"
+  },
+  {
+   "n": 39,
+   "observation": 61060,
+   "parent": "object:425",
+   "verdict": "OUT",
+   "record_shows": "blurry painting, 2 members",
+   "release_shows": "wall/ceiling border with red stripe"
+  },
+  {
+   "n": 40,
+   "observation": 61130,
+   "parent": "object:425",
+   "verdict": "OUT",
+   "record_shows": "blurry painting, 2 members",
+   "release_shows": "blurry wooden edge at frame corner"
+  },
+  {
+   "n": 41,
+   "observation": 61062,
+   "parent": "object:250",
+   "verdict": "CLASS",
+   "record_shows": "dining chairs",
+   "release_shows": "distant dining chair (individual chair unknowable)"
+  },
+  {
+   "n": 42,
+   "observation": 63853,
+   "parent": "object:250",
+   "verdict": "CLASS",
+   "record_shows": "dining chairs",
+   "release_shows": "close dining chair back, blurred"
+  },
+  {
+   "n": 43,
+   "observation": 61106,
+   "parent": "object:304",
+   "verdict": "UNC",
+   "record_shows": "view through kitchen doorway",
+   "release_shows": "narrow dark strip at left of kitchen doorway"
+  },
+  {
+   "n": 44,
+   "observation": 61110,
+   "parent": "object:365",
+   "verdict": "SAME",
+   "record_shows": "dark kitchen shelf rack",
+   "release_shows": "the rack, close"
+  },
+  {
+   "n": 45,
+   "observation": 62250,
+   "parent": "object:365",
+   "verdict": "OUT",
+   "record_shows": "dark kitchen shelf rack",
+   "release_shows": "dining chair parts, rug and wall"
+  },
+  {
+   "n": 46,
+   "observation": 61115,
+   "parent": "object:253",
+   "verdict": "OUT",
+   "record_shows": "kitchen seen through doorway",
+   "release_shows": "kitchen floor strip"
+  },
+  {
+   "n": 47,
+   "observation": 61706,
+   "parent": "object:253",
+   "verdict": "OUT",
+   "record_shows": "kitchen seen through doorway",
+   "release_shows": "dining chair back"
+  },
+  {
+   "n": 48,
+   "observation": 63491,
+   "parent": "object:253",
+   "verdict": "SAME",
+   "record_shows": "kitchen seen through doorway",
+   "release_shows": "kitchen through doorway"
+  },
+  {
+   "n": 49,
+   "observation": 64195,
+   "parent": "object:253",
+   "verdict": "SAME",
+   "record_shows": "kitchen seen through doorway",
+   "release_shows": "lit kitchen doorway at night",
+   "moderate": true
+  },
+  {
+   "n": 50,
+   "observation": 61121,
+   "parent": "object:435",
+   "verdict": "OUT",
+   "record_shows": "(single-member record)",
+   "release_shows": "white kitchen cabinet panel"
+  },
+  {
+   "n": 51,
+   "observation": 61126,
+   "parent": "object:305",
+   "verdict": "SAME",
+   "record_shows": "white kitchen bin",
+   "release_shows": "the bin cut by frame edge"
+  },
+  {
+   "n": 52,
+   "observation": 61135,
+   "parent": "object:247",
+   "verdict": "CLASS",
+   "record_shows": "dining chair",
+   "release_shows": "chair back against window glare",
+   "moderate": true
+  },
+  {
+   "n": 53,
+   "observation": 61518,
+   "parent": "object:247",
+   "verdict": "OUT",
+   "record_shows": "dining chair",
+   "release_shows": "kitchen interior through doorway"
+  },
+  {
+   "n": 54,
+   "observation": 62297,
+   "parent": "object:247",
+   "verdict": "CLASS",
+   "record_shows": "dining chair",
+   "release_shows": "curved chair leg close up"
+  },
+  {
+   "n": 55,
+   "observation": 62903,
+   "parent": "object:247",
+   "verdict": "OUT",
+   "record_shows": "dining chair",
+   "release_shows": "white wall fixture beside painting"
+  },
+  {
+   "n": 56,
+   "observation": 63703,
+   "parent": "object:247",
+   "verdict": "MIX",
+   "record_shows": "dining chair",
+   "release_shows": "chairs, painting and rug together"
+  },
+  {
+   "n": 57,
+   "observation": 61136,
+   "parent": "object:348",
+   "verdict": "SAME",
+   "record_shows": "small patterned rug, green border",
+   "release_shows": "rug edge washed out by window glare",
+   "moderate": true
+  },
+  {
+   "n": 58,
+   "observation": 61743,
+   "parent": "object:348",
+   "verdict": "OUT",
+   "record_shows": "small patterned rug, green border",
+   "release_shows": "bare floor beside the rug"
+  },
+  {
+   "n": 59,
+   "observation": 62263,
+   "parent": "object:348",
+   "verdict": "SAME",
+   "record_shows": "small patterned rug, green border",
+   "release_shows": "rug corner close up"
+  },
+  {
+   "n": 60,
+   "observation": 61140,
+   "parent": "object:321",
+   "verdict": "CLASS",
+   "record_shows": "dining chair",
+   "release_shows": "chair back close up"
+  },
+  {
+   "n": 61,
+   "observation": 64567,
+   "parent": "object:321",
+   "verdict": "MIX",
+   "record_shows": "dining chair",
+   "release_shows": "person standing at a chair, both selected"
+  },
+  {
+   "n": 62,
+   "observation": 61142,
+   "parent": "object:337",
+   "verdict": "OUT",
+   "record_shows": "tree painting, gold frame",
+   "release_shows": "table-top edge in glare"
+  },
+  {
+   "n": 63,
+   "observation": 62107,
+   "parent": "object:337",
+   "verdict": "SAME",
+   "record_shows": "tree painting, gold frame",
+   "release_shows": "same painting at frame edge",
+   "moderate": true
+  },
+  {
+   "n": 64,
+   "observation": 61145,
+   "parent": "object:297",
+   "verdict": "CLASS",
+   "record_shows": "dining chair",
+   "release_shows": "chair back slats close up"
+  },
+  {
+   "n": 65,
+   "observation": 61156,
+   "parent": "object:386",
+   "verdict": "OUT",
+   "record_shows": "dark door",
+   "release_shows": "dark object on the floor"
+  },
+  {
+   "n": 66,
+   "observation": 61159,
+   "parent": "object:248",
+   "verdict": "UNC",
+   "record_shows": "snow-scene painting over black cabinet",
+   "release_shows": "pale distant painting, could be it"
+  },
+  {
+   "n": 67,
+   "observation": 64203,
+   "parent": "object:248",
+   "verdict": "UNC",
+   "record_shows": "snow-scene painting over black cabinet",
+   "release_shows": "painting at night under orange light, could be it"
+  },
+  {
+   "n": 68,
+   "observation": 61160,
+   "parent": "object:314",
+   "verdict": "UNC",
+   "record_shows": "dark armchair",
+   "release_shows": "washed-out blue shape at frame edge, possibly an armchair"
+  },
+  {
+   "n": 69,
+   "observation": 61536,
+   "parent": "object:314",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair",
+   "release_shows": "dark armchair arm at frame edge; which of two armchairs unclear"
+  },
+  {
+   "n": 70,
+   "observation": 61172,
+   "parent": "object:352",
+   "verdict": "SAME",
+   "record_shows": "rug corner, dark green border",
+   "release_shows": "rug corner at frame edge",
+   "moderate": true
+  },
+  {
+   "n": 71,
+   "observation": 61176,
+   "parent": "object:339",
+   "verdict": "OUT",
+   "record_shows": "black office chair (one cluster is an armchair)",
+   "release_shows": "distant dark armchair"
+  },
+  {
+   "n": 72,
+   "observation": 61552,
+   "parent": "object:339",
+   "verdict": "OUT",
+   "record_shows": "black office chair (one cluster is an armchair)",
+   "release_shows": "dark armchair close up"
+  },
+  {
+   "n": 73,
+   "observation": 61871,
+   "parent": "object:339",
+   "verdict": "OUT",
+   "record_shows": "black office chair (one cluster is an armchair)",
+   "release_shows": "armchair washed out by glare"
+  },
+  {
+   "n": 74,
+   "observation": 62113,
+   "parent": "object:339",
+   "verdict": "OUT",
+   "record_shows": "black office chair (one cluster is an armchair)",
+   "release_shows": "armchair with a person in it"
+  },
+  {
+   "n": 75,
+   "observation": 62350,
+   "parent": "object:339",
+   "verdict": "UNC",
+   "record_shows": "black office chair (one cluster is an armchair)",
+   "release_shows": "small light panel with metal frame, maybe the office chair's back"
+  },
+  {
+   "n": 76,
+   "observation": 61179,
+   "parent": "object:340",
+   "verdict": "UNC",
+   "record_shows": "pastoral painting, dark frame",
+   "release_shows": "tiny brown painting on far wall"
+  },
+  {
+   "n": 77,
+   "observation": 61656,
+   "parent": "object:340",
+   "verdict": "OUT",
+   "record_shows": "pastoral painting, dark frame",
+   "release_shows": "gold-framed green painting edge",
+   "moderate": true
+  },
+  {
+   "n": 78,
+   "observation": 61199,
+   "parent": "object:320",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair",
+   "release_shows": "dark armchair; which of the armchairs unclear"
+  },
+  {
+   "n": 79,
+   "observation": 62524,
+   "parent": "object:320",
+   "verdict": "MIX",
+   "record_shows": "dark armchair",
+   "release_shows": "person seated in armchair, mostly the person"
+  },
+  {
+   "n": 80,
+   "observation": 61201,
+   "parent": "object:317",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair (one cluster is a floor lamp)",
+   "release_shows": "armchair with white cushion, washed out"
+  },
+  {
+   "n": 81,
+   "observation": 61280,
+   "parent": "object:317",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair (one cluster is a floor lamp)",
+   "release_shows": "armchair close at frame edge"
+  },
+  {
+   "n": 82,
+   "observation": 61511,
+   "parent": "object:317",
+   "verdict": "MIX",
+   "record_shows": "dark armchair (one cluster is a floor lamp)",
+   "release_shows": "armchair arm, fur cushion and window frame"
+  },
+  {
+   "n": 83,
+   "observation": 63074,
+   "parent": "object:317",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair (one cluster is a floor lamp)",
+   "release_shows": "armchair in glare"
+  },
+  {
+   "n": 84,
+   "observation": 64036,
+   "parent": "object:317",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair (one cluster is a floor lamp)",
+   "release_shows": "armchair close at frame edge, washed out"
+  },
+  {
+   "n": 85,
+   "observation": 61215,
+   "parent": "object:299",
+   "verdict": "OUT",
+   "record_shows": "dark kitchen doorway",
+   "release_shows": "distant dining chair"
+  },
+  {
+   "n": 86,
+   "observation": 61818,
+   "parent": "object:299",
+   "verdict": "OUT",
+   "record_shows": "dark kitchen doorway",
+   "release_shows": "dining chair back"
+  },
+  {
+   "n": 87,
+   "observation": 62389,
+   "parent": "object:299",
+   "verdict": "OUT",
+   "record_shows": "dark kitchen doorway",
+   "release_shows": "gold-framed tree painting over the table"
+  },
+  {
+   "n": 88,
+   "observation": 63482,
+   "parent": "object:299",
+   "verdict": "OUT",
+   "record_shows": "dark kitchen doorway",
+   "release_shows": "stacked dining chairs"
+  },
+  {
+   "n": 89,
+   "observation": 61239,
+   "parent": "object:342",
+   "verdict": "OUT",
+   "record_shows": "red stripe along wall/ceiling line",
+   "release_shows": "dark wooden cabinet top at frame corner"
+  },
+  {
+   "n": 90,
+   "observation": 61262,
+   "parent": "object:376",
+   "verdict": "OUT",
+   "record_shows": "black wall object under a painting",
+   "release_shows": "dark wooden rail/shelf top at frame corner"
+  },
+  {
+   "n": 91,
+   "observation": 62702,
+   "parent": "object:376",
+   "verdict": "SAME",
+   "record_shows": "black wall object under a painting",
+   "release_shows": "the same black object, distant",
+   "moderate": true
+  },
+  {
+   "n": 92,
+   "observation": 61268,
+   "parent": "object:325",
+   "verdict": "SAME",
+   "record_shows": "white floor lamp",
+   "release_shows": "lamp shade seen from below against window",
+   "moderate": true
+  },
+  {
+   "n": 93,
+   "observation": 61285,
+   "parent": "object:357",
+   "verdict": "SAME",
+   "record_shows": "green box under glass table (mixed with chair views)",
+   "release_shows": "green printed box",
+   "moderate": true
+  },
+  {
+   "n": 94,
+   "observation": 61287,
+   "parent": "object:335",
+   "verdict": "UNC",
+   "record_shows": "grey-scene painting, gold frame",
+   "release_shows": "dark painting on the wall; could be it under dark exposure"
+  },
+  {
+   "n": 95,
+   "observation": 61306,
+   "parent": "object:335",
+   "verdict": "UNC",
+   "record_shows": "grey-scene painting, gold frame",
+   "release_shows": "dark painting in perspective; could be it"
+  },
+  {
+   "n": 96,
+   "observation": 61293,
+   "parent": "object:327",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair, backlit",
+   "release_shows": "armchair close at frame edge"
+  },
+  {
+   "n": 97,
+   "observation": 61304,
+   "parent": "object:327",
+   "verdict": "MIX",
+   "record_shows": "dark armchair, backlit",
+   "release_shows": "armchair arm plus floor and cable"
+  },
+  {
+   "n": 98,
+   "observation": 61499,
+   "parent": "object:327",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair, backlit",
+   "release_shows": "backlit armchair"
+  },
+  {
+   "n": 99,
+   "observation": 61881,
+   "parent": "object:327",
+   "verdict": "CLASS",
+   "record_shows": "dark armchair, backlit",
+   "release_shows": "armchair washed out at frame edge"
+  },
+  {
+   "n": 100,
+   "observation": 61300,
+   "parent": "object:332",
+   "verdict": "OUT",
+   "record_shows": "the owner, seated",
+   "release_shows": "wooden frame edge behind the person's head"
+  },
+  {
+   "n": 101,
+   "observation": 61929,
+   "parent": "object:332",
+   "verdict": "SAME",
+   "record_shows": "the owner, seated",
+   "release_shows": "seated person's upper body against window",
+   "moderate": true
+  },
+  {
+   "n": 102,
+   "observation": 62773,
+   "parent": "object:332",
+   "verdict": "UNC",
+   "record_shows": "the owner, seated",
+   "release_shows": "blurred blue blob at frame edge, maybe a head"
+  },
+  {
+   "n": 103,
+   "observation": 61308,
+   "parent": "object:322",
+   "verdict": "CLASS",
+   "record_shows": "dining chair",
+   "release_shows": "dark dining chair in dim room"
+  },
+  {
+   "n": 104,
+   "observation": 62393,
+   "parent": "object:322",
+   "verdict": "CLASS",
+   "record_shows": "dining chair",
+   "release_shows": "dining chair leg"
+  },
+  {
+   "n": 105,
+   "observation": 61315,
+   "parent": "object:398",
+   "verdict": "SAME",
+   "record_shows": "dark brown door",
+   "release_shows": "the dark door in a dim frame",
+   "moderate": true
+  },
+  {
+   "n": 106,
+   "observation": 61395,
+   "parent": "object:333",
+   "verdict": "SAME",
+   "record_shows": "the owner, seated",
+   "release_shows": "the person bending over"
+  },
+  {
+   "n": 107,
+   "observation": 62332,
+   "parent": "object:333",
+   "verdict": "OUT",
+   "record_shows": "the owner, seated",
+   "release_shows": "metal-frame chair with a white panel"
+  },
+  {
+   "n": 108,
+   "observation": 62622,
+   "parent": "object:333",
+   "verdict": "SAME",
+   "record_shows": "the owner, seated",
+   "release_shows": "head and shoulder in glare, some armchair",
+   "moderate": true
+  },
+  {
+   "n": 109,
+   "observation": 63789,
+   "parent": "object:333",
+   "verdict": "SAME",
+   "record_shows": "the owner, seated",
+   "release_shows": "distant seated person in glare",
+   "moderate": true
+  },
+  {
+   "n": 110,
+   "observation": 61439,
+   "parent": "object:359",
+   "verdict": "JUNK",
+   "record_shows": "backlit armchair",
+   "release_shows": "window glare strip at frame edge"
+  },
+  {
+   "n": 111,
+   "observation": 61715,
+   "parent": "object:359",
+   "verdict": "JUNK",
+   "record_shows": "backlit armchair",
+   "release_shows": "window glare at frame corner"
+  },
+  {
+   "n": 112,
+   "observation": 62459,
+   "parent": "object:359",
+   "verdict": "OUT",
+   "record_shows": "backlit armchair",
+   "release_shows": "metal-frame chair with white panel"
+  },
+  {
+   "n": 113,
+   "observation": 61445,
+   "parent": "object:318",
+   "verdict": "SAME",
+   "record_shows": "white ceiling fan",
+   "release_shows": "fan hub and blade",
+   "moderate": true
+  },
+  {
+   "n": 114,
+   "observation": 62178,
+   "parent": "object:318",
+   "verdict": "SAME",
+   "record_shows": "white ceiling fan",
+   "release_shows": "fan blade",
+   "moderate": true
+  },
+  {
+   "n": 115,
+   "observation": 61449,
+   "parent": "object:298",
+   "verdict": "SAME",
+   "record_shows": "pendant lamp, brown glass",
+   "release_shows": "the pendant lamp",
+   "moderate": true
+  },
+  {
+   "n": 116,
+   "observation": 61804,
+   "parent": "object:298",
+   "verdict": "SAME",
+   "record_shows": "pendant lamp, brown glass",
+   "release_shows": "distant pendant lamp",
+   "moderate": true
+  },
+  {
+   "n": 117,
+   "observation": 61501,
+   "parent": "object:334",
+   "verdict": "MIX",
+   "record_shows": "the owner, seated",
+   "release_shows": "sleeve, metal bottle and blue item at frame edge"
+  },
+  {
+   "n": 118,
+   "observation": 61505,
+   "parent": "object:385",
+   "verdict": "SAME",
+   "record_shows": "the owner's head",
+   "release_shows": "the head at frame edge"
+  },
+  {
+   "n": 119,
+   "observation": 61510,
+   "parent": "object:392",
+   "verdict": "OUT",
+   "record_shows": "washed-out armchair (two members are the window)",
+   "release_shows": "window panes"
+  },
+  {
+   "n": 120,
+   "observation": 61569,
+   "parent": "object:392",
+   "verdict": "UNC",
+   "record_shows": "washed-out armchair (two members are the window)",
+   "release_shows": "dark vertical edge at frame edge"
+  },
+  {
+   "n": 121,
+   "observation": 61689,
+   "parent": "object:372",
+   "verdict": "UNC",
+   "record_shows": "black cabinet",
+   "release_shows": "dark curved edge at frame edge, armchair or cabinet"
+  },
+  {
+   "n": 122,
+   "observation": 61716,
+   "parent": "object:255",
+   "verdict": "SAME",
+   "record_shows": "corridor seen through doorway",
+   "release_shows": "narrow bright opening with teal end",
+   "moderate": true
+  },
+  {
+   "n": 123,
+   "observation": 61739,
+   "parent": "object:328",
+   "verdict": "SAME",
+   "record_shows": "gold-framed tree painting over dining table",
+   "release_shows": "the frame edge behind a chair"
+  },
+  {
+   "n": 124,
+   "observation": 62253,
+   "parent": "object:328",
+   "verdict": "SAME",
+   "record_shows": "gold-framed tree painting over dining table",
+   "release_shows": "the painting with a chair top in front"
+  },
+  {
+   "n": 125,
+   "observation": 64418,
+   "parent": "object:328",
+   "verdict": "UNC",
+   "record_shows": "gold-framed tree painting over dining table",
+   "release_shows": "distant dark painting; may be a different one"
+  },
+  {
+   "n": 126,
+   "observation": 61742,
+   "parent": "object:349",
+   "verdict": "UNC",
+   "record_shows": "small high window by kitchen doorway",
+   "release_shows": "small dark-framed glass panel nearby; window or a picture"
+  },
+  {
+   "n": 127,
+   "observation": 63728,
+   "parent": "object:349",
+   "verdict": "SAME",
+   "record_shows": "small high window by kitchen doorway",
+   "release_shows": "the bright small window"
+  },
+  {
+   "n": 128,
+   "observation": 61770,
+   "parent": "object:310",
+   "verdict": "UNC",
+   "record_shows": "kitchen doorway",
+   "release_shows": "grey-blue panel at frame edge, maybe inside the kitchen"
+  },
+  {
+   "n": 129,
+   "observation": 62384,
+   "parent": "object:310",
+   "verdict": "SAME",
+   "record_shows": "kitchen doorway",
+   "release_shows": "kitchen through the doorway"
+  },
+  {
+   "n": 130,
+   "observation": 61772,
+   "parent": "object:377",
+   "verdict": "OUT",
+   "record_shows": "blurred armchair (two members are the kitchen doorway)",
+   "release_shows": "floor and rug in glare"
+  },
+  {
+   "n": 131,
+   "observation": 62712,
+   "parent": "object:377",
+   "verdict": "OUT",
+   "record_shows": "blurred armchair (two members are the kitchen doorway)",
+   "release_shows": "kitchen doorway, dim"
+  },
+  {
+   "n": 132,
+   "observation": 61778,
+   "parent": "object:350",
+   "verdict": "UNC",
+   "record_shows": "kitchen doorway with chairs in front (mixed)",
+   "release_shows": "dark panel with a chair leg at frame edge"
+  },
+  {
+   "n": 133,
+   "observation": 61781,
+   "parent": "object:424",
+   "verdict": "OUT",
+   "record_shows": "bright white rectangle (high window?), 2 members",
+   "release_shows": "small pale framed picture",
+   "moderate": true
+  },
+  {
+   "n": 134,
+   "observation": 61825,
+   "parent": "object:249",
+   "verdict": "SAME",
+   "record_shows": "cow painting, dark frame",
+   "release_shows": "washed-out blurred painting matching it",
+   "moderate": true
+  },
+  {
+   "n": 135,
+   "observation": 63133,
+   "parent": "object:249",
+   "verdict": "UNC",
+   "record_shows": "cow painting, dark frame",
+   "release_shows": "bottom edge of a painting frame at frame top"
+  },
+  {
+   "n": 136,
+   "observation": 64225,
+   "parent": "object:249",
+   "verdict": "UNC",
+   "record_shows": "cow painting, dark frame",
+   "release_shows": "painting at night under orange light"
+  },
+  {
+   "n": 137,
+   "observation": 61834,
+   "parent": "object:338",
+   "verdict": "SAME",
+   "record_shows": "rug, grey border",
+   "release_shows": "rug corner"
+  },
+  {
+   "n": 138,
+   "observation": 61849,
+   "parent": "object:338",
+   "verdict": "SAME",
+   "record_shows": "rug, grey border",
+   "release_shows": "rug edge with chair-leg bits"
+  },
+  {
+   "n": 139,
+   "observation": 62138,
+   "parent": "object:338",
+   "verdict": "SAME",
+   "record_shows": "rug, grey border",
+   "release_shows": "thin rug edge strip"
+  },
+  {
+   "n": 140,
+   "observation": 61877,
+   "parent": "object:361",
+   "verdict": "SAME",
+   "record_shows": "(record dissolved: beige panel beside black cabinet)",
+   "release_shows": "beige panel beside black cabinet; same thing as 62177"
+  },
+  {
+   "n": 141,
+   "observation": 62177,
+   "parent": "object:361",
+   "verdict": "SAME",
+   "record_shows": "(record dissolved: beige panel beside black cabinet)",
+   "release_shows": "same beige panel; same thing as 61877"
+  },
+  {
+   "n": 142,
+   "observation": 61918,
+   "parent": "object:272",
+   "verdict": "OUT",
+   "record_shows": "light-brown wooden door",
+   "release_shows": "wall bracket/bulb at frame corner"
+  },
+  {
+   "n": 143,
+   "observation": 61928,
+   "parent": "object:356",
+   "verdict": "OUT",
+   "record_shows": "washed-out armchair with person's legs (mixed)",
+   "release_shows": "white curved thing, likely lamp shade",
+   "moderate": true
+  },
+  {
+   "n": 144,
+   "observation": 61938,
+   "parent": "object:364",
+   "verdict": "OUT",
+   "record_shows": "blue-grey painting near window",
+   "release_shows": "dark object on the wall"
+  },
+  {
+   "n": 145,
+   "observation": 63084,
+   "parent": "object:364",
+   "verdict": "SAME",
+   "record_shows": "blue-grey painting near window",
+   "release_shows": "the painting",
+   "moderate": true
+  },
+  {
+   "n": 146,
+   "observation": 62097,
+   "parent": "object:336",
+   "verdict": "SAME",
+   "record_shows": "dining rug",
+   "release_shows": "thin rug edge"
+  },
+  {
+   "n": 147,
+   "observation": 63196,
+   "parent": "object:336",
+   "verdict": "SAME",
+   "record_shows": "dining rug",
+   "release_shows": "rug close up, blurred"
+  },
+  {
+   "n": 148,
+   "observation": 63488,
+   "parent": "object:336",
+   "verdict": "SAME",
+   "record_shows": "dining rug",
+   "release_shows": "rug corner"
+  },
+  {
+   "n": 149,
+   "observation": 62105,
+   "parent": "object:251",
+   "verdict": "OUT",
+   "record_shows": "corridor doorway",
+   "release_shows": "grey-white panel inside kitchen doorway",
+   "moderate": true
+  },
+  {
+   "n": 150,
+   "observation": 64001,
+   "parent": "object:251",
+   "verdict": "OUT",
+   "record_shows": "corridor doorway",
+   "release_shows": "ceiling strip with fan blade"
+  },
+  {
+   "n": 151,
+   "observation": 62136,
+   "parent": "object:362",
+   "verdict": "OUT",
+   "record_shows": "small high window with grille",
+   "release_shows": "red wall/ceiling border stripe"
+  },
+  {
+   "n": 152,
+   "observation": 62182,
+   "parent": "object:301",
+   "verdict": "MIX",
+   "record_shows": "gold-framed tree painting over dining table",
+   "release_shows": "scattered chair-top and painting-bottom pixels"
+  },
+  {
+   "n": 153,
+   "observation": 62205,
+   "parent": "object:373",
+   "verdict": "UNC",
+   "record_shows": "snow-scene painting over black cabinet",
+   "release_shows": "painting edge at frame edge; which painting unclear"
+  },
+  {
+   "n": 154,
+   "observation": 63259,
+   "parent": "object:373",
+   "verdict": "OUT",
+   "record_shows": "snow-scene painting over black cabinet",
+   "release_shows": "the black cabinet's top shelf"
+  },
+  {
+   "n": 155,
+   "observation": 62261,
+   "parent": "object:375",
+   "verdict": "OUT",
+   "record_shows": "gold-framed tree painting over dining table",
+   "release_shows": "dining chair back close up"
+  },
+  {
+   "n": 156,
+   "observation": 64696,
+   "parent": "object:375",
+   "verdict": "SAME",
+   "record_shows": "gold-framed tree painting over dining table",
+   "release_shows": "the painting, chair tops mostly excluded"
+  },
+  {
+   "n": 157,
+   "observation": 62265,
+   "parent": "object:405",
+   "verdict": "SAME",
+   "record_shows": "small high window",
+   "release_shows": "the bright small window, tilted"
+  },
+  {
+   "n": 158,
+   "observation": 62266,
+   "parent": "object:389",
+   "verdict": "SAME",
+   "record_shows": "(record dissolved: both are the dining rug)",
+   "release_shows": "rug corner; same rug as 63148"
+  },
+  {
+   "n": 159,
+   "observation": 63148,
+   "parent": "object:389",
+   "verdict": "SAME",
+   "record_shows": "(record dissolved: both are the dining rug)",
+   "release_shows": "rug edge; same rug as 62266"
+  },
+  {
+   "n": 160,
+   "observation": 62267,
+   "parent": "object:311",
+   "verdict": "SAME",
+   "record_shows": "gold-framed tree painting",
+   "release_shows": "the painting"
+  },
+  {
+   "n": 161,
+   "observation": 62419,
+   "parent": "object:302",
+   "verdict": "CLASS",
+   "record_shows": "dining chairs (mixed with table)",
+   "release_shows": "stacked dining chairs, distant"
+  },
+  {
+   "n": 162,
+   "observation": 63839,
+   "parent": "object:302",
+   "verdict": "CLASS",
+   "record_shows": "dining chairs (mixed with table)",
+   "release_shows": "brown chair or table leg"
+  },
+  {
+   "n": 163,
+   "observation": 64625,
+   "parent": "object:302",
+   "verdict": "MIX",
+   "record_shows": "dining chairs (mixed with table)",
+   "release_shows": "green painting with a chair back in front (the disputed one)"
+  },
+  {
+   "n": 164,
+   "observation": 62431,
+   "parent": "object:408",
+   "verdict": "SAME",
+   "record_shows": "floor with cables near armchair",
+   "release_shows": "extension board and cable loop",
+   "moderate": true
+  },
+  {
+   "n": 165,
+   "observation": 62924,
+   "parent": "object:408",
+   "verdict": "OUT",
+   "record_shows": "floor with cables near armchair",
+   "release_shows": "dark furniture edge at frame edge"
+  },
+  {
+   "n": 166,
+   "observation": 63549,
+   "parent": "object:408",
+   "verdict": "SAME",
+   "record_shows": "floor with cables near armchair",
+   "release_shows": "cable running up the wall to a socket",
+   "moderate": true
+  },
+  {
+   "n": 167,
+   "observation": 62455,
+   "parent": "object:380",
+   "verdict": "OUT",
+   "record_shows": "backlit window behind armchair (mixed)",
+   "release_shows": "person seated"
+  },
+  {
+   "n": 168,
+   "observation": 62838,
+   "parent": "object:380",
+   "verdict": "UNC",
+   "record_shows": "backlit window behind armchair (mixed)",
+   "release_shows": "armchair alone; parent is window and armchair together"
+  },
+  {
+   "n": 169,
+   "observation": 62511,
+   "parent": "object:383",
+   "verdict": "OUT",
+   "record_shows": "blue-grey painting near window",
+   "release_shows": "white blob near window",
+   "moderate": true
+  },
+  {
+   "n": 170,
+   "observation": 62546,
+   "parent": "object:326",
+   "verdict": "MIX",
+   "record_shows": "dining chairs",
+   "release_shows": "dark door with a chair back in front"
+  },
+  {
+   "n": 171,
+   "observation": 62626,
+   "parent": "object:381",
+   "verdict": "SAME",
+   "record_shows": "white ceiling fan",
+   "release_shows": "fan blade at frame top",
+   "moderate": true
+  },
+  {
+   "n": 172,
+   "observation": 62708,
+   "parent": "object:343",
+   "verdict": "SAME",
+   "record_shows": "dark diagonal wooden thing on wall",
+   "release_shows": "the same thing near the corridor"
+  },
+  {
+   "n": 173,
+   "observation": 62736,
+   "parent": "object:309",
+   "verdict": "SAME",
+   "record_shows": "grey ceiling fan",
+   "release_shows": "blurred fan blade",
+   "moderate": true
+  },
+  {
+   "n": 174,
+   "observation": 62737,
+   "parent": "object:329",
+   "verdict": "SAME",
+   "record_shows": "pendant lamp, brown glass",
+   "release_shows": "blurred pendant lamp",
+   "moderate": true
+  },
+  {
+   "n": 175,
+   "observation": 62745,
+   "parent": "object:324",
+   "verdict": "SAME",
+   "record_shows": "dark brown door",
+   "release_shows": "the door with a chair partly in front"
+  },
+  {
+   "n": 176,
+   "observation": 62981,
+   "parent": "object:323",
+   "verdict": "SAME",
+   "record_shows": "black cabinet",
+   "release_shows": "the cabinet close at frame edge"
+  },
+  {
+   "n": 177,
+   "observation": 62982,
+   "parent": "object:378",
+   "verdict": "SAME",
+   "record_shows": "dining rug edge",
+   "release_shows": "blurred rug edge"
+  },
+  {
+   "n": 178,
+   "observation": 63008,
+   "parent": "object:410",
+   "verdict": "SAME",
+   "record_shows": "dark door (one member a painting)",
+   "release_shows": "dark door edge at frame edge",
+   "moderate": true
+  },
+  {
+   "n": 179,
+   "observation": 63117,
+   "parent": "object:393",
+   "verdict": "OUT",
+   "record_shows": "red wall/ceiling stripe",
+   "release_shows": "dark diagonal wooden thing on the wall"
+  },
+  {
+   "n": 180,
+   "observation": 63118,
+   "parent": "object:417",
+   "verdict": "SURFACE",
+   "record_shows": "bare floor beside rug",
+   "release_shows": "floor"
+  },
+  {
+   "n": 181,
+   "observation": 63904,
+   "parent": "object:417",
+   "verdict": "OUT",
+   "record_shows": "bare floor beside rug",
+   "release_shows": "rug edge"
+  },
+  {
+   "n": 182,
+   "observation": 63120,
+   "parent": "object:396",
+   "verdict": "SAME",
+   "record_shows": "black cabinet, edge views",
+   "release_shows": "cabinet edge at frame edge",
+   "moderate": true
+  },
+  {
+   "n": 183,
+   "observation": 63166,
+   "parent": "object:242",
+   "verdict": "SAME",
+   "record_shows": "black cabinet under snow-scene painting",
+   "release_shows": "cabinet edge at frame edge",
+   "moderate": true
+  },
+  {
+   "n": 184,
+   "observation": 63169,
+   "parent": "object:390",
+   "verdict": "SAME",
+   "record_shows": "snow-scene painting corner",
+   "release_shows": "the painting's bottom corner"
+  },
+  {
+   "n": 185,
+   "observation": 63191,
+   "parent": "object:391",
+   "verdict": "OUT",
+   "record_shows": "(single-member record)",
+   "release_shows": "small washed-out framed picture beside cabinet top"
+  },
+  {
+   "n": 186,
+   "observation": 63521,
+   "parent": "object:400",
+   "verdict": "SAME",
+   "record_shows": "blue-grey painting near window",
+   "release_shows": "the painting",
+   "moderate": true
+  },
+  {
+   "n": 187,
+   "observation": 63568,
+   "parent": "object:387",
+   "verdict": "SAME",
+   "record_shows": "blue-grey painting near window",
+   "release_shows": "painting corner at frame edge",
+   "moderate": true
+  },
+  {
+   "n": 188,
+   "observation": 63943,
+   "parent": "object:418",
+   "verdict": "MIX",
+   "record_shows": "red wall/ceiling stripe",
+   "release_shows": "mostly ceiling with a bit of stripe"
+  },
+  {
+   "n": 189,
+   "observation": 63967,
+   "parent": "object:353",
+   "verdict": "SAME",
+   "record_shows": "dining rug edge",
+   "release_shows": "rug edge with chair legs"
+  },
+  {
+   "n": 190,
+   "observation": 63985,
+   "parent": "object:397",
+   "verdict": "OUT",
+   "record_shows": "mixed record (blurred painting, doorway, dark door)",
+   "release_shows": "pale blurred panel on the wall"
+  },
+  {
+   "n": 191,
+   "observation": 63987,
+   "parent": "object:419",
+   "verdict": "OUT",
+   "record_shows": "(single-member record)",
+   "release_shows": "corridor doorway into teal room"
+  },
+  {
+   "n": 192,
+   "observation": 64047,
+   "parent": "object:384",
+   "verdict": "SAME",
+   "record_shows": "blue-grey painting near window",
+   "release_shows": "painting edge above the armchair",
+   "moderate": true
+  },
+  {
+   "n": 193,
+   "observation": 64187,
+   "parent": "object:300",
+   "verdict": "SAME",
+   "record_shows": "kitchen doorway",
+   "release_shows": "lit kitchen doorway at night",
+   "moderate": true
+  },
+  {
+   "n": 194,
+   "observation": 64217,
+   "parent": "object:428",
+   "verdict": "UNC",
+   "record_shows": "mixed record (blurred brown painting, red stripe)",
+   "release_shows": "red wall/ceiling stripe at night"
+  },
+  {
+   "n": 195,
+   "observation": 64371,
+   "parent": "object:428",
+   "verdict": "OUT",
+   "record_shows": "mixed record (blurred brown painting, red stripe)",
+   "release_shows": "gold-framed tree painting over dining table"
+  },
+  {
+   "n": 196,
+   "observation": 64219,
+   "parent": "object:330",
+   "verdict": "SAME",
+   "record_shows": "gold-framed tree painting over dining table",
+   "release_shows": "the painting at night above the table",
+   "moderate": true
+  },
+  {
+   "n": 197,
+   "observation": 64227,
+   "parent": "object:303",
+   "verdict": "UNC",
+   "record_shows": "small high window",
+   "release_shows": "tall dark-orange shape on the wall at night"
+  },
+  {
+   "n": 198,
+   "observation": 64304,
+   "parent": "object:245",
+   "verdict": "CLASS",
+   "record_shows": "dining chairs",
+   "release_shows": "stacked dining chairs"
+  },
+  {
+   "n": 199,
+   "observation": 64417,
+   "parent": "object:271",
+   "verdict": "OUT",
+   "record_shows": "brown painting",
+   "release_shows": "bright two-pane window/light at wall"
+  },
+  {
+   "n": 200,
+   "observation": 64638,
+   "parent": "object:415",
+   "verdict": "MIX",
+   "record_shows": "dining table and chairs",
+   "release_shows": "green painting with chair backs in front"
+  }
+ ]
+}
