@@ -74,6 +74,24 @@ better pixel isolation alone authorises deploying the failed two-witness candida
 
 ## Next short recording and permission
 
+The second recording after sensor recovery is available as
+`depth-drive-20261005-2`. Before any candidate computation, extend only the
+offline replay's map handling: where a pass used multiple archived grids, every
+candidate reach query must return exactly the same answer under every grid used
+in that pass. Abort the candidate on its first disagreement. This proves
+invariance to switching between those recorded contexts; it does not infer a
+wall-clock schedule or an unrecorded map. Keep strict single-map handling as the
+default. Record this conditional diagnostic separately from the earlier trial
+protocol, which refused any mid-pass map refresh.
+
+Freeze photographic subject/mask judgments before reading candidate results.
+The second recording's 26 manual-look labels are analyst development judgments,
+not independent acceptance evidence; execution summaries were already seen.
+Measure lost useful subject links and changed cross-subject links under the
+same fixed range rule, preserving missing ranges and all observations. The
+earlier 98% retention criterion remains; passing a small labelled subset cannot
+override the older cabinet regression or supply missing glass distance truth.
+
 The [first attempt](../progress/2026-10-05-evidence-drive-blocked.md) ended at
 its first route refusal. The rover travelled 0.298 m, then fresh localization
 failed; the planned independent viewpoints were not reached. All recorded
