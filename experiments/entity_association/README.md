@@ -534,6 +534,9 @@ Saved grid answers are verified even without a counterfactual.
 --output <new-json-file>` reproduces retained sampler answers using the actual
 recorded projection arguments. It reports the fixed minority-band flag without
 changing a stored observation or the rover's range policy. Missing raw depth is
-an explicit failure; reproduced depth is not independent distance truth. The
+an explicit failure by default. `--allow-missing-depth` reports the missing
+frames and their observations, checks only available frames, and marks complete
+sampler proof false. It does not fabricate ranges or projection evidence.
+Reproduced depth is not independent distance truth. The
 [stationary hardware check](../../docs/progress/2026-10-05-call-recording.md)
 documents the first completed real recording and its limits.

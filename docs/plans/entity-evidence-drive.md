@@ -74,13 +74,23 @@ better pixel isolation alone authorises deploying the failed two-witness candida
 
 ## Next short recording and permission
 
+The [first attempt](../progress/2026-10-05-evidence-drive-blocked.md) ended at
+its first route refusal. The rover travelled 0.298 m, then fresh localization
+failed; the planned independent viewpoints were not reached. All recorded
+resolver calls replay exactly, but no new range triggers the candidate rule.
+Do not count this as a policy trial or repeat the same route. Restore and
+confirm localization at the charging position before considering another
+drive, and prepare a fresh live route with its navigation evidence recorded.
+The saved post-stop costmaps do not reconstruct the controller's earlier ticks;
+a navigation fix requires a real reproduction before deployment.
+
 The owner is reconnecting the charger: movement, including chassis turning,
 requires a new prompt and approval. Ask only once the test route, recording and
 checks are ready to run immediately; idle preparation must not consume the battery.
 
-Start with the known chair/painting scene and the unchanged resolver. Record one
+Once navigation is confirmed, start with the known chair/painting scene and the unchanged resolver. Record one
 parked look, an intermediate look and two side looks along the short route already
-driven on October 5, retaining raw depth on each fresh inspection. Recheck the
+driven on October 5 only if current navigation supports it, retaining raw depth on each fresh inspection. Recheck the
 live map, localization, battery and route before movement. Save the precise start
 pose for the return to charging; stop the trial on route refusal or uncertain
 localization rather than replacing it with an improvised longer drive.

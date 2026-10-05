@@ -15,7 +15,7 @@ from world_state import outline
 from experiments.entity_association.audit_depth_abstention import load_depth, json_numpy
 
 
-def run(recording, frames, output):
+def run(recording, frames, output, allow_missing_depth=False):
     if output.exists():
         raise ValueError('choose a new output file')
     manifest = json.loads((recording/'manifest.json').read_text())
@@ -23,11 +23,17 @@ def run(recording, frames, output):
     events = [json.loads(s) for s in (recording/'events.jsonl').read_text().splitlines()]
     projections = [e for e in events if e['kind'] == 'depth_projection']
     assert projections, 'no recorded projection arguments'
-    rows = []
+    rows, missing = [], []
     with sqlite3.connect((recording/'after.db').resolve().as_uri()+'?mode=ro', uri=True) as db:
         db.row_factory = sqlite3.Row
         for projection in projections:
             fid = projection['frame_id']
+            if not (frames/(fid+'.depth.gz')).exists() and allow_missing_depth:
+                missing.append({'frame_id':fid, 'sequence':projection['sequence'],
+                    'observations':[{'id':r['id'], 'range_m':r['range_m']}
+                        for r in db.execute('SELECT id,range_m FROM observations WHERE frame_id=?', (fid,))],
+                    'reason':'Raw depth not retained; sampler answer cannot be checked.'})
+                continue
             image, raw, header, _ = load_depth(frames/(fid+'.depth.gz'))
             with Image.open(frames/(fid+'.jpg')) as photo:
                 size = photo.size
@@ -65,13 +71,15 @@ def run(recording, frames, output):
                 rows.append({'id':row['id'], 'frame_id':fid, 'bbox':bbox,
                              'range_m':row['range_m'], 'method':answer.get('method'),
                              'band':band, 'flag':flag})
-    result = {'all_kept_sampler_answers_exact':True, 'rows':rows,
+    result = {'all_kept_sampler_answers_exact':not missing,
+              'all_available_sampler_answers_exact':True,
+              'missing_depth':missing, 'rows':rows,
               'flagged_ids':[r['id'] for r in rows if r['flag']],
               'independent_acceptance':False,
               'limit':'Reproduced sampler answers do not supply independent distance or identity truth.'}
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, default=json_numpy)+'\n')
-    print(f'{len(rows)} stored sampler answers exact; {sum(r["range_m"] is not None for r in rows)} ranges; {len(result["flagged_ids"])} flagged.')
+    print(f'{len(rows)} stored sampler answers exact; {sum(r["range_m"] is not None for r in rows)} ranges; {len(result["flagged_ids"])} flagged; {len(missing)} depth frames missing.')
     return result
 
 
@@ -80,5 +88,7 @@ if __name__ == '__main__':
     parser.add_argument('--recording', type=Path, required=True)
     parser.add_argument('--frames', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--allow-missing-depth', action='store_true',
+                        help='Report missing frames explicitly and check only retained depth; no complete-proof claim.')
     args = parser.parse_args()
-    run(args.recording, args.frames, args.output)
+    run(args.recording, args.frames, args.output, args.allow_missing_depth)

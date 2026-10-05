@@ -1,0 +1,814 @@
+{
+  "recording": "depth-drive-20261005-1",
+  "complete": true,
+  "source_sha256": {
+    "call_recording.py": "beb8e127daa722d3243772c138a051a98a3e21186908daa26ea7ee9e8fc2b121",
+    "relens.py": "ec89f38d4e8410b2a00b7c0412abf12fb5f83be258851d6ed3cf2b6ef43698b7",
+    "inspector.py": "59e12354190553f97a435d8703c54bd14f372eeecccab08579a377cb83ae0924",
+    "test_hypothesis_check.py": "e71bc4b5dc7c789d415285ff12c116cece1520caf9c6dcffe620711f3bd2225b",
+    "oak.py": "d45136fcf196522fbe17be00e1dd82195f99df711d3531707473304830ef7f2d",
+    "outline.py": "006e7efa3319a9c5ccd67618cf211d6151af529cb943534324c3b53b072827f1",
+    "resolve.py": "a77605bef794351570069a7519c2f4c33809efcf18167b41fb2a69a6dcce3f0b",
+    "test_fakes.py": "f5e3b05c244157b888b88bfc94de061e225b54d191825b1f2b997e23d79c1164",
+    "merging.py": "3027ea97791246ed6b02cda64a091c2c1a2238bfd2d62ee9a860a8fdbc3d0de9",
+    "incremental.py": "20146555eede798d664b36357c985ef153f72b81bf6f59f1276323838aabcab3",
+    "merge_sheet.py": "cb568a36f758537248cfff4aa40985dc3c06e7ac57ebc8417645ad3b79c15d45",
+    "perception_server.py": "e9034a64cbaca00c66af141227b2abbb8d35ecb95e83d7ba3ec1b2c8ff880f99",
+    "collect_world.py": "6af0b53ae0a49b19d48e575aaf79c1a382682df092e509957bdde1b83419c249",
+    "bench_whole.py": "85f9f819e28b237b91d1b36f22c7510866006b4e2fb7b956b2bacdcdeeb1fe8b",
+    "report_incremental.py": "41cbe22a6f4d5f990168f6143ca5dba9458a23febfe8b770ec5068b86d24bbfc",
+    "negative_evidence.py": "7845976b97a8b2e16d23c292bd66e81f09d415780f0df784075c7fd07c3c2cf9",
+    "test_reanchor.py": "e5437c6315aafacc8a32f60ab4fee7e0300475ceb7b4cc72fcfb31b712c76615",
+    "test_reader_groups.py": "56454bd944bbd55524ccf4ccc3e2a0d0999eb92765ab3fab62039b9b1a9aeaf4",
+    "test_search.py": "2cc612a385d378dde9b36bbe01430ac8c559f077853aad21b12bfa629455ed79",
+    "bench_oak.py": "e1e4513098e129f23012a5f1c8719c8281560a4f434c80ffd039f65eedf9a2df",
+    "cached_geometry.py": "7ba0a4cf177638f08fdb516362a266e516cd14d9176092538601f4d14078fe17",
+    "test_relens.py": "e74c3e827d1901591a10992c7c7acdacf27a651c12e99abf726c5b9013d0fcda",
+    "appearance.py": "6020233780e96c2ac40163b76dcb021b35bfa82147e2f854dadea850f34b0016",
+    "hypothesis_check.py": "8b7197b1bf4838a9afa2a12cc15fa48a607a7f3c682da822d5fdbbbb7de9b897",
+    "score_incremental.py": "f34a12f649ec12d7c0da5c49f52b9de3ab13abc6967713080af43819f061de92",
+    "test_cluster.py": "ca95a3e16402a142671cf048d61869009f0c5515dd053a162dc728de7a8af246",
+    "test_merging.py": "7c8e64bf7d5d54b673a582b4e991812e3110aea1e640afa7890e134a19814923",
+    "rebuild.py": "76447b5bad884a8c6b0e79c9b5a01a9702f10f3aa75b7ad963beee6a1b8d9d5c",
+    "test_outline.py": "a9a23b49c0c833d5483be5155f9ed918a81f3fc92bc03fff61de2314ca6de8a5",
+    "test_rebuild.py": "5dbc78e216a948f2abe54912d94cc95971ec2fa732bd05cd90f1425860ad178c",
+    "test_approach.py": "a85d3ae3ee6c1e0be36d45292556802f9aa1b1c499018437f3ea714e0690b53b",
+    "cluster.py": "b7e4d2d66ed241637a62a78ac09fe6486ea125ba2d71741d16bb6bfabb58b4e5",
+    "bench_cluster.py": "4fe7ead777831d481246cda4d5ee175a05b94cfb1b85d09385390b289bd68235",
+    "view.py": "4e9095c94b4fa21e9b94ac04a79e2d69601c40c1c6dbaff29482ecd9da27b96f",
+    "bench_still.py": "f0a230e699996cbf11b819ad25f4f68101ed43d2be38be399130fa0457b7a698",
+    "bench_inspection.py": "ffc5b9c519bb7aeee093a907f09bc4440bc6b6dcf78a83a3564211743fa8cb9f",
+    "headingcheck.py": "f536db600af2d58265d164f444edac641adda2fe2cb519bf31e0ebf79997edc3",
+    "bench_identity.py": "5e27e09c97c249323ed5f08df52f1e15865f0314e8733d4a0f69074d617a47b7",
+    "test_identity.py": "3de53d7ba8c9d6e880f76049ab128161aebe94bc405c31dbe6e83836bf87dd43",
+    "bench_height.py": "9e7d296accff2fe0e821961abc489bc93d906541f2dabf93aacd4e210d918a43",
+    "perceive.py": "0f07d16507eaae41a05a80aa4e804b77bf378973d3567b1c447c9bce8cc888d1",
+    "store.py": "3319e036fb6d425c14516e4756a3872aba6ec75eb7f4cdae3c7d779780768d7a",
+    "schema.py": "205b65491752ece62b68af07107e99cd41c8e1fdcb83be91767e8c5f57a9b9cb",
+    "locate.py": "72cc821345df58dbde143083ee48e18a25ec75dbe940c25f16c5fe22d573568f",
+    "__init__.py": "f55ca30f1140aacf2e24b3df3f8f34f113360d41a6bc4db087b11f6de69f9104",
+    "test_harness.py": "482ad44baadfb8229953e0fc99e52daf08c4f6d144fac35ee33b38d174aa6cf2",
+    "test_call_recording.py": "cb17ae628190d34399b5cf37407ea125ff53ed46d9d905d2dc6d5d4b243899f0",
+    "perception_client.py": "2fe4e7c34aec77636678fd84b163016e3e0bd88a7c66da181a3095c67dcba267",
+    "approach.py": "3c98c46cb25e9abde05d040af7842bfe22c5b50b4e5d3399075326d35e784b61",
+    "test_inspection_look.py": "ed2256f4ade30ea7ce008772bef08e4fc2b56cf304ea1996b779cfd6e104f8e4",
+    "test_locate.py": "d3a36c09d0cbe22161a8ad6b26bb19729757584d4028c820ab329e915c9eb5cd",
+    "bench_incremental.py": "537c38c43448e3ec6d141eb37b286d406758274d15e1daa5552ea6ecd85201f1",
+    "selftest.py": "4baf4b5deba4daa8f34faec3eb923cd0d5ca562c1bfcdd23eb55ec3eba994cac",
+    "search.py": "d25f1d861970e7d2d66d6c272bed18b761f089244db24559c36185cf8cdf7265",
+    "bench_approach.py": "8866fb0c70651e700274d2b3a4f439961fce19b7b9e949237e5d8706f2a90a9a",
+    "reanchor.py": "16af755fb47f1d00c4f66142e5de634ca2e029a2e7ffeb06424e8d38684004d7",
+    "bench_bearing.py": "752763b5e9c0424e6646c2737a397f3415d0c9681820e82219da3d25ec05879a",
+    "reader_groups.py": "33b7ba9c31dd675ce99f28161775ac3a2af517b4358c89a8eff9fc5554437383",
+    "test_incremental.py": "b974a5589f28a11350e33e0c7889877c6824353626c369107ad15d5e3fc57f52",
+    "bench_shutter.py": "c393ff9e8d052e0eb8872faeef4510d3db4377a61f2112902e6a089183d7e72d",
+    "test_resolve.py": "a88eb7dc66ba78eb7b4d871414272fa0330967ef07c02165b3353e4ab404a6b2",
+    "test_turning_ranges.py": "1297d9b4e7db0aec57592d1c35624b646f32a0872b7e8a50f5e208cc1e5352a0",
+    "test_headingcheck.py": "6fce9c2901837a91d5142f35259088fbf774237698b187ccc9975cae64fe2329",
+    "test_inspect.py": "daeaa82023eb5b2cd06e7bd779d43ba9dce927547006f0be869efd352404930b",
+    "test_store.py": "33c8168a0ab17e28dbdd06cc8d587ac451f9f476cea35c96afd7125e4c1ab7fa",
+    "engines.py": "e011bc6a3bdfb9159347f4cf88b9572466844a29a38d540ee9b69d9baee3a5d3",
+    "replay.py": "97ee23ff46dfe4bdfa1e4bab10e3da6eba7f86f652e0b62dd89384a0f62c183c",
+    "depth_client.py": "adf8436196521c5e40048d5c37449e4f0458a5947a1b2750bf54c7b7c4560847",
+    "test_perceive.py": "bc42ffdf185a85298eb9bf900c26b0156d77ba32068b14d04bc6484b81b2a908",
+    "test_oak.py": "1f2c4baad9ab4355cf80c86782471b5b312b050c61d1778b68d56ff5fedfa3f5",
+    "inspection_ranges.py": "73df266c3ebfbffbec8af2da5f938d82c4d634dd425da0fdb87a12e682eef82a",
+    "bench_perceive.py": "fcc9d972ae566ddb99f9c52a6973ad3904be041fed42264fae7632d063ceba67",
+    "export_regions.py": "5889eb1400ae911a0b3a910b41ef61a0ff34e8777d7b7f7f48956effa860a04b"
+  },
+  "input_sha256": {
+    "before.db": "627066ceb981557cb59d0114da28a6f708e058ce2706873d3e85a9b6369b1d4c",
+    "after.db": "953e173be887a7591e453b645346ebe96ebdf910a0fbec1a86c07a661689c97b",
+    "events.jsonl": "a1f4188acc0f227d8c8cacc449e476648c10553e84b9b2c177edc9cdc68d0d61",
+    "manifest.json": "d58d4107b924a60efe47cbb8eceed1bf19d119ab4650d1727266caa6804ebcbd"
+  },
+  "frames_sha256": {
+    "20261005-162341-04637b.depth.gz": "680c89883a3879306098625800555e652a3b17f9ebdc8ae7364c1e48c5203a84",
+    "20261005-162341-04637b.jpg": "d0f145746cd71d53bdbc6497f00221705a1f498f382542d33dc5ce090813a0e1",
+    "20261005-162408-562238.depth.gz": "f465bab64c96184593642c4c7c6c9c54508356f485018b7117d528613e406c9b",
+    "20261005-162408-562238.jpg": "d1c36254ac4f12bbd9cbf3bcfbbf9e7c39ca73d4bf671df247121da0e104ad83",
+    "20261005-162412-ed3b9a.jpg": "03c86b447c40510e0fa530bb16de6c03dcbd5a8b846f72d54d4e2d6f6638f656",
+    "20261005-162541-745b4a.depth.gz": "26b0f72b9c10ac119812a08129f106da79222353fb8113403357525165f1b46e",
+    "20261005-162541-745b4a.jpg": "c85dd8f1d1a357d85bb92ea4962ea7eb4757e2333e8e2b530160d328f99e822a"
+  },
+  "navigation_after_stop_sha256": "610e3a805d53dd82343c9ca820c45254c7d3e68ce2f6e718a2f8ee5d4698504d",
+  "resolver_passes": 14,
+  "checkpoint_checks": 43,
+  "reach_queries": 11936,
+  "all_live_checkpoints_exact": true,
+  "all_archived_map_answers_exact": true,
+  "maps_per_pass": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "control_calls": [
+    {
+      "started_at": 1791197631.5688481,
+      "finished_at": 1791197653.2539196,
+      "call": "drive_to",
+      "arguments": {
+        "x_m": -17.462,
+        "y_m": -15.479,
+        "heading_deg": 104,
+        "speed_ms": 0.25
+      },
+      "result": {
+        "ok": false,
+        "reason": "blocked",
+        "travelled_m": 0.298,
+        "turned_deg": 0.0,
+        "detail": "the rover is standing inside something the costmap believes in -- turn on the spot or back up, then try again -- the route round was 4.3 m for a goal 0.3 m away",
+        "clear_ahead_m": 1.2090001106262207,
+        "surroundings": "Straight ahead is clear for 1.2 m. a flat surface 0.5 m away ahead and to your left, running about 1.6 m. a flat surface 0.9 m away ahead and to your right, running about 0.7 m. a flat surface 1.6 m away to your right, running about 0.7 m. a flat surface 1.7 m away straight ahead, running about 0.7 m. 1 small object 2.6 m away behind you on the right. the widest way through is 5.2 m across, directly behind you at 166 degrees."
+      }
+    },
+    {
+      "started_at": 1791197662.6785681,
+      "finished_at": 1791197662.7048512,
+      "call": "nav_status",
+      "arguments": {},
+      "result": {
+        "ok": true,
+        "driving": false,
+        "exploring": false,
+        "estop": false,
+        "stop_seq": 0,
+        "pose": {
+          "x_m": -16.937,
+          "y_m": -15.329,
+          "heading_deg": 74.9
+        },
+        "speed_ms": 0.0,
+        "turn_dps": 0.0,
+        "clearance_m": 0.6270000338554382,
+        "steering_deg": 90.6,
+        "remaining_m": null,
+        "match_score": null,
+        "position_trusted": true,
+        "mapping": true,
+        "scans": 28873,
+        "dropped_scans": 0,
+        "pwm": [
+          0,
+          0
+        ],
+        "gyro_bias_dps": 0.0,
+        "board_ok": true,
+        "lidar_ok": true,
+        "lidar_live": true,
+        "lidar_port": "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B79023845-if00",
+        "scan_age_s": 0.08,
+        "transform_age_s": 0.02,
+        "map_age_s": 1.5,
+        "nav2_ready": true,
+        "map_id": "7da19bef3888",
+        "map_kept": true,
+        "map_settled": true,
+        "map_note": "the map from the last session is back, and the rover is where it was parked",
+        "map_saved_age_s": 11560.4,
+        "map_fit": null,
+        "map_drift": {
+          "agrees": true,
+          "trusted": true,
+          "off_m": 0.045,
+          "off_deg": 0.0,
+          "score": 0.992,
+          "here_score": 0.955,
+          "rival": 0.884,
+          "took_s": 1.56,
+          "at": 1791197465.8883314,
+          "why": "the scan agrees with where the rover thinks it is, to within 4 cm and 0.0 degrees"
+        },
+        "move": {
+          "seq": 64,
+          "phase": "ended",
+          "kind": "drive_to",
+          "asked": {
+            "x_m": -17.462,
+            "y_m": -15.479,
+            "heading_deg": 104.0
+          },
+          "why": "the rover is standing inside something the costmap believes in -- turn on the spot or back up, then try again -- the route round was 4.3 m for a goal 0.3 m away",
+          "route_m": 3.96,
+          "waypoints": 67,
+          "replans": 0,
+          "reason": "blocked",
+          "age_s": 9.45,
+          "missed": []
+        },
+        "lidar_resets": 0,
+        "lidar_reset_note": "",
+        "board_reopens": 0,
+        "board_reopen_note": null,
+        "autonomy": null
+      }
+    },
+    {
+      "started_at": 1791197737.0692968,
+      "finished_at": 1791197737.1068075,
+      "call": "stop_driving",
+      "arguments": {},
+      "result": {
+        "ok": true,
+        "stopped": true,
+        "latched": false
+      }
+    },
+    {
+      "started_at": 1791197737.5102537,
+      "finished_at": 1791197744.4971387,
+      "call": "world_inspect",
+      "arguments": {
+        "fresh": true,
+        "keep_depth": true,
+        "settle": true,
+        "wait": true
+      },
+      "result": {
+        "ok": true,
+        "status": "ok",
+        "inference_id": 13971,
+        "frame_id": "20261005-162541-745b4a",
+        "scene": "",
+        "duration_s": 3.61,
+        "returned": 4,
+        "stored": 4,
+        "placed": 0,
+        "matched": 0,
+        "created": 0,
+        "ambiguous": 15,
+        "still_waiting": 273,
+        "settled": true,
+        "moved_m": 0.0,
+        "turned_deg": 0.0,
+        "pose": null,
+        "rejected": 0,
+        "entities": [],
+        "detail": "4 of 5 regions kept; 4 without a bearing (the heading could not be checked against the map: the scan does not fit the map well enough anywhere near here: the best of 3751 poses put 65% of it on a wall and a fit needs 90%, which is either a room that has changed since it was mapped or a rover that has been moved further than this can see); the depth camera saw none of it well enough to range (4 of them outside its view); 15 ambiguous, 273 waiting for a look from elsewhere",
+        "map_session": 67,
+        "model_id": "tensorrt",
+        "found": 5,
+        "timings": {
+          "regions_ms": 22,
+          "dino_ms": 33,
+          "dino_alone_ms": 32,
+          "siglip_ms": 21
+        },
+        "look_s": 0.17,
+        "took_s": 6.96
+      }
+    },
+    {
+      "started_at": 1791197764.8718007,
+      "finished_at": 1791197765.9049287,
+      "call": "world_inspect",
+      "arguments": {
+        "settle": false,
+        "wait": true
+      },
+      "result": {
+        "ok": true,
+        "status": "unchanged",
+        "unchanged": true,
+        "inference_id": 13972,
+        "changed_share": 0.0,
+        "duration_s": 0.37,
+        "detail": "the same picture as the last look -- 0.0% of it differed",
+        "returned": 0,
+        "stored": 0,
+        "placed": 0,
+        "matched": 0,
+        "created": 0,
+        "ambiguous": 0,
+        "rejected": 0,
+        "settled": false,
+        "entities": [],
+        "took_s": 1.01
+      }
+    }
+  ],
+  "new_observations": [
+    {
+      "id": 68799,
+      "frame_id": "20261005-162341-04637b",
+      "entity_id": "object:347",
+      "bearing_deg": 124.0,
+      "observer_pose_json": "{\"x_m\": -17.148, \"y_m\": -15.557, \"heading_deg\": 76.6, \"checked\": {\"off_deg\": 0.0, \"off_m\": 0.045, \"score\": 0.993}}",
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68800,
+      "frame_id": "20261005-162341-04637b",
+      "entity_id": "object:250",
+      "bearing_deg": 107.6,
+      "observer_pose_json": "{\"x_m\": -17.148, \"y_m\": -15.557, \"heading_deg\": 76.6, \"checked\": {\"off_deg\": 0.0, \"off_m\": 0.045, \"score\": 0.993}}",
+      "range_m": 2.668,
+      "range_absent": null
+    },
+    {
+      "id": 68801,
+      "frame_id": "20261005-162341-04637b",
+      "entity_id": null,
+      "bearing_deg": 109.3,
+      "observer_pose_json": "{\"x_m\": -17.148, \"y_m\": -15.557, \"heading_deg\": 76.6, \"checked\": {\"off_deg\": 0.0, \"off_m\": 0.045, \"score\": 0.993}}",
+      "range_m": 4.792,
+      "range_absent": null
+    },
+    {
+      "id": 68802,
+      "frame_id": "20261005-162341-04637b",
+      "entity_id": "object:304",
+      "bearing_deg": 88.5,
+      "observer_pose_json": "{\"x_m\": -17.148, \"y_m\": -15.557, \"heading_deg\": 76.6, \"checked\": {\"off_deg\": 0.0, \"off_m\": 0.045, \"score\": 0.993}}",
+      "range_m": 3.071,
+      "range_absent": null
+    },
+    {
+      "id": 68803,
+      "frame_id": "20261005-162341-04637b",
+      "entity_id": null,
+      "bearing_deg": 95.2,
+      "observer_pose_json": "{\"x_m\": -17.148, \"y_m\": -15.557, \"heading_deg\": 76.6, \"checked\": {\"off_deg\": 0.0, \"off_m\": 0.045, \"score\": 0.993}}",
+      "range_m": 2.905,
+      "range_absent": null
+    },
+    {
+      "id": 68804,
+      "frame_id": "20261005-162341-04637b",
+      "entity_id": "object:341",
+      "bearing_deg": 150.2,
+      "observer_pose_json": "{\"x_m\": -17.148, \"y_m\": -15.557, \"heading_deg\": 76.6, \"checked\": {\"off_deg\": 0.0, \"off_m\": 0.045, \"score\": 0.993}}",
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68805,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68806,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68807,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": 3.119,
+      "range_absent": null
+    },
+    {
+      "id": 68808,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68809,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68810,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": 3.433,
+      "range_absent": null
+    },
+    {
+      "id": 68811,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": 3.371,
+      "range_absent": null
+    },
+    {
+      "id": 68812,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68813,
+      "frame_id": "20261005-162408-562238",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": 3.653,
+      "range_absent": null
+    },
+    {
+      "id": 68814,
+      "frame_id": "20261005-162412-ed3b9a",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68815,
+      "frame_id": "20261005-162541-745b4a",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68816,
+      "frame_id": "20261005-162541-745b4a",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68817,
+      "frame_id": "20261005-162541-745b4a",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    },
+    {
+      "id": 68818,
+      "frame_id": "20261005-162541-745b4a",
+      "entity_id": null,
+      "bearing_deg": null,
+      "observer_pose_json": null,
+      "range_m": null,
+      "range_absent": "outside the depth camera's view"
+    }
+  ],
+  "depth": {
+    "all_kept_sampler_answers_exact": false,
+    "all_available_sampler_answers_exact": true,
+    "missing_depth": [
+      {
+        "frame_id": "20261005-162412-ed3b9a",
+        "sequence": 3619,
+        "observations": [
+          {
+            "id": 68814,
+            "range_m": null
+          }
+        ],
+        "reason": "Raw depth not retained; sampler answer cannot be checked."
+      }
+    ],
+    "rows": [
+      {
+        "id": 68799,
+        "frame_id": "20261005-162341-04637b",
+        "bbox": [
+          0.1185,
+          0.3359,
+          0.201,
+          0.6203
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68800,
+        "frame_id": "20261005-162341-04637b",
+        "bbox": [
+          0.2418,
+          0.4069,
+          0.3148,
+          0.6461
+        ],
+        "range_m": 2.668,
+        "method": "outline",
+        "band": {
+          "share": 0.5570032573289903,
+          "gap_m": 0.11964817210823986,
+          "valid_samples": 614
+        },
+        "flag": false
+      },
+      {
+        "id": 68801,
+        "frame_id": "20261005-162341-04637b",
+        "bbox": [
+          0.2234,
+          0.3263,
+          0.345,
+          0.4589
+        ],
+        "range_m": 4.792,
+        "method": "outline",
+        "band": {
+          "share": 0.9621928166351607,
+          "gap_m": 0.003908609539528207,
+          "valid_samples": 529
+        },
+        "flag": false
+      },
+      {
+        "id": 68802,
+        "frame_id": "20261005-162341-04637b",
+        "bbox": [
+          0.3918,
+          0.4554,
+          0.4451,
+          0.6263
+        ],
+        "range_m": 3.071,
+        "method": "outline",
+        "band": {
+          "share": 0.541871921182266,
+          "gap_m": 0.2659216044553827,
+          "valid_samples": 203
+        },
+        "flag": false
+      },
+      {
+        "id": 68803,
+        "frame_id": "20261005-162341-04637b",
+        "bbox": [
+          0.3423,
+          0.4758,
+          0.3939,
+          0.6461
+        ],
+        "range_m": 2.905,
+        "method": "outline",
+        "band": {
+          "share": 0.6026058631921825,
+          "gap_m": 0.14351982039222166,
+          "valid_samples": 307
+        },
+        "flag": false
+      },
+      {
+        "id": 68804,
+        "frame_id": "20261005-162341-04637b",
+        "bbox": [
+          0.0,
+          0.1938,
+          0.046,
+          0.3449
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68805,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.0,
+          0.3943,
+          0.1712,
+          0.6695
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68806,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.8198,
+          0.3708,
+          0.9974,
+          0.6331
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68807,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.3926,
+          0.4176,
+          0.531,
+          0.6561
+        ],
+        "range_m": 3.119,
+        "method": "outline",
+        "band": {
+          "share": 0.7977811396873424,
+          "gap_m": 0.05257672616995146,
+          "valid_samples": 1983
+        },
+        "flag": false
+      },
+      {
+        "id": 68808,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.767,
+          0.3505,
+          0.8376,
+          0.6222
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68809,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.0124,
+          0.2716,
+          0.104,
+          0.455
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68810,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.3982,
+          0.2871,
+          0.5064,
+          0.4171
+        ],
+        "range_m": 3.433,
+        "method": "outline",
+        "band": {
+          "share": 0.9769633507853404,
+          "gap_m": 0.002461599506319967,
+          "valid_samples": 955
+        },
+        "flag": false
+      },
+      {
+        "id": 68811,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.1816,
+          0.2485,
+          0.2979,
+          0.3673
+        ],
+        "range_m": 3.371,
+        "method": "outline",
+        "band": {
+          "share": 0.8781725888324873,
+          "gap_m": 0.052236289313036366,
+          "valid_samples": 197
+        },
+        "flag": false
+      },
+      {
+        "id": 68812,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.8551,
+          0.0421,
+          0.9637,
+          0.1477
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68813,
+        "frame_id": "20261005-162408-562238",
+        "bbox": [
+          0.5832,
+          0.3486,
+          0.6489,
+          0.4458
+        ],
+        "range_m": 3.653,
+        "method": "outline",
+        "band": {
+          "share": 0.8187772925764192,
+          "gap_m": 0.04439621534303129,
+          "valid_samples": 458
+        },
+        "flag": false
+      },
+      {
+        "id": 68815,
+        "frame_id": "20261005-162541-745b4a",
+        "bbox": [
+          0.7796,
+          0.2557,
+          0.9999,
+          0.7493
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68816,
+        "frame_id": "20261005-162541-745b4a",
+        "bbox": [
+          0.7898,
+          0.0402,
+          1.0,
+          0.3784
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68817,
+        "frame_id": "20261005-162541-745b4a",
+        "bbox": [
+          0.6199,
+          0.8346,
+          0.7648,
+          0.9736
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68818,
+        "frame_id": "20261005-162541-745b4a",
+        "bbox": [
+          0.6662,
+          0.8139,
+          0.722,
+          0.9162
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      }
+    ],
+    "flagged_ids": [],
+    "independent_acceptance": false,
+    "limit": "Reproduced sampler answers do not supply independent distance or identity truth."
+  },
+  "trial_completed": false,
+  "independent_acceptance": false,
+  "candidate_run": false,
+  "manual_return_verified": false,
+  "limits": [
+    "Route refused before planned viewpoints; fresh localization failed.",
+    "Post-stop navigation snapshot is not a recording of the failed controller ticks.",
+    "One background frame lacks raw depth; all supplied ranges have reproducible raw depth.",
+    "No new distance truth, identity labels or independent subject links."
+  ]
+}
