@@ -9,8 +9,9 @@ corrects one painting attachment in an exact final-state reproduction, while an
 older full-drive sensitivity loses genuine cabinet connections. Preserve that
 positive result without activating a blanket gate. A
 [single-range diagnostic](../progress/2026-10-05-depth-cause.md) isolates the
-painting's own range as causal, with no other owner change. Next verify exact optional
-recording at rest, then obtain measured foreground/background, transparent and
+painting's own range as causal, with no other owner change. The
+[stationary recorder check](../progress/2026-10-05-call-recording.md) now passes.
+Next obtain measured foreground/background, transparent and
 narrow-object controls on the rover. Do not choose the farther surface or make
 minority depth a mandatory identity rejection. Current glass evidence has no
 taped distance; the next decisive evidence requires the rover.
@@ -22,10 +23,10 @@ and background-resolver call order, full frames, raw depth where available, sele
 masks, plain/masked vectors and poses. Photograph-only recordings cannot supply
 the occlusion changes and independent bearings missing from the current evidence.
 
-Before a resolver-policy trial, add and verify a recorder for actual inspection
-and background-resolver calls. Current diagnostics do not provide this sequence;
-polling the last outcome is insufficient. Keep the recording optional and prove
-that it preserves ordinary matching behavior before using it on a drive.
+Before a resolver-policy trial, use the verified optional recorder for actual
+inspection and background-resolver calls. Its operation is described in the
+[component README](../../world_state/README.md#optional-inspection-and-resolver-recording).
+Keep normal matching rules unchanged during the evidence drive.
 
 ## Targets and coverage
 
@@ -71,19 +72,23 @@ Only then choose an admission policy and freeze its criteria for a separate tria
 The exact recorder and measured controls precede the remaining policy trial. Neither a successful recording nor
 better pixel isolation alone authorises deploying the failed two-witness candidate.
 
-## Stationary recorder check before requesting a drive
+## Next short recording and permission
 
-Keep the charger attached and do not move or turn the chassis. Deploy only the
-optional recorder, with normal perception and matching rules unchanged. Record
-two fresh looks with retained depth, including an explicit settling look and
-ordinary background passes, then stop recording. The check passes only if its
-manifest is complete, every live resolver checkpoint/decision/reach query
-replays exactly and the archived grids reproduce the live wall bounds. Reproduce
-stored depth sampler answers with the recorded projection arguments before
-scoring a range counterfactual. A stationary check supplies no new independent
-bearing or distance truth.
+The owner is reconnecting the charger: movement, including chassis turning,
+requires a new prompt and approval. Ask only once the test route, recording and
+checks are ready to run immediately; idle preparation must not consume the battery.
 
-Finish this preparation before asking the owner to make the rover available
-for a drive. The owner is reconnecting the charger: movement, including chassis
-turning, now requires a new prompt and approval. Ask only once the test route,
-recording and checks are ready to run immediately.
+Start with the known chair/painting scene and the unchanged resolver. Record one
+parked look, an intermediate look and two side looks along the short route already
+driven on October 5, retaining raw depth on each fresh inspection. Recheck the
+live map, localization, battery and route before movement. Save the precise start
+pose for the return to charging; stop the trial on route refusal or uncertain
+localization rather than replacing it with an improvised longer drive.
+
+This first short recording supplies foreground/background and narrow-chair views.
+Score only coverage actually obtained; it does not fulfil unmeasured glass,
+pure-table or glare-armchair controls. Verify all recorded checkpoints, saved
+map answers and depth answers before any candidate replay. Freeze subject and
+mask judgments with assignments hidden, then report range-rule false abstentions,
+wrong attachments removed, useful links lost and remaining fragments. A missing
+qualifying error is an inconclusive trial, not permission to adjust the fixed rule.

@@ -94,17 +94,21 @@ def run(directory, output, withheld=()):
     control=arm('control',set());result['arms']['control']=control
     assert control['final_checkpoint']==events[-1]['checkpoint']
     result['all_live_checkpoints_exact']=True
+    # Verify saved geometry even when no counterfactual is requested. Replaying
+    # logged answers alone would not prove that the archived maps are usable.
+    maps={}
+    map_checks=0
+    for event in events:
+        if event['kind']!='reach':continue
+        key=event['map_sha256']
+        if key not in maps:
+            maps[key]=replay.reach_from(str(directory/'maps'/(key+'.json'))) if key else None
+        fn=maps[key];answer=fn(*event['arguments']) if fn else None
+        assert answer==event['result'], ('map reach mismatch',event['sequence'],answer,event['result'])
+        map_checks+=1
+    result['archived_map_reach_checks']=map_checks
+    result['all_archived_map_answers_exact']=True
     if withheld:
-        # Prove each recorded map predicts the live reach answers before using it
-        # for new candidate queries. Missing maps cannot bound a finite live answer.
-        maps={}
-        for event in events:
-            if event['kind']!='reach':continue
-            key=event['map_sha256']
-            if key not in maps:
-                maps[key]=replay.reach_from(str(directory/'maps'/(key+'.json'))) if key else None
-            fn=maps[key];answer=fn(*event['arguments']) if fn else None
-            assert answer==event['result'], ('map reach mismatch',event['sequence'],answer,event['result'])
         candidate=arm('abstain',set(withheld));result['arms']['abstain']=candidate
         result['withheld_ids']=list(withheld)
         result['owner_changes']=[i for i,e in control['owners'].items() if candidate['owners'].get(i)!=e]

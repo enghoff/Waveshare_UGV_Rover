@@ -542,8 +542,11 @@ checks that archived grids reproduce all live reach answers. It refuses a pass
 whose map changed mid-resolution. `validate_call_recording.py` exercises actual
 inspector boundaries with measured inputs from the October 5 drive: recording on
 and off must reproduce all 7,982 original memberships, placements and exemplars.
-The camera is not re-perceived in that desk validation. Hardware proof is still
-required. Recorder failure checks run with:
+The camera is not re-perceived in that desk validation. The
+[stationary hardware check](../docs/progress/2026-10-05-call-recording.md) reproduces
+all six real resolver passes, 5,178 reach queries, archived grid answers and all
+12 stored depth sampler answers. Movement and independent target coverage remain
+owed before testing a new policy. Recorder failure checks run with:
 
 ```powershell
 python -m unittest world_state.test_call_recording

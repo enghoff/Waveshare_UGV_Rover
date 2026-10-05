@@ -1,0 +1,309 @@
+{
+  "deployed_commit": "08870ccda30e06f02026f344cbef7681c392a496",
+  "recording": "depth-stationary-20261005-1",
+  "complete": true,
+  "committed_source_matches_recorded_host": true,
+  "source_sha256": {
+    "call_recording.py": "beb8e127daa722d3243772c138a051a98a3e21186908daa26ea7ee9e8fc2b121",
+    "relens.py": "ec89f38d4e8410b2a00b7c0412abf12fb5f83be258851d6ed3cf2b6ef43698b7",
+    "inspector.py": "59e12354190553f97a435d8703c54bd14f372eeecccab08579a377cb83ae0924",
+    "test_hypothesis_check.py": "e71bc4b5dc7c789d415285ff12c116cece1520caf9c6dcffe620711f3bd2225b",
+    "oak.py": "d45136fcf196522fbe17be00e1dd82195f99df711d3531707473304830ef7f2d",
+    "outline.py": "006e7efa3319a9c5ccd67618cf211d6151af529cb943534324c3b53b072827f1",
+    "resolve.py": "a77605bef794351570069a7519c2f4c33809efcf18167b41fb2a69a6dcce3f0b",
+    "test_fakes.py": "f5e3b05c244157b888b88bfc94de061e225b54d191825b1f2b997e23d79c1164",
+    "merging.py": "3027ea97791246ed6b02cda64a091c2c1a2238bfd2d62ee9a860a8fdbc3d0de9",
+    "incremental.py": "20146555eede798d664b36357c985ef153f72b81bf6f59f1276323838aabcab3",
+    "merge_sheet.py": "cb568a36f758537248cfff4aa40985dc3c06e7ac57ebc8417645ad3b79c15d45",
+    "perception_server.py": "e9034a64cbaca00c66af141227b2abbb8d35ecb95e83d7ba3ec1b2c8ff880f99",
+    "collect_world.py": "6af0b53ae0a49b19d48e575aaf79c1a382682df092e509957bdde1b83419c249",
+    "bench_whole.py": "85f9f819e28b237b91d1b36f22c7510866006b4e2fb7b956b2bacdcdeeb1fe8b",
+    "report_incremental.py": "41cbe22a6f4d5f990168f6143ca5dba9458a23febfe8b770ec5068b86d24bbfc",
+    "negative_evidence.py": "7845976b97a8b2e16d23c292bd66e81f09d415780f0df784075c7fd07c3c2cf9",
+    "test_reanchor.py": "e5437c6315aafacc8a32f60ab4fee7e0300475ceb7b4cc72fcfb31b712c76615",
+    "test_reader_groups.py": "56454bd944bbd55524ccf4ccc3e2a0d0999eb92765ab3fab62039b9b1a9aeaf4",
+    "test_search.py": "2cc612a385d378dde9b36bbe01430ac8c559f077853aad21b12bfa629455ed79",
+    "bench_oak.py": "e1e4513098e129f23012a5f1c8719c8281560a4f434c80ffd039f65eedf9a2df",
+    "cached_geometry.py": "7ba0a4cf177638f08fdb516362a266e516cd14d9176092538601f4d14078fe17",
+    "test_relens.py": "e74c3e827d1901591a10992c7c7acdacf27a651c12e99abf726c5b9013d0fcda",
+    "appearance.py": "6020233780e96c2ac40163b76dcb021b35bfa82147e2f854dadea850f34b0016",
+    "hypothesis_check.py": "8b7197b1bf4838a9afa2a12cc15fa48a607a7f3c682da822d5fdbbbb7de9b897",
+    "score_incremental.py": "f34a12f649ec12d7c0da5c49f52b9de3ab13abc6967713080af43819f061de92",
+    "test_cluster.py": "ca95a3e16402a142671cf048d61869009f0c5515dd053a162dc728de7a8af246",
+    "test_merging.py": "7c8e64bf7d5d54b673a582b4e991812e3110aea1e640afa7890e134a19814923",
+    "rebuild.py": "76447b5bad884a8c6b0e79c9b5a01a9702f10f3aa75b7ad963beee6a1b8d9d5c",
+    "test_outline.py": "a9a23b49c0c833d5483be5155f9ed918a81f3fc92bc03fff61de2314ca6de8a5",
+    "test_rebuild.py": "5dbc78e216a948f2abe54912d94cc95971ec2fa732bd05cd90f1425860ad178c",
+    "test_approach.py": "a85d3ae3ee6c1e0be36d45292556802f9aa1b1c499018437f3ea714e0690b53b",
+    "cluster.py": "b7e4d2d66ed241637a62a78ac09fe6486ea125ba2d71741d16bb6bfabb58b4e5",
+    "bench_cluster.py": "4fe7ead777831d481246cda4d5ee175a05b94cfb1b85d09385390b289bd68235",
+    "view.py": "4e9095c94b4fa21e9b94ac04a79e2d69601c40c1c6dbaff29482ecd9da27b96f",
+    "bench_still.py": "f0a230e699996cbf11b819ad25f4f68101ed43d2be38be399130fa0457b7a698",
+    "bench_inspection.py": "ffc5b9c519bb7aeee093a907f09bc4440bc6b6dcf78a83a3564211743fa8cb9f",
+    "headingcheck.py": "f536db600af2d58265d164f444edac641adda2fe2cb519bf31e0ebf79997edc3",
+    "bench_identity.py": "5e27e09c97c249323ed5f08df52f1e15865f0314e8733d4a0f69074d617a47b7",
+    "test_identity.py": "3de53d7ba8c9d6e880f76049ab128161aebe94bc405c31dbe6e83836bf87dd43",
+    "bench_height.py": "9e7d296accff2fe0e821961abc489bc93d906541f2dabf93aacd4e210d918a43",
+    "perceive.py": "0f07d16507eaae41a05a80aa4e804b77bf378973d3567b1c447c9bce8cc888d1",
+    "store.py": "3319e036fb6d425c14516e4756a3872aba6ec75eb7f4cdae3c7d779780768d7a",
+    "schema.py": "205b65491752ece62b68af07107e99cd41c8e1fdcb83be91767e8c5f57a9b9cb",
+    "locate.py": "72cc821345df58dbde143083ee48e18a25ec75dbe940c25f16c5fe22d573568f",
+    "__init__.py": "f55ca30f1140aacf2e24b3df3f8f34f113360d41a6bc4db087b11f6de69f9104",
+    "test_harness.py": "482ad44baadfb8229953e0fc99e52daf08c4f6d144fac35ee33b38d174aa6cf2",
+    "test_call_recording.py": "cb17ae628190d34399b5cf37407ea125ff53ed46d9d905d2dc6d5d4b243899f0",
+    "perception_client.py": "2fe4e7c34aec77636678fd84b163016e3e0bd88a7c66da181a3095c67dcba267",
+    "approach.py": "3c98c46cb25e9abde05d040af7842bfe22c5b50b4e5d3399075326d35e784b61",
+    "test_inspection_look.py": "ed2256f4ade30ea7ce008772bef08e4fc2b56cf304ea1996b779cfd6e104f8e4",
+    "test_locate.py": "d3a36c09d0cbe22161a8ad6b26bb19729757584d4028c820ab329e915c9eb5cd",
+    "bench_incremental.py": "537c38c43448e3ec6d141eb37b286d406758274d15e1daa5552ea6ecd85201f1",
+    "selftest.py": "4baf4b5deba4daa8f34faec3eb923cd0d5ca562c1bfcdd23eb55ec3eba994cac",
+    "search.py": "d25f1d861970e7d2d66d6c272bed18b761f089244db24559c36185cf8cdf7265",
+    "bench_approach.py": "8866fb0c70651e700274d2b3a4f439961fce19b7b9e949237e5d8706f2a90a9a",
+    "reanchor.py": "16af755fb47f1d00c4f66142e5de634ca2e029a2e7ffeb06424e8d38684004d7",
+    "bench_bearing.py": "752763b5e9c0424e6646c2737a397f3415d0c9681820e82219da3d25ec05879a",
+    "reader_groups.py": "33b7ba9c31dd675ce99f28161775ac3a2af517b4358c89a8eff9fc5554437383",
+    "test_incremental.py": "b974a5589f28a11350e33e0c7889877c6824353626c369107ad15d5e3fc57f52",
+    "bench_shutter.py": "c393ff9e8d052e0eb8872faeef4510d3db4377a61f2112902e6a089183d7e72d",
+    "test_resolve.py": "a88eb7dc66ba78eb7b4d871414272fa0330967ef07c02165b3353e4ab404a6b2",
+    "test_turning_ranges.py": "1297d9b4e7db0aec57592d1c35624b646f32a0872b7e8a50f5e208cc1e5352a0",
+    "test_headingcheck.py": "6fce9c2901837a91d5142f35259088fbf774237698b187ccc9975cae64fe2329",
+    "test_inspect.py": "daeaa82023eb5b2cd06e7bd779d43ba9dce927547006f0be869efd352404930b",
+    "test_store.py": "33c8168a0ab17e28dbdd06cc8d587ac451f9f476cea35c96afd7125e4c1ab7fa",
+    "engines.py": "e011bc6a3bdfb9159347f4cf88b9572466844a29a38d540ee9b69d9baee3a5d3",
+    "replay.py": "97ee23ff46dfe4bdfa1e4bab10e3da6eba7f86f652e0b62dd89384a0f62c183c",
+    "depth_client.py": "adf8436196521c5e40048d5c37449e4f0458a5947a1b2750bf54c7b7c4560847",
+    "test_perceive.py": "bc42ffdf185a85298eb9bf900c26b0156d77ba32068b14d04bc6484b81b2a908",
+    "test_oak.py": "1f2c4baad9ab4355cf80c86782471b5b312b050c61d1778b68d56ff5fedfa3f5",
+    "inspection_ranges.py": "73df266c3ebfbffbec8af2da5f938d82c4d634dd425da0fdb87a12e682eef82a",
+    "bench_perceive.py": "fcc9d972ae566ddb99f9c52a6973ad3904be041fed42264fae7632d063ceba67",
+    "export_regions.py": "5889eb1400ae911a0b3a910b41ef61a0ff34e8777d7b7f7f48956effa860a04b"
+  },
+  "input_sha256": {
+    "before.db": "94f68c2fc63504530c80180e473623c2ad518adeaa30fb6a09048fdb96208a08",
+    "after.db": "d7ac7f22796afdb578912bb6868609e6611c8d4985d580ae97409f14c562a462",
+    "events.jsonl": "7931a532af8fba35e3bd1d62bb4d4e566e846dbc1aef37cee9b15bb315bf4ca3",
+    "manifest.json": "9c1f63440517894ab3b71efbe37ea015842db387c3d49832fede7e1f42f42f36"
+  },
+  "resolver_passes": 6,
+  "checkpoint_checks": 17,
+  "reach_queries": 5178,
+  "all_live_checkpoints_exact": true,
+  "all_archived_map_answers_exact": true,
+  "archived_map_reach_checks": 5178,
+  "maps_per_pass": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "depth": {
+    "all_kept_sampler_answers_exact": true,
+    "rows": [
+      {
+        "id": 68773,
+        "frame_id": "20261005-160040-a6f4b7",
+        "bbox": [
+          0.1144,
+          0.3359,
+          0.2011,
+          0.6204
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68774,
+        "frame_id": "20261005-160040-a6f4b7",
+        "bbox": [
+          0.356,
+          0.4541,
+          0.4498,
+          0.6659
+        ],
+        "range_m": 3.017,
+        "method": "outline",
+        "band": {
+          "share": 0.5876685934489403,
+          "gap_m": 0.1820255768017076,
+          "valid_samples": 519
+        },
+        "flag": false
+      },
+      {
+        "id": 68775,
+        "frame_id": "20261005-160040-a6f4b7",
+        "bbox": [
+          0.242,
+          0.4066,
+          0.3169,
+          0.6495
+        ],
+        "range_m": 2.681,
+        "method": "outline",
+        "band": {
+          "share": 0.550314465408805,
+          "gap_m": 0.12626356637296476,
+          "valid_samples": 636
+        },
+        "flag": false
+      },
+      {
+        "id": 68776,
+        "frame_id": "20261005-160040-a6f4b7",
+        "bbox": [
+          0.1666,
+          0.3932,
+          0.236,
+          0.639
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68777,
+        "frame_id": "20261005-160040-a6f4b7",
+        "bbox": [
+          0.2247,
+          0.3276,
+          0.3451,
+          0.4607
+        ],
+        "range_m": 4.806,
+        "method": "outline",
+        "band": {
+          "share": 0.9796296296296296,
+          "gap_m": 0.006595435190040355,
+          "valid_samples": 540
+        },
+        "flag": false
+      },
+      {
+        "id": 68778,
+        "frame_id": "20261005-160040-a6f4b7",
+        "bbox": [
+          0.0,
+          0.1945,
+          0.046,
+          0.347
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68779,
+        "frame_id": "20261005-160041-f96a0d",
+        "bbox": [
+          0.1141,
+          0.3356,
+          0.2013,
+          0.62
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68780,
+        "frame_id": "20261005-160041-f96a0d",
+        "bbox": [
+          0.2441,
+          0.4072,
+          0.3169,
+          0.6493
+        ],
+        "range_m": 2.676,
+        "method": "outline",
+        "band": {
+          "share": 0.4967845659163987,
+          "gap_m": 0.4006429644561642,
+          "valid_samples": 622
+        },
+        "flag": false
+      },
+      {
+        "id": 68781,
+        "frame_id": "20261005-160041-f96a0d",
+        "bbox": [
+          0.167,
+          0.3929,
+          0.2361,
+          0.64
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      },
+      {
+        "id": 68782,
+        "frame_id": "20261005-160041-f96a0d",
+        "bbox": [
+          0.2246,
+          0.3274,
+          0.3454,
+          0.4605
+        ],
+        "range_m": 4.78,
+        "method": "outline",
+        "band": {
+          "share": 0.9761029411764706,
+          "gap_m": 0.005309403899248721,
+          "valid_samples": 544
+        },
+        "flag": false
+      },
+      {
+        "id": 68783,
+        "frame_id": "20261005-160041-f96a0d",
+        "bbox": [
+          0.383,
+          0.4539,
+          0.4457,
+          0.6351
+        ],
+        "range_m": 3.102,
+        "method": "outline",
+        "band": {
+          "share": 0.4899328859060403,
+          "gap_m": 0.49255973239741824,
+          "valid_samples": 298
+        },
+        "flag": false
+      },
+      {
+        "id": 68784,
+        "frame_id": "20261005-160041-f96a0d",
+        "bbox": [
+          0.0,
+          0.1941,
+          0.0456,
+          0.3464
+        ],
+        "range_m": null,
+        "method": null,
+        "band": null,
+        "flag": false
+      }
+    ],
+    "flagged_ids": [],
+    "independent_acceptance": false,
+    "limit": "Reproduced sampler answers do not supply independent distance or identity truth."
+  },
+  "independent_acceptance": false,
+  "chassis_motion_requested": false,
+  "criteria_frozen_in_commit": "08870cc",
+  "on_host_checks": {
+    "world_state": 1052,
+    "rover_daemon": 1107
+  },
+  "limit": "Stationary instrumentation proof, no new independent bearing, target distance or identity labels."
+}

@@ -528,3 +528,12 @@ snapshots. Add `--withhold <comma-separated-observation-ids>` only for a predecl
 range experiment; unchanged control and saved grid answers must first reproduce.
 Counterfactuals keep all observations. A map changing during one pass blocks the
 frozen-map counterfactual. Missing, incomplete or failed recordings are rejected.
+Saved grid answers are verified even without a counterfactual.
+
+`diagnose_recorded_depth.py --recording <completed-recording> --frames <frame-directory>
+--output <new-json-file>` reproduces retained sampler answers using the actual
+recorded projection arguments. It reports the fixed minority-band flag without
+changing a stored observation or the rover's range policy. Missing raw depth is
+an explicit failure; reproduced depth is not independent distance truth. The
+[stationary hardware check](../../docs/progress/2026-10-05-call-recording.md)
+documents the first completed real recording and its limits.
