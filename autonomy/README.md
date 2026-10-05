@@ -175,7 +175,9 @@ come with the map from the navigation bridge (`inscribed_radius_m`, 0.20 m, and
 Walked as a point, the survey's own walk went through gaps the planner will
 not, and every frontier a run chose before 2026-10-05 was in a pocket by the
 charger behind a 30-40 cm one: seven drives, all failed, two after Nav2 drove
-off on a 38 m way round. A frontier the body cannot reach is still offered and refused as unreachable, so
+off on a 38 m way round
+([the record](../docs/progress/2026-10-05-the-pocket-by-the-charger.md)). A
+frontier the body cannot reach is still offered and refused as unreachable, so
 the record says so, and it does not take one of the eight places.
 
 `improve_geometry` is somewhere to stand that would make a thing's position come
