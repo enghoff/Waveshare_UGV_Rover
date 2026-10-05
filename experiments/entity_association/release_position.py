@@ -92,12 +92,12 @@ def auc(right,wrong):
     return sum((r>w)+.5*(r==w) for r in right for w in wrong)/(len(right)*len(wrong))
 
 
-def score(measured,judged):
+def score(measured,judged,gate=PREDICATE['gate_z']):
     groups={g:[measured[i]['statistic'] for i,v in judged.items() if v==g and measured[i].get('statistic') is not None]
             for g in ('right','wrong')}
     unmeasured=Counter(v for i,v in judged.items() if v in ('right','wrong') and measured[i].get('statistic') is None)
     right,wrong=groups['right'],groups['wrong']
-    released_right=sum(s>PREDICATE['gate_z'] for s in right);kept_wrong=sum(s<=PREDICATE['gate_z'] for s in wrong)
+    released_right=sum(s>gate for s in right);kept_wrong=sum(s<=gate for s in wrong)
     return {'right':len(right),'wrong':len(wrong),'unmeasured':dict(unmeasured),
             'right_still_released':released_right,'wrong_kept':kept_wrong,
             'right_still_released_share':released_right/len(right) if right else None,
