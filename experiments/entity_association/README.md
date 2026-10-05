@@ -325,3 +325,21 @@ never left, so those are not reattachment counts. Scores retain the frozen label
 The [measurement](../../docs/progress/2026-10-05-release-only-repair.md) preserves a
 post-score visual dispute separately and retains release-only as a candidate for
 review, not an approved automatic repair.
+
+## Reviewing the release proposals by eye
+
+`release_audit.py sheets` draws every release of a proposal beside up to eight members
+its original record keeps: the release's full frame, selected pixels and plain box,
+one block per record. `release_audit.py summarize` checks a review covers every
+release once, against the proposal's own parents, and counts it. The
+[review of the fresh proposal](release_audit.json) was frozen before any label was
+consulted; its verdicts are the coding agent's and the owner has not reviewed them.
+Never edit it to agree with a later label; record disagreements in a progress entry.
+
+```powershell
+python experiments/entity_association/release_audit.py sheets --proposal captures/2026-10-04-reader-validation/split-only/release-fresh.json --database captures/2026-10-04-reader-validation/after.db --frames captures/2026-10-04-reader-validation/semantic-development/frames captures/2026-10-04-reader-validation/frames --output .cache/new-release-audit
+python experiments/entity_association/release_audit.py summarize --review experiments/entity_association/release_audit.json --proposal captures/2026-10-04-reader-validation/split-only/release-fresh.json
+```
+
+The [result](../../docs/progress/2026-10-05-release-audit.md): wrong releases are about
+as common as right ones, so release-only stays a candidate list, not a repair.
