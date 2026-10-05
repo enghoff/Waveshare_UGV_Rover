@@ -100,6 +100,16 @@ explicit post-score correction separating two landscape paintings; preserve the
 original frozen judgments and their scores, and report both. Do not turn this
 correction into independent acceptance evidence.
 
+The first measured-visibility diagnostic gains the fresh painting connection but
+fails the older October 1 retention check (47 old proxy links lost). Two reviewed
+lost views are of the same pink floor container. Before computing a second arm,
+restrict the same measured visibility extension to matching an existing entity;
+discovery and placement refitting keep the original map bounds. This separates
+the admission fault from changes to new-entity founding and placement. Keep the
+same fresh criteria and the older 98% retention/no-new-cross-target criteria,
+without fitting a distance or height cutoff. A failure still rejects deployment;
+a pass remains a development result requiring independently measured controls.
+
 Only after that diagnosis identifies a specific decisive comparison, prepare a
 short hardware recording for the unoccluded background painting and measured
 transparent-object controls. Freeze the comparison and success criteria before
