@@ -4,7 +4,7 @@ Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
 the rover in supervised stop trials and in M0a's inspection runs. M3's twenty
-supervised sessions have not begun. Later phases remain proposed. This is the
+supervised sessions have begun: [the first](../progress/2026-10-05-m3-session-1.md) ran on 2026-10-05. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -572,9 +572,15 @@ refused by name.
 Most of M3 is still physical:
 
 - **The twenty supervised sessions**, totalling at least two hours of autonomy
-  time in a pre-cleared area, with the owner present. None has happened; M0a's
-  runs were its own protocol and do not count towards them. Nothing below
-  criterion 3 can be answered without them.
+  time in a pre-cleared area, with the owner present. One has happened
+  ([2026-10-05](../progress/2026-10-05-m3-session-1.md), 8.7 minutes over two runs);
+  M0a's runs were its own protocol and do not count towards them. Nothing below
+  criterion 3 can be answered without them. Open each with no action limit.
+- **Getting out of the costmap.** Session 1's second run ended stuck beside a
+  wall: navigation refused every drive until the rover turned or backed up, and
+  a run may only `drive_to`, `world_inspect` and `stop`. Reproduce the refusal from
+  that run's record, then either admit a bounded turn on the spot or have
+  `drive_to` make the turn itself. R-AUT-13's ending needs this first.
 - **The stop and takeover trials that did not finish.** The console's stop button
   was only exercised on a slow turn, and its repeat at speed was cut short by the
   battery; it sends the same request that was measured at speed. A hung executive
