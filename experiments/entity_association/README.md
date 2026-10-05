@@ -586,3 +586,12 @@ must maintain motion ownership, use a new capture directory, mark return legs
 explicitly, and still verify STOP and localization. It is not an automatic return
 controller. The [night run](../../docs/progress/2026-10-05-night-visibility-run.md)
 records the real timing failures and their successful rejection in timeline replay.
+
+`plan_visibility_route.py --goal X Y HEADING [--start X Y HEADING]` runs in
+the rover's ROS environment and asks only the live `ComputePathToPose` action.
+It prints the complete map path, length and error status; it never executes the
+route. Explicit starts are hypothetical, while omission uses the current pose.
+This non-deployed preparation helper has bounded planner waits. The
+[drive plan](../../docs/plans/entity-evidence-drive.md) gives the trial route,
+preconditions, deadlines and return sequence. Live planner validation remains
+part of handover; an offline syntax check does not establish route feasibility.
