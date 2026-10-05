@@ -770,8 +770,8 @@ class Perception:
         throw away everything it was worth: the nearest phrase in a fixed list
         scored between 0.08 and 0.12 whatever the crop held, while the same
         vector against a phrase somebody actually typed separates present from
-        absent at a floor of 0.09. The vector is the record; the question is
-        asked later.
+        absent at a measured floor (`search.MATCHES`). The vector is the record;
+        the question is asked later.
         """
         np = self._np
         batch = np.stack([

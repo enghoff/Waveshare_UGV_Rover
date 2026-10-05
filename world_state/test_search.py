@@ -39,7 +39,7 @@ def test_a_query_that_matches_nothing_says_so() -> None:
     check("...and the reason is in words a person can read",
           "nothing here matches" in answer["detail"], True)
     check("...which quotes the score and the bar it missed",
-          f"{search.MATCHES:.2f}" in answer["detail"], True)
+          f"{search.MATCHES:.3f}" in answer["detail"], True)
 
     real = near + [{"id": 99, "siglip_blob": _packed(1.0, 0.02, 0.0)}]
     answer = search.rank(query, real)
@@ -130,6 +130,45 @@ def test_too_little_seen_is_not_a_match_either() -> None:
           "spreads above" in answer["detail"], False)
 
 
+def test_a_sliver_at_the_edge_of_the_frame_is_not_ranked() -> None:
+    """A strip the edge of the frame has cut a region down to matches anything.
+
+    Measured on the rover: a few pixels of window frame in the corner of a
+    picture came back as "a traffic light". So a sliver is counted out, and
+    counted, while a small thing seen whole in the middle of the frame and a wide
+    region against its edge are both still ranked -- it takes both halves.
+    """
+    query = _packed(1.0, 0.0, 0.0)
+    field = [{"id": n, "siglip_blob": _packed(0.02, 1.0, n * 0.01),
+              "bbox": [0.3, 0.3, 0.6, 0.6]} for n in range(20)]
+    strip = {"id": 50, "siglip_blob": _packed(1.0, 0.0, 0.0),
+             "bbox": [0.0, 0.0806, 0.0437, 0.2156]}
+    answer = search.rank(query, field + [strip])
+    check("a sliver that would score best is not ranked",
+          [one["observation_id"] for one in answer["matches"]].count(50), 0)
+    check("...so it cannot make the search believe it", answer["confident"], False)
+    check("...and it is counted as left aside", answer["slivers"], 1)
+
+    small = {"id": 51, "siglip_blob": _packed(1.0, 0.0, 0.0),
+             "bbox": [0.45, 0.45, 0.48, 0.48]}
+    wide = {"id": 52, "siglip_blob": _packed(1.0, 0.01, 0.0),
+            "bbox": [0.0271, 0.6449, 0.8401, 0.7841]}
+    edge = {"id": 53, "siglip_blob": _packed(1.0, 0.02, 0.0),
+            "bbox": [0.8613, 0.0, 0.9999, 0.8294]}
+    answer = search.rank(query, field + [small, wide, edge])
+    ranked = [one["observation_id"] for one in answer["matches"]]
+    check("a small thing in the middle of the frame is still ranked",
+          51 in ranked, True)
+    check("...and so are wide regions against the edge",
+          (52 in ranked, 53 in ranked), (True, True))
+    check("...with nothing left aside", answer["slivers"], 0)
+
+    answer = search.rank(query, [strip])
+    check("a store of nothing but slivers says it could compare nothing",
+          (answer["confident"], answer["detail"]),
+          (False, "nothing stored can be compared with this query"))
+
+
 def test_vectors_from_the_other_backend_are_not_ranked() -> None:
     """Comparing across backends would rank noise, so it is refused."""
     query = _packed(1.0, 0.0, 0.0)
@@ -196,6 +235,7 @@ TESTS = (
     test_a_search_says_which_part_of_the_frame_it_found,
     test_a_flat_field_is_not_what_decides_a_match,
     test_too_little_seen_is_not_a_match_either,
+    test_a_sliver_at_the_edge_of_the_frame_is_not_ranked,
     test_vectors_from_the_other_backend_are_not_ranked,
     test_the_fast_path_and_the_plain_one_score_the_same,
 )

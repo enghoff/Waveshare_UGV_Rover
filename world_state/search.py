@@ -38,6 +38,33 @@ The floor is a measurement and not a constant of nature: it was taken with the
 full-precision TensorRT engines against thirty-one regions from a single room,
 and vectors from the CPU backend agree with those only to 0.86, which is why
 rows from another backend are counted out rather than scored.
+
+**Measured again on 2026-10-05, that floor had become far too low**, because the
+best of many chance scores is higher than the best of a few: it was taken against
+31 regions, and a search by then ranked the newest 2,000 looks. Sixty phrases for
+things that cannot be in the flat and sixty for things that are, judged the way
+`find_thing` judges them: at 0.09, 23 of the 60 absent ones were found and 1 present
+one was missed. About thirty other rules were scored on the same looks --
+separation from the field, a correction for looks that score high against any
+phrase, a margin over background phrases, a household vocabulary as a veto,
+several looks of one thing agreeing -- and none held out better than about one
+wrong in eight. So the answer is still a raw floor, set higher, with one kind of
+region counted out:
+
+    a floor of 0.105, slivers counted out
+                    absent found 6 of 60, present missed 8 of 60
+
+**A sliver is a region the edge of the frame has cut down to a strip**, and
+SigLIP, handed one enlarged to a square, will call it anything: a few pixels of
+window frame matched "a traffic light". What still gets through is genuine
+resemblance -- the rug as a canoe, a dining chair seen edge-on as a harp, the
+black cabinet as a grand piano -- which no bar on a score can tell from a real
+match. What the higher floor misses is small things seen rarely: the tissue box,
+a sneaker, the spray bottle.
+
+**The floor holds because the count is capped.** `Store.searchable` hands a
+search the newest 2,000 looks and the floor is a measurement at that count;
+ranking more would need it measured again.
 """
 from __future__ import annotations
 
@@ -46,14 +73,19 @@ import struct
 from typing import Any
 
 #: What a region has to score against the phrase before the rover will say it has
-#: found it. Measured, not chosen: see the module docstring for the forty queries
-#: it comes from. It sits above every one of the sixteen absent queries but one --
-#: "a laptop computer", which found a television and is a near miss rather than an
-#: invention -- and below all but three of the twenty-four present ones, those
-#: three being small things the rover had seen exactly once.
+#: found it. Measured, not chosen: see the module docstring for the hundred and
+#: twenty phrases it comes from, scored against the newest 2,000 looks. It was
+#: 0.09 until 2026-10-05, measured against 31 regions, and by then let 23 of 60
+#: absent phrases through.
 #:
 #: It errs towards saying nothing was found, which is the direction to err in.
-MATCHES = 0.09
+MATCHES = 0.105
+#: A region touching the edge of the frame and narrower than this -- 40 pixels of
+#: a 640 x 480 frame, either way -- is a sliver, and is counted out rather than
+#: ranked. Measured with the floor above; see the module docstring.
+EDGE = 0.01
+SLIVER_WIDTH = 40.0 / 640.0
+SLIVER_HEIGHT = 40.0 / 480.0
 #: Not a threshold. Below this many stored vectors the spread of the field is not
 #: worth reading, so the answer says how little has been seen rather than quoting
 #: a separation computed from four numbers.
@@ -80,6 +112,22 @@ def _numpy():
     return numpy
 
 
+def sliver(bbox: Any) -> bool:
+    """Whether a region is a strip the edge of the frame has cut it down to.
+
+    Both halves are needed. A small region in the middle of the frame is a small
+    thing seen whole, and a narrow one touching the edge is a strip of something
+    nobody can see the rest of; it is only the second that was measured matching
+    whatever was asked for. A look with no box is not one.
+    """
+    try:
+        left, top, right, bottom = (float(value) for value in bbox)
+    except (TypeError, ValueError):
+        return False
+    at_edge = left < EDGE or top < EDGE or right > 1.0 - EDGE or bottom > 1.0 - EDGE
+    return at_edge and (right - left < SLIVER_WIDTH or bottom - top < SLIVER_HEIGHT)
+
+
 def cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     if not left or len(left) != len(right):
         return 0.0
@@ -98,18 +146,20 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
 
     Rows whose vectors came from a different backend are counted out rather than
     scored, because the GPU engines and the CPU graphs agree with full precision
-    to 1.000 and 0.86 and comparing across them would rank noise.
+    to 1.000 and 0.86 and comparing across them would rank noise. Slivers are
+    counted out too, separately, because they could be compared and were
+    measured to match anything.
     """
     wanted = unpack(query)
     if not wanted:
         return {"ok": False, "error": "the query has no vector", "matches": []}
 
-    scored, skipped = _scored(query, wanted, rows, backend)
+    scored, skipped, slivers = _scored(query, wanted, rows, backend)
     if not scored:
         return {"ok": True, "matches": [], "considered": 0, "skipped": skipped,
-                "confident": False,
+                "slivers": slivers, "confident": False,
                 "detail": ("nothing stored can be compared with this query"
-                           if skipped else "nothing has been seen yet")}
+                           if skipped or slivers else "nothing has been seen yet")}
 
     scored.sort(key=lambda pair: -pair[0])
     values = [value for value, _row in scored]
@@ -141,6 +191,7 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
         "matches": matches,
         "considered": len(scored),
         "skipped": skipped,
+        "slivers": slivers,
         "confident": confident,
         # The bar itself, so a caller showing the ranked list beside the verdict
         # can mark which of those rows actually cleared it. Sent rather than
@@ -160,15 +211,15 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
 
 def _scored(query: bytes, wanted: tuple[float, ...],
             rows: list[dict[str, Any]],
-            backend: str) -> tuple[list, int]:
-    """Every comparable row with its cosine, and a count of the rest.
+            backend: str) -> tuple[list, int, int]:
+    """Every comparable row with its cosine, and counts of the rest.
 
     A row is out either because its vectors came from the other backend or
     because it does not have a vector of the same length, and both of those are
     counted rather than scored so the answer can say how much of the store it
-    could not look at.
+    could not look at. A sliver is out for a different reason and counted apart.
     """
-    keep, skipped = [], 0
+    keep, skipped, slivers = [], 0, 0
     width = len(query)
     for row in rows:
         if backend and row.get("vectors_from") and row["vectors_from"] != backend:
@@ -178,14 +229,17 @@ def _scored(query: bytes, wanted: tuple[float, ...],
         if len(blob) != width:
             skipped += 1
             continue
+        if sliver(row.get("bbox")):
+            slivers += 1
+            continue
         keep.append(row)
     if not keep:
-        return [], skipped
+        return [], skipped, slivers
 
     np = _numpy()
     if np is None:
         return [(cosine(wanted, unpack(row["siglip_blob"])), row)
-                for row in keep], skipped
+                for row in keep], skipped, slivers
 
     # One buffer out of the blobs and one multiply over the lot. Double
     # precision because the loop above is the reference for what a score means
@@ -200,13 +254,13 @@ def _scored(query: bytes, wanted: tuple[float, ...],
     lengths = np.sqrt((stored * stored).sum(axis=1))
     asked_length = float(np.sqrt(asked @ asked))
     if asked_length < 1e-9:
-        return [(0.0, row) for row in keep], skipped
+        return [(0.0, row) for row in keep], skipped, slivers
     # A stored vector of no length scores nothing rather than dividing by nought,
     # which is what the loop this replaces did with it.
     safe = np.where(lengths < 1e-9, 1.0, lengths)
     values = np.where(lengths < 1e-9, 0.0,
                       (stored @ asked) / (safe * asked_length))
-    return list(zip(values.tolist(), keep)), skipped
+    return list(zip(values.tolist(), keep)), skipped, slivers
 
 
 def _detail(confident: bool, best: float, stands: float, count: int) -> str:
@@ -215,14 +269,14 @@ def _detail(confident: bool, best: float, stands: float, count: int) -> str:
              f"out of only {count} things seen so far")
     if confident:
         return (f"the best match scores {best:.3f} against that description, "
-                f"above the {MATCHES:.2f} a real match takes, {where}")
+                f"above the {MATCHES:.3f} a real match takes, {where}")
     if count < ENOUGH_TO_JUDGE:
         return (f"the best of the {count} things seen so far scores only "
-                f"{best:.3f} against that description, below the {MATCHES:.2f} a "
+                f"{best:.3f} against that description, below the {MATCHES:.3f} a "
                 f"real match takes -- though {count} is little enough that the "
                 f"rover may simply not have looked at it yet")
     return (f"the best match scores only {best:.3f} against that description, "
-            f"below the {MATCHES:.2f} a real match takes; nothing here matches "
+            f"below the {MATCHES:.3f} a real match takes; nothing here matches "
             f"it, {where}")
 
 
