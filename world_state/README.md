@@ -507,3 +507,45 @@ servo fault.** Fitting one rigid mount across fifteen gimbal positions on
 stored look was redrawn through it by `relens.py`, which rewrites only what it
 can first reproduce through the old lens -- see
 [the lens entry](../docs/progress/2026-09-30-the-fisheye-lens-refitted.md).
+
+
+## Optional inspection and resolver recording
+
+`call_recording.py` records provenance for R-WS-13, R-WS-17 and R-WS-18. It does
+not enable an experimental depth or identity rule. Recording is off unless the
+runtime world directory contains `record-calls.json` with a JSON `session` name.
+Names use lowercase letters, digits and hyphens, at most 64 characters. A name
+must be new; an existing recording is never overwritten. This file is runtime
+state, not a deployed source edit.
+
+At the next operation under the inspector's existing lock, recording takes a
+consistent before snapshot and logs actual inspection and resolver boundaries,
+identity-state checkpoints and every reach query/answer. The daemon supplies the
+cached grid already used by each reach call; recording never fetches another map.
+Maps are stored by digest. Depth projection events retain frame ID, actual turn,
+pan/tilt, region boxes and sampler results without changing the computation.
+Existing raw depth retention rules remain: a requested check can use `keep_depth`;
+recording does not silently enable it or change perception scheduling.
+
+Remove the request file to stop. The next locked operation finishes the recording,
+takes the after snapshot and marks its manifest complete. Artifacts live under
+`recordings/<session>/` in the runtime world directory. `world_state_summary`'s
+`recording` field reports the active session or an error. Ordinary inspections and
+STOP remain available after a recorder failure; a failed recording is incomplete
+and must not be treated as replay proof. Boot-interrupted recordings are likewise
+incomplete. Do not clear, rebuild or merge the store during a diagnostic drive.
+
+`experiments/entity_association/replay_call_recording.py` verifies every recorded
+identity checkpoint, resolver decision and reach query from these snapshots. Its
+optional range counterfactual first verifies the unchanged live sequence and
+checks that archived grids reproduce all live reach answers. It refuses a pass
+whose map changed mid-resolution. `validate_call_recording.py` exercises actual
+inspector boundaries with measured inputs from the October 5 drive: recording on
+and off must reproduce all 7,982 original memberships, placements and exemplars.
+The camera is not re-perceived in that desk validation. Hardware proof is still
+required. Recorder failure checks run with:
+
+```powershell
+python -m unittest world_state.test_call_recording
+python experiments/entity_association/validate_call_recording.py --output .cache/new-call-recorder-validation
+```

@@ -70,3 +70,20 @@ Only then choose an admission policy and freeze its criteria for a separate tria
 
 The exact recorder and measured controls precede the remaining policy trial. Neither a successful recording nor
 better pixel isolation alone authorises deploying the failed two-witness candidate.
+
+## Stationary recorder check before requesting a drive
+
+Keep the charger attached and do not move or turn the chassis. Deploy only the
+optional recorder, with normal perception and matching rules unchanged. Record
+two fresh looks with retained depth, including an explicit settling look and
+ordinary background passes, then stop recording. The check passes only if its
+manifest is complete, every live resolver checkpoint/decision/reach query
+replays exactly and the archived grids reproduce the live wall bounds. Reproduce
+stored depth sampler answers with the recorded projection arguments before
+scoring a range counterfactual. A stationary check supplies no new independent
+bearing or distance truth.
+
+Finish this preparation before asking the owner to make the rover available
+for a drive. The owner is reconnecting the charger: movement, including chassis
+turning, now requires a new prompt and approval. Ask only once the test route,
+recording and checks are ready to run immediately.

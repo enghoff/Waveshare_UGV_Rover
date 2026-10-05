@@ -333,6 +333,12 @@ class InspectionRanges:
         except Exception:                          # never past here
             return None
         self._depth_read = depth
+        recorder = getattr(self, '_call_recording', None)
+        if recorder is not None:
+            recorder.emit('depth_projection', frame_id=capture.get('frame_id'),
+                          frame_size=size, turn_deg=turn_deg, pan_deg=capture.get('pan'),
+                          tilt_deg=capture.get('tilt'), depth_taken_at=getattr(depth, 'taken_at', None),
+                          regions=[list(region.bbox) for region in regions], answers=answers)
         speed = capture.get("speed_mps") or 0.0
         found, ranged, outlined, blind = [], 0, 0, 0
         for answer in answers:

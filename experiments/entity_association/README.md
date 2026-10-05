@@ -511,3 +511,20 @@ the control must reproduce exactly, only this qualifying range is withheld,
 the painting must move from object:375 to reviewed painting record object:330,
 and all 15 existing frozen fresh subject links must survive. This isolates one
 range's effect from the other three flags; it is not a new acceptance trial.
+
+
+## Recorded execution order
+
+`validate_call_recording.py` supplies immutable measured observations through the
+inspector's real locking/recording boundaries, with the exact October 5 matching
+schedule. Enabled and disabled recording must have identical state and match the
+original live final state. The recorded reach trace and grids then reproduce every
+checkpoint and the isolated painting counterfactual. This validates instrumentation
+without inventing new camera truth.
+
+`replay_call_recording.py --directory <completed-recording> --output <new-directory>`
+replays actual calls from a completed hardware recording, using its before/after
+snapshots. Add `--withhold <comma-separated-observation-ids>` only for a predeclared
+range experiment; unchanged control and saved grid answers must first reproduce.
+Counterfactuals keep all observations. A map changing during one pass blocks the
+frozen-map counterfactual. Missing, incomplete or failed recordings are rejected.

@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import contextlib
 import math
+import json
+from pathlib import Path
 import sqlite3
 import threading
 import time
@@ -424,6 +426,34 @@ class Inspector(InspectionRanges):
         #: The run of unchanged looks the diagnostics log is currently showing as
         #: one line: `(inference_id, how many)`. See `_unchanged`.
         self._unchanged_run = None
+        self._call_recording = None
+        self._call_recording_request = None
+        self._call_recording_error = ''
+        # Optional callback observes the map already used by reach, without fetching it.
+        self.recording_grid = None
+
+    def _sync_call_recording(self):
+        from .call_recording import CallRecording, REQUEST
+        try:
+            path = Path(self.store.dir)/REQUEST
+            requested = json.loads(path.read_text()).get('session') if path.exists() else None
+            if requested == self._call_recording_request:
+                return
+            self._call_recording_request = requested
+            if self._call_recording is not None:
+                previous = self._call_recording
+                self._call_recording = None
+                previous.close(self.store)
+            self._call_recording_error = ''
+            if requested is not None:
+                self._call_recording = CallRecording(self.store, requested)
+        except Exception as error:
+            self._call_recording_error = f'{type(error).__name__}: {error}'
+
+    def recording_status(self):
+        if self._call_recording is not None:
+            return self._call_recording.status()
+        return {'session': None, 'error': self._call_recording_error}
 
     def forget_picture(self) -> None:
         """Take the next look whatever it looks like.
@@ -503,13 +533,24 @@ class Inspector(InspectionRanges):
                              f"{time.monotonic() - self.started_at:.0f} s; "
                              f"this one was not started"}
         self.started_at = time.monotonic()
+        recorder = None
         try:
+            self._sync_call_recording()
+            recorder = self._call_recording
+            if recorder is not None:
+                recorder.boundary('inspect_begin', self.store, settle=settle, fresh=fresh,
+                                  keep_depth=keep_depth)
             if before is not None:
                 before()
-            return self._inspect(settle=settle, fresh=fresh,
-                                 keep_depth=keep_depth)
+            result = self._inspect(settle=settle, fresh=fresh, keep_depth=keep_depth)
+            if recorder is not None:
+                recorder.boundary('inspect_end', self.store, result=result)
+            return result
         except Exception as error:            # never past here: the daemon owns STOP
-            return self._failed("error", f"{type(error).__name__}: {error}")
+            result = self._failed("error", f"{type(error).__name__}: {error}")
+            if recorder is not None:
+                recorder.boundary('inspect_end', self.store, result=result, failed=True)
+            return result
         finally:
             self._lock.release()
 
@@ -525,6 +566,7 @@ class Inspector(InspectionRanges):
             return {"ok": False, "error": "an inspection is running"}
         self.started_at = time.monotonic()
         try:
+            self._sync_call_recording()
             return {"ok": True, **self._settle()}
         finally:
             self._lock.release()
@@ -822,10 +864,18 @@ class Inspector(InspectionRanges):
         """
         from . import resolve as resolver
 
+        recorder = self._call_recording
+        if recorder is not None:
+            recorder.boundary('resolve_begin', self.store)
         try:
-            return resolver.resolve(self.store, reach=self.reach)
+            reach = (recorder.reach(self.reach, self.recording_grid)
+                     if recorder is not None else self.reach)
+            result = resolver.resolve(self.store, reach=reach)
         except Exception as error:                 # never past here
-            return {"error": f"{type(error).__name__}: {error}"}
+            result = {"error": f"{type(error).__name__}: {error}"}
+        if recorder is not None:
+            recorder.boundary('resolve_end', self.store, result=result)
+        return result
 
     def _measured_detail(self, look, stored, settled, moved=0.0,
                          turned=0.0, sigma_deg=None, ranged_note="",

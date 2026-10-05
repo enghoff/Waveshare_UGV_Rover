@@ -537,6 +537,7 @@ class RoverWorld:
                 self._world_pose, fov_deg=self.camera_fov_deg,
                 reach=self._world_reach, ranger=self._world_ranger(),
                 measure=self._world_measure)
+            inspector.recording_grid = lambda: getattr(self, '_world_grid_cache', (None, None))[1]
             self._world_inspector_cache = inspector
         return inspector
 
@@ -863,7 +864,7 @@ class RoverWorld:
             return {"ok": False, "error": why}
         store = self._world_store()
         inspector = self._world_inspector()
-        return {"ok": True, "summary": store.summary(),
+        return {"ok": True, "summary": store.summary(), "recording": inspector.recording_status(),
                 "inferences": store.inferences(),
                 # What would answer an inspection, named so the popup can tell a
                 # rover that is really measuring from one that has the fake
