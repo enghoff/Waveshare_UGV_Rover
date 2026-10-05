@@ -37,3 +37,25 @@ No tuning or new thresholds follows these measurements in this pilot.
 Repeat original and outline controls to verify deterministic memberships and
 placements. Record source/model/input hashes. Full schedule provenance, measured
 glass/narrow objects and independent labels remain necessary before acceptance.
+
+## Latest recording: bounded schedule reconstruction
+
+Before computing this extension, use the October 5 before/after snapshots and
+the initial saved map. Group changed entity placement-update timestamps into
+passes separated by more than 2 seconds; map each pass to the last completed
+inspection at that time. Preserve repeated passes at the same frame boundary.
+This yields one predetermined reconstruction, not a search for a favourable
+candidate score. It omits overwritten/no-change passes and concurrent insertions;
+those omissions may prevent exact reproduction. If the control does not reproduce
+all memberships, exemplar bytes and placements, do not score the candidate as
+a fix for the live failure.
+
+Use original stored outlines and all five archived depth maps. Assert that each
+stored outline range is reproduced exactly before applying the existing flag.
+Withhold only flagged stored ranges; do not rerange observations or add missing
+ranges. Keep the full historical store. Freeze the existing physical-subject
+judgments, with unknown table regions excluded from primary scoring. A useful
+development result must keep at least 98% of the control's same-subject links,
+add no cross-subject links, and improve the known painting's association with
+other views of that painting. Missing tape truth still prevents a numerical
+placement-accuracy claim. No threshold fitting, drive or production policy change.
