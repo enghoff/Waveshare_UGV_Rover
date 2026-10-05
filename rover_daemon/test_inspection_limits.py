@@ -220,7 +220,7 @@ def test_a_look_aimed_straight_ahead_does_not_move_a_gimbal_already_there():
 
     import rover_world
 
-    def look(pan, *, at_rest=True, tilt=None):
+    def look(pan, *, at_rest=True, tilt=None, keep_depth=False):
         moves = []
         rover = SimpleNamespace(
             _world_ready=lambda: "",
@@ -233,16 +233,30 @@ def test_a_look_aimed_straight_ahead_does_not_move_a_gimbal_already_there():
         args = {"settle": True, "aim_at": {"x_m": 1.0, "y_m": 0.0}}
         if tilt is not None:
             args["tilt_deg"] = tilt
+        if keep_depth:
+            args["keep_depth"] = True
+            rover.depth_wake = lambda _wait: ""
+            rover._world_store = lambda: SimpleNamespace(depth=lambda _f: "kept")
         got = rover_world.RoverWorld._tool_world_inspect(rover, args)
         return len(moves), got
 
     moved, got = look(0.0)
     check("an aim straight ahead with the camera at rest moves nothing", moved, 0)
     check("...and says so", "not moved" in got["aimed"].get("gimbal", ""), True)
-    check("an aim ten degrees round moves it there and back",
-          look(-10.0)[0], 2)
-    check("...as does straight ahead when the camera is not known to be at rest",
-          look(0.0, at_rest=False)[0], 2)
+    # Seen on 2026-10-05, M3 session 1: the run's looks asked for 2 to 15
+    # degrees and every one swung the camera there and back.
+    for pan in (2.0, -10.0, 15.0):
+        moved, got = look(pan)
+        check("an ordinary look aimed %+.0f deg leaves a camera at rest alone"
+              % pan, (moved, got["aimed"]["pan_deg"]), (0, 0.0))
+    check("...and says why", "inside the depth camera's view" in
+          look(-10.0)[1]["aimed"].get("gimbal", ""), True)
+    check("an aim further round than that moves it there and back",
+          look(-18.0)[0], 2)
+    check("...as does a check look ten degrees round, which aims exactly",
+          look(-10.0, keep_depth=True)[0], 2)
+    check("...and an aim when the camera is not known to be at rest",
+          look(-10.0, at_rest=False)[0], 2)
     check("...or a look at the other tilt", look(0.0, tilt=0.0)[0], 2)
 
 

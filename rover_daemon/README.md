@@ -329,9 +329,11 @@ budgets, the pose, the map identity and the safe area before
 anything turns. A repeat of an action already dispatched is answered with what
 happened the first time rather than driven again. Three operations are admitted
 and no others: `drive_to`, `world_inspect` and `stop`. A look may name a tilt, and
-only level or twenty up, the two the bearings are calibrated at. A look for a
-hypothesis check may also name a place to aim at, and is then panned, within
-the calibrated twenty degrees, from where one scan says the rover faces.
+only level or twenty up, the two the bearings are calibrated at. A look may also name a place to aim at, and is then panned, within the
+calibrated twenty degrees, from where one scan says the rover faces. A look that
+is not a hypothesis check leaves a gimbal at rest alone when the place is within
+fifteen degrees of straight ahead, which is well inside the depth camera's view;
+each move is two 30-degree swings, there and back to rest.
 
 **A hypothesis inspection carries its own limits, and the daemon enforces them**
 ([R-AUT-12](../docs/requirements/autonomy.md#r-aut-12)). A drive or a look sent

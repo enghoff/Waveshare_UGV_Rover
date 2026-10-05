@@ -642,11 +642,219 @@ def test_exploring_finishes_and_covers_the_house():
               "before " in source and "the rover set off" in source, True)
 
 
+def _ros_messages():
+    """Just enough of the ROS message packages for the bridge's moves to import.
+
+    Installed only where the real ones are missing, which is every machine but
+    the rover; there the real classes are used and the checks below read the
+    same fields off them.
+    """
+    import types
+    try:
+        import nav2_msgs.action                         # noqa: F401
+        return
+    except ImportError:
+        pass
+
+    def message(name, **defaults):
+        def init(self, **fields):
+            for key, value in {**defaults, **fields}.items():
+                setattr(self, key, value() if callable(value) else value)
+        return type(name, (), {"__init__": init})
+
+    def action(name):
+        return type(name, (), {"Goal": message(name + "Goal")})
+
+    header = message("Header", frame_id="", stamp=None)
+    pose = message("Pose", position=types.SimpleNamespace,
+                   orientation=types.SimpleNamespace)
+    modules = {
+        "action_msgs": {}, "action_msgs.msg": {"GoalStatus": types.SimpleNamespace(
+            STATUS_SUCCEEDED=4, STATUS_CANCELED=5)},
+        "builtin_interfaces": {}, "builtin_interfaces.msg": {
+            "Duration": message("Duration", sec=0, nanosec=0)},
+        "geometry_msgs": {}, "geometry_msgs.msg": {
+            "Point": message("Point", x=0.0, y=0.0, z=0.0),
+            "PoseStamped": message("PoseStamped", header=header, pose=pose)},
+        "nav2_msgs": {}, "nav2_msgs.action": {
+            name: action(name) for name in ("BackUp", "ComputePathToPose",
+                                            "DriveOnHeading", "NavigateToPose",
+                                            "Spin")},
+        "nav2_msgs.srv": {"GetCostmap": action("GetCostmap")},
+        "rcl_interfaces": {}, "rcl_interfaces.srv": {
+            "GetParameters": action("GetParameters")},
+    }
+    for name, contents in modules.items():
+        module = types.ModuleType(name)
+        for key, value in contents.items():
+            setattr(module, key, value)
+        sys.modules[name] = module
+
+
+def test_a_drive_asked_from_beside_a_wall_backs_off_and_goes():
+    """A `drive_to` from a spot the planner will not plan from frees itself once.
+
+    **Reproduced from the record before it was fixed.** On 2026-10-05, in M3
+    session 1, a look left the rover 0.2 m from a wall and navigation refused
+    the run's next three drives with START_OCCUPIED -- "turn on the spot or back
+    up, then try again" -- which a run cannot do: its only moves are `drive_to`,
+    a look and a stop. Three refusals in a row ended the run, and one turn by
+    hand freed it. Exploring has answered the same refusal with `back_off` since
+    2026-09-01; `goto` handed it back to the caller instead.
+
+    Driven here on the costmap taken off the rover in the same state on
+    2026-09-01 -- a 0.200 m body 0.156 m from a mapped wall -- through the real
+    `goto` and `back_off`, with only Nav2 itself replaced: a goal is refused
+    with START_OCCUPIED exactly when the body does not fit where it stands.
+    """
+    section("a drive asked for from beside a wall backs off and then goes")
+    sys.path.insert(0, HERE)
+    saved = os.path.join(HERE, "fixtures", "start-occupied.json.gz")
+    if not os.path.exists(saved):                       # pragma: no cover
+        print("  .... skipped, %s is not here" % saved)
+        return
+    _ros_messages()
+    try:
+        import base64
+        import gzip
+        import threading
+        import types
+        import goal_fit
+        import nav_codes
+        import nav_explore
+        import nav_moves
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+
+    with gzip.open(saved, "rt") as fh:
+        snap = json.load(fh)["global_costmap"]
+    grid = goal_fit.CostGrid(snap["width"], snap["height"], snap["resolution"],
+                             snap["origin"][0], snap["origin"][1],
+                             base64.b64decode(snap["data"]))
+    body = goal_fit.polygon_from("[]", 0.200)
+    stuck = (-2.30, 1.46, 0.0)
+
+    class Wedged(nav_moves.NavMoves, nav_explore.NavExplore):
+        """The bridge's own moves on a rover whose Nav2 is replaced by the
+        costmap: a route is refused from where the body does not fit."""
+
+        def __init__(self, refuse_always=False):
+            self.at = list(stuck)
+            self.sent = []
+            self.stop_seq = 3
+            self.refuse_always = refuse_always
+            self._lock = threading.Lock()
+            self.plan = None
+            self.args = types.SimpleNamespace(map_frame="map")
+
+        def pose(self):
+            return tuple(self.at)
+
+        def footprint(self):
+            return body
+
+        def costmap(self):
+            return grid
+
+        def get_clock(self):
+            stamp = types.SimpleNamespace(to_msg=lambda: None)
+            return types.SimpleNamespace(now=lambda: stamp)
+
+        def run_goal(self, kind, goal, limit_s, say, measure, motion="driving",
+                     budget=None, give_up=None, guard=None):
+            self.sent.append((kind, guard))
+            blocked = nav_moves.autonomy_guard.refusal(
+                guard, self.stop_seq, pose=self.pose())
+            if blocked:
+                return {"reason": "stopped", "travelled_m": 0.0,
+                        "turned_deg": 0.0, "detail": blocked}
+            x, y, yaw = self.at
+            if kind == "spin":
+                self.at[2] = yaw + goal.target_yaw
+                return {"reason": "arrived", "travelled_m": 0.0,
+                        "turned_deg": math.degrees(goal.target_yaw)}
+            if kind == "forward":
+                step = goal.target.x
+                self.at[:2] = [x + step * math.cos(yaw), y + step * math.sin(yaw)]
+                return {"reason": "arrived", "travelled_m": step,
+                        "turned_deg": 0.0}
+            if self.refuse_always or not goal_fit.fits(grid, body, x, y, yaw):
+                return {"reason": "blocked", "code": nav_codes.START_OCCUPIED,
+                        "travelled_m": 0.0, "turned_deg": 0.0,
+                        "detail": nav_codes.phrase_for(nav_codes.START_OCCUPIED)}
+            to = goal.pose.pose.position
+            self.at[:2] = [to.x, to.y]
+            return {"reason": "arrived", "travelled_m": math.hypot(to.x - x, to.y - y),
+                    "turned_deg": 0.0}
+
+    quiet = lambda *args, **kwargs: None                # noqa: E731
+    # A goal two metres away in open floor, the kind a run asks for.
+    goal = (-0.30, 1.46)
+    rover = Wedged()
+    out = rover.goto(goal, None, quiet)
+    kinds = [kind for kind, _ in rover.sent]
+    check("the drive arrives rather than handing the refusal back",
+          out.get("reason"), "arrived")
+    check("...by asking once, backing off, and asking again",
+          kinds, ["goto", "spin", "forward", "goto"])
+    check("...and it says it backed off, so the move is accounted for",
+          "backed off" in (out.get("detail") or ""), True)
+    shuffle = rover.sent and goal_fit.fit(grid, body, stuck[0], stuck[1], stuck[2])
+    check("...the back-off is the short shuffle goal_fit names, not a journey",
+          bool(shuffle) and shuffle["moved_m"] <= 0.5, True)
+
+    rover = Wedged(refuse_always=True)
+    out = rover.goto(goal, None, quiet)
+    check("a second refusal after backing off is handed back, not looped on",
+          [kind for kind, _ in rover.sent], ["goto", "spin", "forward", "goto"])
+    check("...as the refusal it is", out.get("reason"), "blocked")
+
+    # An autonomous drive carries its run's guard into the back-off: a stop
+    # since the goal was issued, or a back-off spot outside the safe area, ends
+    # it before the wheels turn.
+    rover = Wedged()
+    away = goal_fit.fit(grid, body, stuck[0], stuck[1], stuck[2])
+    dx, dy = stuck[0] - away["x"], stuck[1] - away["y"]
+    norm = math.hypot(dx, dy)
+    centre = (stuck[0] + dx / norm * 0.5, stuck[1] + dy / norm * 0.5)
+    fence = {"x_m": centre[0], "y_m": centre[1],
+             "radius_m": 0.5 + nav_moves.autonomy_guard.FENCE_MARGIN_M + 0.1}
+    guard = {"stop_seq": 3, "geofence": fence}
+    check("the fence used here holds the rover and excludes the back-off spot",
+          (nav_moves.autonomy_guard.refusal(guard, 3, pose=stuck[:2]) == "",
+           bool(nav_moves.autonomy_guard.refusal(
+               guard, 3, pose=stuck[:2], goal=(away["x"], away["y"])))),
+          (True, True))
+    out = rover.back_off(quiet, guard=guard)
+    check("...and a back-off that would leave the safe area does not move",
+          ([kind for kind, _ in rover.sent], tuple(rover.at)), ([], stuck))
+    check("...and says so, as a refusal rather than a stop",
+          (out.get("reason"), "safe-area" in (out.get("detail") or "")),
+          ("blocked", True))
+
+    class StoppedMeanwhile(Wedged):
+        """A stop arrives at the moment the first route is refused."""
+
+        def run_goal(self, kind, *args, **kwargs):
+            out = Wedged.run_goal(self, kind, *args, **kwargs)
+            if kind == "goto" and out.get("code") == nav_codes.START_OCCUPIED:
+                self.stop_seq += 1
+            return out
+
+    rover = StoppedMeanwhile()
+    rover.goto(goal, None, quiet, guard={"stop_seq": 3, "geofence": None})
+    check("a stop that lands with the refusal keeps the back-off from moving",
+          [kind for kind, _ in rover.sent], ["goto"])
+    check("...so the rover is where it was", tuple(rover.at), stuck)
+
+
 TESTS = (
     test_goal_fits_before_it_is_sent,
     test_frontiers_are_found_on_a_real_map,
     test_a_rim_of_unknown_round_the_rover_is_still_open,
     test_a_goal_that_goes_nowhere_is_given_up,
     test_a_rover_it_cannot_plan_from_is_not_a_finished_house,
+    test_a_drive_asked_from_beside_a_wall_backs_off_and_goes,
     test_exploring_finishes_and_covers_the_house,
 )

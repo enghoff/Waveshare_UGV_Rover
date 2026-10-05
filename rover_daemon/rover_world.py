@@ -72,6 +72,15 @@ MAP_ASK_S = 8.0
 # A hypothesis check's look at another tilt waits this long for the servo and
 # the picture to settle; the pan approach inside `centre_gimbal` is separate.
 TILT_SETTLE_S = 1.0
+# An aimed look that is not a hypothesis check leaves the gimbal at rest when the
+# place is this close to straight ahead. The OAK sees 65 degrees of the room, so a
+# place fifteen degrees round is still seventeen inside the depth picture, and
+# every move costs two 30 degree swings -- there and back to rest -- plus a pan the
+# calibration covers less well than rest (see `centre_gimbal`). On 2026-10-05, in
+# M3 session 1, the run's looks asked for pans of 2 to 15 degrees and every one
+# swung the camera. A check look still aims exactly: it wants the place in the
+# middle of the depth picture, and R-AUT-12 was accepted that way.
+AIM_DEADBAND_DEG = 15.0
 # How long a check look, or an autonomous run's look, waits for a look already
 # running to finish, and for the depth camera to finish waking: four to six
 # seconds of firmware upload on this rover, measured, with room over.
@@ -1264,13 +1273,21 @@ class RoverWorld:
             if isinstance(aim, dict) and aim.get("x_m") is not None:
                 aimed.update(self._aim_pan(aim))
                 pan = aimed.get("pan_deg") or 0.0
-            # **Not moved at all when it is already where it would be put.**
-            # Each move is a 30 degree undershoot and back, and an aimed look
-            # used to make two -- there and back to rest -- even when the aim
-            # was straight ahead, which it often is once the drive has turned
-            # the rover to face the thing (seen on 2026-10-03).
-            if tilt is None and round(pan) == 0 and self.gimbal_at_rest():
-                aimed["gimbal"] = "already at rest, straight ahead; not moved"
+            # **Not moved at all when it is already where it would be put**, or
+            # for an ordinary look near enough to it (AIM_DEADBAND_DEG). Each
+            # move is a 30 degree undershoot and back, and an aimed look used to
+            # make two -- there and back to rest -- even when the aim was
+            # straight ahead, which it often is once the drive has turned the
+            # rover to face the thing (seen on 2026-10-03).
+            close = round(pan) == 0 or (not keep_depth
+                                        and abs(pan) <= AIM_DEADBAND_DEG)
+            if tilt is None and close and self.gimbal_at_rest():
+                aimed["gimbal"] = (
+                    "already at rest, straight ahead; not moved"
+                    if round(pan) == 0 else
+                    "already at rest, and the place is %.0f deg off centre, inside "
+                    "the depth camera's view; not moved" % abs(pan))
+                aimed["pan_deg"] = 0.0
                 return
             moved.append(True)
             self.centre_gimbal(None if tilt is None else float(tilt), pan_deg=pan)

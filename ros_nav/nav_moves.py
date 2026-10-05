@@ -28,11 +28,12 @@ from rcl_interfaces.srv import GetParameters
 import goal_fit
 import route_cost
 import autonomy_guard
-from nav_codes import phrase_for, reason_for
+from nav_codes import START_OCCUPIED, phrase_for, reason_for
 from nav_limits import (
     COSTMAP_TIMEOUT_S, DEFAULT_SPEED_MS, DEFAULT_TURN_DPS, PROGRESS_S,
     REVERSE_LIMIT_M, ROUTE_TURN_DPS, TIME_ALLOWANCE_FLOOR_S,
-    TIME_ALLOWANCE_MIN_ROUTE_S, TIME_ALLOWANCE_SLACK, duration, wrap,
+    TIME_ALLOWANCE_MIN_ROUTE_S, TIME_ALLOWANCE_SLACK, UNWEDGE_MOVED_M, duration,
+    wrap,
 )
 
 
@@ -251,12 +252,12 @@ class NavMoves:
                     "detail": message or ("Nav2 abandoned the goal without saying "
                                           "why, which usually means a server under "
                                           "it stopped answering in time")}
-        return {"reason": reason_for(code), "travelled_m": travelled,
-                "turned_deg": turned,
+        return {"reason": reason_for(code), "code": int(code),
+                "travelled_m": travelled, "turned_deg": turned,
                 "detail": (phrase_for(code, message)
                            or "Nav2 gave up without saying why (code %s)" % code)}
 
-    def drive(self, distance_m, speed_ms, say):
+    def drive(self, distance_m, speed_ms, say, guard=None):
         """Straight ahead or straight back, and stop rather than hit anything.
 
         `DriveOnHeading` and `BackUp` are the same behaviour in two directions,
@@ -283,7 +284,8 @@ class NavMoves:
         goal.time_allowance = duration(limit)
         return self.run_goal(
             kind, goal, limit + 5.0, say,
-            lambda fb: {"travelled_m": round(abs(fb.distance_traveled), 3)})
+            lambda fb: {"travelled_m": round(abs(fb.distance_traveled), 3)},
+            guard=guard)
 
     def reverse_by_turning(self, reach, speed, say):
         """A long way backwards, driven forwards, because the lidar faces one way.
@@ -317,7 +319,7 @@ class NavMoves:
             "%0.1f m blind, so it is now facing the other way" % reach)
         return onward
 
-    def turn(self, angle_deg, say):
+    def turn(self, angle_deg, say, guard=None):
         """On the spot, by `Spin`, which is collision-checked like everything else.
 
         Not refused when the rover is boxed in, unlike a navigation goal: rotating
@@ -335,7 +337,7 @@ class NavMoves:
             lambda fb: {"turned_deg": round(
                 math.copysign(math.degrees(abs(fb.angular_distance_traveled)),
                               angle_deg), 1)},
-            motion="turning")
+            motion="turning", guard=guard)
 
     def footprint(self):
         """The body outline the costmap node is configured with, asked for once.
@@ -421,7 +423,7 @@ class NavMoves:
                 "stand in, so the goal was moved %d cm to the nearest one it "
                 "fits" % round(placed["moved_m"] * 100))
 
-    def goto(self, where, yaw_deg, say, give_up=None, guard=None):
+    def goto(self, where, yaw_deg, say, give_up=None, guard=None, unwedge=True):
         """Somewhere on the map, with a planner and a costmap between.
 
         `where` is already in map coordinates -- the daemon converts an offset into
@@ -432,6 +434,17 @@ class NavMoves:
         With no `yaw_deg` the goal faces along the way it travelled, which is what
         the old planner left the rover doing and what makes a series of goals read
         as a journey rather than a set of arrivals in random directions.
+
+        **A refusal about where the rover is standing is dealt with here, once.**
+        START_OCCUPIED means the rover's own cell is inside the costmap's
+        inscribed band, and Nav2 will refuse every destination on the map until
+        it is somewhere else -- so handing that back asks the caller for a move
+        it may not have. An autonomous run does not: on 2026-10-05 a look left
+        the rover 0.2 m from a wall and the run's next three drives were refused
+        that way until the run ended, while one turn by hand freed it. So the
+        drive backs off the way exploring does (`back_off`, the short shuffle
+        `goal_fit` names), under the same guard as the drive, and asks once more.
+        A second refusal is handed back rather than shuffled on.
         """
         start = self.pose()
         if start is None:
@@ -516,6 +529,10 @@ class NavMoves:
 
         outcome = self.run_goal("goto", goal, limit, say, measure, budget=budget,
                                 give_up=give_up, **({"guard": guard} if guard is not None else {}))
+        if (unwedge and outcome.get("code") == START_OCCUPIED
+                and float(outcome.get("travelled_m") or 0.0) < UNWEDGE_MOVED_M):
+            return self.unwedged(outcome, where, yaw_deg, say, previous_give_up,
+                                 guard)
         # **How far the route was, said out loud.** A move that ran out of time on
         # a route three times the length of the straight line is a different event
         # from one that ran out of time going nowhere, and the console could not
@@ -531,3 +548,33 @@ class NavMoves:
             outcome["detail"] = ("%s -- %s" % (outcome["detail"], note)
                                  if outcome.get("detail") else note)
         return outcome
+
+    def unwedged(self, refused, where, yaw_deg, say, give_up, guard):
+        """Back off from where the planner will not plan, then ask again once.
+
+        The back-off's metres and degrees are added to whatever the second
+        attempt reports, because they are real driving and belong to this goal:
+        an autonomous run attributes every movement to the goal that made it.
+        """
+        escape = self.back_off(say, guard=guard)
+        moved = float(escape.get("travelled_m") or 0.0)
+        swung = float(escape.get("turned_deg") or 0.0)
+        if escape.get("reason") != "arrived":
+            refused["travelled_m"] = round(
+                float(refused.get("travelled_m") or 0.0) + moved, 3)
+            refused["turned_deg"] = round(
+                float(refused.get("turned_deg") or 0.0) + swung, 1)
+            refused["detail"] = "%s -- and backing off did not help: %s" % (
+                refused.get("detail") or "the planner would not plan from here",
+                escape.get("detail") or escape.get("reason"))
+            return refused
+        again = self.goto(where, yaw_deg, say, give_up=give_up, guard=guard,
+                          unwedge=False)
+        again["travelled_m"] = round(
+            float(again.get("travelled_m") or 0.0) + moved, 3)
+        again["turned_deg"] = round(
+            float(again.get("turned_deg") or 0.0) + swung, 1)
+        again["detail"] = "%s, then %s" % (
+            escape.get("detail") or "backed off",
+            again.get("detail") or again.get("reason"))
+        return again

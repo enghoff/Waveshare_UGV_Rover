@@ -22,6 +22,7 @@ from nav2_msgs.action import ComputePathToPose
 # Beside this file and with no ROS in them: which gap in the map is worth driving
 # to is grid arithmetic, and the checks argue with the same `frontier` against a
 # real map saved off the rover rather than against a second copy of it.
+import autonomy_guard
 import frontier
 import goal_fit
 import nav_codes
@@ -117,7 +118,7 @@ class NavExplore:
             return None, code
         return route_cost.from_path(path), code
 
-    def back_off(self, say):
+    def back_off(self, say, guard=None):
         """Shuffle the rover to somewhere the planner is willing to plan from.
 
         Returns an outcome in the same shape every other move here does, so the
@@ -145,6 +146,11 @@ class NavExplore:
         costs a few seconds of a ten-minute budget, and turning on the spot is
         the one move this rover's own behaviour plugins guarantee while it is
         touching something.
+
+        **`guard` is an autonomous drive's own**, passed on by `goto`: a stop
+        since the goal was issued, or a spot outside the run's safe area, ends
+        the back-off before anything turns, and the turn and drive inside it are
+        checked the same way when they are sent.
         """
         where = self.pose()
         if where is None:
@@ -159,7 +165,7 @@ class NavExplore:
             # would try, so it is worth an attempt before giving up.
             return self.shuffle_by_turning(
                 say, "the costmap did not answer, so this is a turn on the spot "
-                     "and a hope")
+                     "and a hope", guard=guard, where=where)
         placed = goal_fit.fit(grid, body, where[0], where[1], where[2])
         if placed is None:
             return {"reason": "blocked", "travelled_m": 0.0, "turned_deg": 0.0,
@@ -174,19 +180,24 @@ class NavExplore:
             # is what freed it the one time this was watched happening.
             return self.shuffle_by_turning(
                 say, "the costmap says the rover fits where it is, so this is a "
-                     "turn to shake the disagreement loose")
+                     "turn to shake the disagreement loose", guard=guard,
+                where=where)
+        blocked = autonomy_guard.refusal(guard, self.stop_seq, pose=where[:2],
+                                         goal=(placed["x"], placed["y"]))
+        if blocked:
+            return self.refused_by(guard, blocked)
 
         bearing = math.atan2(placed["y"] - where[1], placed["x"] - where[0])
         say("choosing", "backing off %d cm to somewhere it can plan from"
                         % round(away * 100))
-        about = self.turn(math.degrees(wrap(bearing - where[2])), say)
+        about = self.turn(math.degrees(wrap(bearing - where[2])), say, guard=guard)
         if about.get("reason") != "arrived":
             about["detail"] = (
                 "it could not even turn towards the one spot nearby where its "
                 "body fits -- %s" % (about.get("detail") or "the turn did not "
                                                             "finish"))
             return about
-        onward = self.drive(away, ESCAPE_SPEED_MS, say)
+        onward = self.drive(away, ESCAPE_SPEED_MS, say, guard=guard)
         onward["turned_deg"] = round(
             (about.get("turned_deg") or 0.0) + (onward.get("turned_deg") or 0.0),
             1)
@@ -200,10 +211,21 @@ class NavExplore:
                             "from" % round(away * 100))
         return onward
 
-    def shuffle_by_turning(self, say, why):
+    def refused_by(self, guard, why):
+        """A back-off the run's guard would not allow, as an outcome: stopped when
+        a stop has come in since the goal was issued, blocked otherwise."""
+        stopped = guard.get("stop_seq") != self.stop_seq
+        return {"reason": "stopped" if stopped else "blocked",
+                "travelled_m": 0.0, "turned_deg": 0.0, "detail": why}
+
+    def shuffle_by_turning(self, say, why, guard=None, where=None):
         """A quarter turn, for when there is nothing better to go on."""
+        blocked = autonomy_guard.refusal(
+            guard, self.stop_seq, pose=where[:2] if where else None)
+        if blocked:
+            return self.refused_by(guard, blocked)
         say("choosing", why)
-        about = self.turn(ESCAPE_TURN_DEG, say)
+        about = self.turn(ESCAPE_TURN_DEG, say, guard=guard)
         if about.get("reason") == "arrived":
             about["detail"] = ("turned on the spot to see whether that frees the "
                                "planner -- %s" % why)
@@ -468,9 +490,12 @@ class NavExplore:
                     return watch.update(now, self.pose(),
                                         int(feedback.get("recoveries") or 0))
 
+                # Without `goto`'s own back-off: this loop prices every
+                # frontier against the planner first and does its own shuffling,
+                # counted against EXPLORE_SHUFFLES.
                 outcome = self.goto(
                     (placed[0], placed[1]), math.degrees(placed[2]), narrate,
-                    give_up=going_nowhere)
+                    give_up=going_nowhere, unwedge=False)
                 travelled += float(outcome.get("travelled_m") or 0.0)
                 # Summed as magnitudes, unlike every other move here. A single
                 # move's turn has a direction worth keeping; a run of nine goals

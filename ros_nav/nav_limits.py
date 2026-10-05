@@ -147,6 +147,13 @@ ESCAPE_SPEED_MS = 0.2
 
 ESCAPE_TURN_DEG = 90.0
 
+# A drive refused for where the rover is standing backs off and asks again only
+# if the refusal came before it had moved: Nav2 answers START_OCCUPIED from the
+# planner, before any wheel turns. Anything more than dead-reckoning noise means
+# the rover drove into the band itself, and that is a different fault from the
+# one `goto`'s back-off answers.
+UNWEDGE_MOVED_M = 0.05
+
 # How long to give `ComputePathToPose` to answer. This is the planner doing
 # exactly the work it would do for a real goal, on a map-sized grid, so it is the
 # planner's own frequency rather than a network timeout: at the configured 1 Hz a

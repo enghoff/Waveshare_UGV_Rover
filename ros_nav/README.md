@@ -132,6 +132,13 @@ The daemon offers:
 The lidar sees one horizontal plane. None of these operations can detect drops,
 steps, table tops or obstacles entirely above or below that plane.
 
+A `drive_to` refused because the rover is standing inside the costmap's
+inscribed band (Nav2's START_OCCUPIED, "turn on the spot or back up") backs off
+once to the nearest spot the body fits, at most half a metre away, and asks again.
+An autonomous drive does this under its own guard, so a stop or the safe area ends
+it before anything moves. A second refusal is handed back. The back-off's driving
+is reported as part of the drive.
+
 Exploration chooses reachable frontiers and abandons a goal that makes no useful
 progress. It stops when the time budget expires, no useful frontier remains, or
 the user cancels it. Status reports why it stopped and how much it drove.
