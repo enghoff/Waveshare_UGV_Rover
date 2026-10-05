@@ -7,7 +7,9 @@ target; independently labelled acceptance remains separate work.
 The [completed depth resolver study](../progress/2026-10-05-depth-resolver.md)
 corrects one painting attachment in an exact final-state reproduction, while an
 older full-drive sensitivity loses genuine cabinet connections. Preserve that
-positive result without activating a blanket gate. Next verify exact optional
+positive result without activating a blanket gate. A
+[single-range diagnostic](../progress/2026-10-05-depth-cause.md) isolates the
+painting's own range as causal, with no other owner change. Next verify exact optional
 recording at rest, then obtain measured foreground/background, transparent and
 narrow-object controls on the rover. Do not choose the farther surface or make
 minority depth a mandatory identity rejection. Current glass evidence has no
