@@ -583,10 +583,13 @@ Most of M3 is still physical:
   ([R-AUT-13](../requirements/autonomy.md#r-aut-13), settled by session 3); an
   unfenced one has the whole flat and ends on the battery, since runs carry no
   battery floor.
-- **Looks that improve nothing.** None of session 3's 19 looks improved a
-  placement, and nine stored nothing because the rover's own looking had just
-  taken the same picture. Whether a geometry goal's promised gain is real wants
-  checking before sessions count looks as work done.
+- **Looks that improve nothing.** Of 171 geometry goals on record, 10 improved
+  their thing when measured and 9 more within a minute
+  ([the measurement](../progress/2026-10-06-looks-seldom-reach-their-thing.md)).
+  The depth camera works; the look's evidence mostly does not reach the thing
+  it was aimed at, which waits on the identity work (R-WS-13). Until then a
+  run's geometry goals mostly spend battery, and a session's count of looks is
+  not a count of work done.
 - **The stop and takeover trials that did not finish.** The console's stop button
   was only exercised on a slow turn, and its repeat at speed was cut short by the
   battery; it sends the same request that was measured at speed. A hung executive
