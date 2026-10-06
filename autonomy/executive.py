@@ -121,6 +121,13 @@ RENEW_EVERY_S = 2.0
 #: this is the loop noticing first, so that the reason lands in the episode.
 ACTION_TIMEOUT_S = 240.0
 
+#: How long the executive waits for the daemon to answer a look. The daemon
+#: lets a run's look wait up to 9 s for the rover's own to finish
+#: (`rover_autonomy.AUTONOMY_LOOK_WAIT_S`) and the look itself is under a
+#: second, so 13 s covers both and stays inside the 15 s permission renewed
+#: just before it -- nothing renews it while this one call is out.
+LOOK_CALL_TIMEOUT_S = 13.0
+
 #: How long to stand still after a turn of the loop that chose nothing. The
 #: rover is parked, its map is not changing and neither is the answer, so this is
 #: about not filling the record with identical refusals rather than about
@@ -391,7 +398,14 @@ class Executive:
             drive["params"]["heading_deg"] = float(heading)
         steps = [drive]
         if candidate["type"] == "improve_geometry":
-            look = {"settle": True}
+            # **Recorded, not settled.** Settling decides identities from every
+            # bearing pending, and with 2,000 pending that is the better part
+            # of ten seconds holding the lock every look needs: in M3 session 6
+            # six looks in 39 failed waiting for it or timed out inside it. The
+            # rover's own clock settles this look within ten seconds; what the
+            # evaluation straight afterwards misses by that was measured at
+            # 9 goals in 171 (2026-10-06, looks-seldom-reach-their-thing).
+            look = {"settle": False}
             # Aimed at the thing, which the daemon does from the heading it
             # measures, so the arrival tolerance does not leave it off the
             # picture. A record from before 2026-10-03 has no place to aim at.
@@ -450,7 +464,9 @@ class Executive:
         try:
             answer = self.rover.call("autonomy_act", {
                 "permit": self.permit, "action": step["action"],
-                "action_id": action_id, "episode": episode, "params": params})
+                "action_id": action_id, "episode": episode, "params": params},
+                timeout=(LOOK_CALL_TIMEOUT_S if step["action"] == "world_inspect"
+                         else None))
         except client_mod.Unreachable as exc:
             self._lost_action(episode, step, params, action_id, began, str(exc))
             raise Aborted(str(exc), "connection lost") from exc

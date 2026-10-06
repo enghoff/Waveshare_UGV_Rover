@@ -168,6 +168,37 @@ def test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it():
     session.close()
 
 
+def test_a_geometry_look_records_and_leaves_settling_to_the_rover():
+    """M3 session 6, 2026-10-06: with 1,999 bearings pending, six of 39 looks
+    failed waiting for the lock a settling pass holds, or timed out at 10 s
+    inside one. A run's geometry look now records without settling, and the
+    executive gives that one call longer than the others."""
+    import executive as executive_mod
+
+    session = Session()
+    _arriving(session)
+    waited: list[tuple[str, float]] = []
+    original = session.rover._ask
+
+    def timed(name, arguments):
+        if name == "autonomy_act":
+            waited.append((arguments.get("action"), session.rover.timeout))
+        return original(name, arguments)
+
+    session.rover._ask = timed
+    got = session.executive.once()
+    _drive, look = session.calls(got["episode"])
+    check("the look does not settle", look["params"].get("settle"), False)
+    check("...and is given longer to answer than a drive",
+          waited, [("drive_to", 10.0),
+                   ("world_inspect", executive_mod.LOOK_CALL_TIMEOUT_S)])
+    check("...which still ends inside the permission renewed before it",
+          executive_mod.LOOK_CALL_TIMEOUT_S < 15.0, True)
+    check("...and the client's own timeout is put back afterwards",
+          session.rover.timeout, 10.0)
+    session.close()
+
+
 def test_every_movement_names_the_episode_and_the_action_that_asked_for_it():
     session = Session()
     _arriving(session)
@@ -637,6 +668,7 @@ TESTS = (
     test_a_goal_that_got_nowhere_is_not_chosen_again,
     test_one_turn_drives_looks_and_writes_down_what_changed,
     test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it,
+    test_a_geometry_look_records_and_leaves_settling_to_the_rover,
     test_every_movement_names_the_episode_and_the_action_that_asked_for_it,
     test_a_run_with_nothing_left_worth_doing_goes_back_and_ends,
     test_a_run_already_where_it_started_ends_without_driving,

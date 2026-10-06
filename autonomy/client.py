@@ -108,12 +108,21 @@ class ReadOnly:
         self.host, self.port, self.timeout = host, port, timeout
         self.calls = 0
 
-    def call(self, name: str, arguments: dict[str, Any] | None = None) -> dict:
+    def call(self, name: str, arguments: dict[str, Any] | None = None, *,
+             timeout: float | None = None) -> dict:
         """Make one call, or refuse.
 
         The refusal happens here, before a socket is opened, so a client pointed
         at a daemon that would happily drive the rover still cannot ask it to.
+        `timeout` stretches the wait for this one answer; the executive uses it
+        for a look, which may wait its turn behind the rover's own.
         """
+        if timeout is not None and name in self.allowed:
+            kept, self.timeout = self.timeout, float(timeout)
+            try:
+                return self.call(name, arguments)
+            finally:
+                self.timeout = kept
         if name not in self.allowed:
             raise Refused(
                 f"{name} is not a call this component may make"

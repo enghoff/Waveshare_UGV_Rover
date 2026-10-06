@@ -331,6 +331,18 @@ def test_an_autonomous_look_waits_for_the_rovers_own_look():
     rover._tool_world_inspect({"settle": False})
     check("...and the rover's own looking does not", taken[-1]["wait_s"], 0.0)
 
+    # M3 session 6, 2026-10-06: a settling pass over 1,999 pending bearings
+    # held the camera longer than the five seconds a run's look waited.
+    rover_autonomy.RoverAutonomy._autonomy_do(
+        rover, "world_inspect", {"settle": False}, "a#3", "episode:1")
+    check("a run's look that only records waits out a whole settling pass",
+          (taken[-1]["wait_s"], taken[-1]["settle"]),
+          (rover_autonomy.AUTONOMY_LOOK_WAIT_S, False))
+    rover_autonomy.RoverAutonomy._autonomy_do(
+        rover, "world_inspect", {"settle": True}, "a#4", "episode:1")
+    check("...one that settles keeps the shorter wait, to end inside its permit",
+          taken[-1]["wait_s"], rover_world.CHECK_LOOK_WAIT_S)
+
 
 TESTS = (
     test_an_inspection_must_declare_finite_limits_under_the_ceilings,

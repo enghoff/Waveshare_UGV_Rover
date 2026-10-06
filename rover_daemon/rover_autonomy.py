@@ -87,6 +87,13 @@ PERSON_MOVES = frozenset({
 TAKEOVER_HANDOVER_S = 3.0
 TAKEOVER_POLL_S = 0.05
 
+#: How long a run's recording-only look waits for the rover's own look or
+#: settling pass to finish. Nine seconds covers a pass over 2,000 pending
+#: bearings (8.4 s measured on 2026-09-03), and with the look itself under a
+#: second it answers inside the executive's 13 s (`LOOK_CALL_TIMEOUT_S`) and
+#: the 15 s permission renewed just before it.
+AUTONOMY_LOOK_WAIT_S = 9.0
+
 #: What a human intervention is called in the record, so that a person reading
 #: an episode a fortnight later is told which of these it was.
 TAKEOVER = {
@@ -389,13 +396,21 @@ class RoverAutonomy:
             # It waits for a look the rover's own looking is taking: on
             # 2026-10-03 six goals in nineteen were refused at that instant,
             # each counted as a failed goal.
+            # A look that only records, as a run's geometry look does, may
+            # wait longer for its turn: a settling pass can hold the camera for
+            # most of ten seconds once 2,000 bearings are pending (M3 session
+            # 6). A look that settles, or wakes the depth camera, keeps the
+            # shorter wait, so that it finishes inside its permission.
+            quick = (params.get("settle") is False
+                     and not params.get("keep_depth"))
             return self._tool_world_inspect({
                 "settle": params.get("settle", True),
                 "tilt_deg": params.get("tilt_deg"),
                 "aim_at": params.get("aim_at"),
                 "fresh": bool(params.get("fresh")),
                 "keep_depth": bool(params.get("keep_depth")),
-                "wait": True})
+                "wait": True,
+                **({"wait_s": AUTONOMY_LOOK_WAIT_S} if quick else {})})
 
         if action == "drive_to":
             if self.nav is None:

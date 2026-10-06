@@ -1315,7 +1315,8 @@ class RoverWorld:
                 return self._world_inspector().inspect(
                     settle=True if settle is None else bool(settle),
                     fresh=fresh, keep_depth=keep_depth,
-                    wait_s=CHECK_LOOK_WAIT_S if wait else 0.0,
+                    wait_s=(float(arguments.get("wait_s") or CHECK_LOOK_WAIT_S)
+                            if wait else 0.0),
                     before=tilted if moves_gimbal else None)
             finally:
                 if moved:
