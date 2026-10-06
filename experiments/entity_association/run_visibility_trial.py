@@ -175,9 +175,16 @@ class Live:
             raise RuntimeError('Passive board recorder is stale')
         home = [status['pose']['x_m'], status['pose']['y_m']]
         route = [home] + [p['xy'] for p in points]
-        for a,b in list(zip(route,route[1:])) + list(zip(reversed(route),list(reversed(route))[1:])):
+        direct = self.card.get('direct_return', False)
+        legs = list(zip(route,route[1:]))
+        legs += [(p['xy'],home) for p in points] if direct else list(zip(reversed(route),list(reversed(route))[1:]))
+        headings = {tuple(p['xy']):p['view_heading_deg'] for p in points}
+        headings[tuple(home)] = status['pose']['heading_deg']
+        for a,b in legs:
             heading = bearing(a,b)
-            plan = self.helper('plan_visibility_route.py', ['--start',*a,heading,'--goal',*b,heading], True)
+            start_heading = headings[tuple(a)] if direct else heading
+            goal_heading = headings[tuple(b)] if direct and b != home else heading
+            plan = self.helper('plan_visibility_route.py', ['--start',*a,start_heading,'--goal',*b,goal_heading], True)
             grid = self.helper('capture_route_costmaps.py', returning=True)
             path_check(plan, grid, a,b)
         self.log('preflight_complete', home=home, status=status)
@@ -224,6 +231,8 @@ class Live:
         angle = (heading-status['pose']['heading_deg']+180)%360-180
         if abs(angle) <= 5:
             return
+        if self.card.get('direct_return', False):
+            raise RuntimeError('Direct arrival missed the observation heading; no extra trial turn')
         grid = self.helper('capture_route_costmaps.py', returning=returning)
         if not turn_check(grid, now=time.time())['ok']:
             raise RuntimeError('No fresh turn clearance')
@@ -235,9 +244,13 @@ class Live:
         if math.dist(start,xy) <= .15:
             return
         heading = bearing(start, xy)
-        self.face(heading, returning)
-        status, _ = self.health(returning)
-        start = [status['pose']['x_m'],status['pose']['y_m']]
+        if self.card.get('direct_return', False):
+            if not returning:
+                heading = next(p['view_heading_deg'] for p in self.card['points'] if p['xy']==xy)
+        else:
+            self.face(heading, returning)
+            status, _ = self.health(returning)
+            start = [status['pose']['x_m'],status['pose']['y_m']]
         plan = self.helper('plan_visibility_route.py',['--goal',*xy,heading], returning)
         grid = self.helper('capture_route_costmaps.py', returning=returning)
         path_check(plan, grid, start,xy)
@@ -245,6 +258,8 @@ class Live:
         status = self.call('nav_status', timeout=3)
         if math.dist([status['pose']['x_m'],status['pose']['y_m']],xy) > .3:
             raise RuntimeError('Arrival outside trial tolerance')
+        if self.card.get('direct_return', False):
+            self.health(returning=True)
 
     def inspect(self):
         self.reserve(8)
@@ -283,7 +298,7 @@ def main():
     card = json.loads(args.card.read_text())
     backend = Live(args.output, card, args.support, args.session)
     if args.execute:
-        result = run(backend, card['points'])
+        result = run(backend, card['points'], direct_return=card.get('direct_return',False))
     else:
         result = {'home': backend.preflight(card['points']), 'movement': False}
     (args.output/'result.json').write_text(json.dumps(result,indent=2)+'\n')

@@ -16,7 +16,7 @@ def bearing(a, b):
     return math.degrees(math.atan2(b[1]-a[1], b[0]-a[0]))
 
 
-def run(backend, points, *, clock=time.monotonic):
+def run(backend, points, *, clock=time.monotonic, direct_return=False):
     home = backend.preflight(points)
     reached = [home]
     start = clock()
@@ -37,7 +37,8 @@ def run(backend, points, *, clock=time.monotonic):
         backend.begin_return()
         # Current point is the last successfully reached one. A failed or timed
         # out motion raises a different exception and goes directly to STOP.
-        for target in reversed(reached[:-1]):
+        targets = [home] if direct_return and len(reached)>1 else reversed(reached[:-1])
+        for target in targets:
             backend.travel(target, returning=True)
         result['returned'] = True
     except Exception as error:

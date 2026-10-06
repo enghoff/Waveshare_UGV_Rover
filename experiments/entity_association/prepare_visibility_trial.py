@@ -87,7 +87,8 @@ def main():
         if not manifest_path.exists() or json.loads(manifest_path.read_text()).get('complete') is not False:
             raise RuntimeError('World call recorder did not become active')
         if a.execute:
-            result.update(run(backend,backend.card['points']))
+            result.update(run(backend,backend.card['points'],
+                              direct_return=backend.card.get('direct_return',False)))
         else:
             result.update({'home':backend.preflight(backend.card['points']),'movement':False,'preflight_pass':True})
     except Exception as error:
