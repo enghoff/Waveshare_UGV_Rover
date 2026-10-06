@@ -123,5 +123,24 @@ class Trial(unittest.TestCase):
                      {'ok':True,'length_m':1.2,'path':[a,[-20,-14]]}]:
             with self.assertRaises(RuntimeError): path_check(plan,grid,a,b)
 
+    def test_single_point_path_still_checks_body_clearance(self):
+        grid = json.loads((CAPTURE/'costmaps-preflight.json').read_text(encoding='utf-8-sig'))
+        point = [-20.15,-14.85]
+        with self.assertRaises(RuntimeError):
+            path_check({'ok':True,'length_m':0,'path':[point]},grid,point,point)
+
+    def test_low_charge_requests_return_then_recovery_floor(self):
+        first_status = next(r['result'] for r in self.rows if r['call']=='nav_status')
+        backend = Live(Path('.'),{'map_id':first_status['map_id']},Path('.'),'unused')
+        backend.log = lambda *a,**k: None
+        charge = {'percent':34,'reading_age_s':0}
+        backend.call = lambda name,**kw: first_status if name=='nav_status' else charge
+        with patch('experiments.entity_association.run_visibility_trial.rpc',
+                   return_value={'trusted':True,'score':.99,'moved_m':0,'turned_deg':0}):
+            with self.assertRaises(ReturnNow): backend.health()
+            backend.health(returning=True)
+            charge['percent'] = 15
+            with self.assertRaises(RuntimeError): backend.health(returning=True)
+
 
 if __name__ == '__main__': unittest.main()

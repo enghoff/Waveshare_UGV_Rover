@@ -48,7 +48,7 @@ def path_check(plan, snapshot, start, goal):
     points = [p[:2] for p in plan['path']]
     if math.dist(points[0], start) > .25 or math.dist(points[-1], goal) > .1:
         raise RuntimeError('Path endpoints do not describe this leg')
-    for a,b in zip(points, points[1:]):
+    for a,b in zip(points, points[1:]+[points[-1]]):
         count = max(1, math.ceil(math.dist(a,b)/(g['resolution']/2)))
         for i in range(count+1):
             x,y = (a[j]+(b[j]-a[j])*i/count for j in range(2))
@@ -111,8 +111,10 @@ class Live:
         charge = self.call('battery', timeout=3)
         if charge.get('reading_age_s',99) > 5:
             raise RuntimeError('Battery reading stale')
-        if charge['percent'] < 35:
-            raise RuntimeError('Battery too low for automatic trial motion')
+        if charge['percent'] <= 15:
+            raise RuntimeError('Battery at recovery floor; STOP for manual recovery')
+        if charge['percent'] <= 35 and not returning:
+            raise ReturnNow()
         return status, charge
 
     def preflight(self, points):

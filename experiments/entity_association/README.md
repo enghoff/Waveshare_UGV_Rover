@@ -17,6 +17,8 @@ collection, and requests STOP if no return motor command starts by 60 seconds.
 Translations retain a 16-second STOP watchdog; turns use an 8-second watchdog.
 A failed/partial move or failed
 fresh check stops for recovery; its requested goal is never treated as reached.
+At 35% charge collection ends and return begins; at 15% automatic movement ends
+for manual recovery. An external STOP also ends this session's motion authority.
 STOP and zero motor output are verified before closing support recording. Default
 preflight issues no motion or STOP and can be verified while charging. The local
 recording/timing tests use saved real episodes and calls; they do not prove new

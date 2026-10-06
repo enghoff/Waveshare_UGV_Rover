@@ -1,248 +1,99 @@
-# Resolve visibility admission with a clear and occluded painting recording
+# Independent visibility recording
 
 R-WS-13 remains open; R-WS-17 and R-WS-18 remain proposed. Keep the proposed 5%
-contamination target. Development evidence does not settle acceptance.
-
-The [completed subject diagnosis](../progress/2026-10-05-subject-fragmentation.md)
-finds a real background-painting visibility rejection. Broad measured visibility
-recovers a connection but loses reviewed floor-container connections. Limiting it
-to existing-record matching removes that regression and retains 99.2% of the older
-October 1 proxy links, but a new scored cross-target connection involves a mixed
-painting/toolbox/chair crop. Preserve both failed/provisional outcomes. Do not
-activate a blanket range gate, extend production visibility, merge old records or
-relax the fixed criteria on the strength of corrected analyst labels.
-
-## Next short recording
-
-Evaluate `replay_visibility_rival_veto.py --new-visibility-only` against independent
-evidence, with the existing thresholds and criteria. Preserve the wider failures
-and old mixed-crop identity-score failure recorded in the
+contamination target. Evaluate the narrower `replay_visibility_rival_veto.py
+--new-visibility-only` candidate with its existing thresholds. Preserve the wider
+failures and old mixed-crop identity-score failure in the
 [October 6 measurement](../progress/2026-10-06-side-painting-recording.md).
-Do not deploy it, merge old records or claim acceptance from that small reviewed
-subset. Keep mixed-region and part/whole failures as separate controls.
 
-Before another recording, replace conversational timing with a verified serial
-executor that starts the checked return within the budget and waits for each
-call's completion. The existing admission guard does not ensure a timely return:
-the latest run began return at 78.5 seconds. Verify recorder completion/flush
-through final STOP; interrupting `nav_record.py` before its timed loop ends loses
-its in-memory episode. These preparations precede requesting the rover.
+## Handover and execution
 
-Use the unchanged production resolver and verified optional call recorder. Obtain
-one distinguishable background painting from two clear positions with at least
-0.4 m baseline and 12 degrees measured bearing parallax, plus an intermediate
-occluded view. Keep the foreground chair/toolbox as a separately recorded region.
-Retain all failed detections, valid parts, mixed masks and missing depth. The
-second short drive lacked an unoccluded side painting region; another photograph
-of the same occlusion does not fulfil that gap.
+Request the rover only when ready to run. Obtain explicit confirmation that the
+charger is disconnected and this session controls the rover. No chassis movement
+is authorized by this plan. Keep production perception/navigation unchanged.
 
-The [night attempt](../progress/2026-10-05-night-visibility-run.md) reached the first
-three waypoints but not the proposed side extension. Do not repeat that extension
-with the same heading request merely because the global grid shows clearance.
-The saved costmap/lattice diagnostic suggests facing along the travel segment
-before requesting the side goal, then framing the painting after arrival. It
-predicts a shorter path but does not reproduce the live planner exactly. The next
-live precheck must verify the actual route, localization and current clearance.
-Any refusal or uncertain localization ends the attempt; do not reset or refit maps
-to make a route pass, or improvise a longer route during the evidence trial.
-
-Use the local `drive_trial_guard.py` admission checks and a new capture directory.
-Wait for every movement command to finish before a fresh inspection. Reserve the
-motion deadline or inspection allowance within the 60-second window and begin
-return when no further action fits. Explicit return legs are exempt from the
-outbound cutoff. Keep a recording window long enough for the return and release
-recorders only after STOP; the preceding support recording missed the final leg.
-
-Save the exact current starting pose, raw board feedback and controller tick
-recording before movement. Capture fresh raw depth and actual matching calls
-at the first waypoint, intermediate position and side position, with camera
-framing directed at the painting. Do not spend the battery collecting unrelated
-armchair views. Start return by 60 seconds after first movement or when reported
-battery reaches 35%, whichever comes first; inspect only after prechecks and
-recording are ready. Start only with at least 60% reported charge and fresh normal
-rotation feedback. These are operational limits, not calibrated battery capacity.
-The last drive's reported charge fell from 45% to 10% in about two minutes.
-
-Motion, including chassis turns, requires a fresh prompt and owner permission;
-the charger may be attached. Request the rover only when these checks, recording
-and return sequence are prepared for immediate use. End at the saved charging
-start, STOP, verify motor output, then copy the complete recording. Do not claim
-tape-measured docking precision from map estimates.
-
-## Morning run card
-
-The [October 6 live precheck](../progress/2026-10-06-morning-route-precheck.md)
-failed B-to-A: 3.260 m planned for 0.831 m direct. The
-[follow-up](../progress/2026-10-06-return-heading-and-owner-audit.md) finds a
-0.833 m live planner path when the hypothetical start faces the return leg.
-Use an explicit checked stationary return turn; do not repeat the rejected
-return request or silently waive the route limit. Actual return turns completed
-in the latest recording; any future turn still needs current local clearance.
-Obtain a new HOME pose and fresh routes at every handover. The owner's console
-drive successfully backed off from the wall and arrived, which supersedes the
-earlier planning-only parking blocker; that check omitted production recovery.
-Neither result makes an old route or costmap current. Coordinate charger/control
-state, repeat live prechecks, and never force a map fit to make a route pass.
-
-Finish local preparation before requesting hardware; live checks require the
-rover at handover. The prepared local caller is
-`.cache/visibility_morning_call.py`. The first two suffixes were used for movement-free
-prechecks; use `captures/visibility-morning-prepared-3` and matching world session
-`visibility-morning-prepared-3` for the next trial. Confirm neither exists before first use; if
-already used, choose a fresh suffix and update the caller before any RPC. Retain
-its motion lock, explicit permission token and return-leg flag. This card is preparation,
-not permission to move. Obtain a fresh handover with the charger disconnected.
-
-The immediate objective is the **missing clear side view**, not a claim that all
-acceptance coverage fits into one minute. The previous route used almost the whole
-budget before reaching it. Limit this attempt to two outbound translations and
-one framing turn; any initial chassis turn consumes that same allowance. A full
-two-clear-view/parallax trial remains owed if this short run cannot supply it.
-Do not weaken the coverage or scoring criteria to call the short run successful.
-
-Use these candidate map points only while the map ID remains `7da19bef3888` and
-fresh localization agrees. Save the actual starting pose as HOME; never substitute
-last night's start for it. Recheck floor/obstacles in the current camera and grid.
-
-| Point | Map x, y (m) | Purpose |
-|---|---|---|
-| HOME | Fresh measured start | Return destination and starting photograph |
-| A | -18.239, -15.030 | Previously reached approach; previously occluded painting |
-| B | -19.050, -14.850 | Proposed side view; visibility and direct approach still unproven |
-
-Before moving, ask the live planner for HOME to A, A to B, B to A and A to HOME.
-Use travel bearings for goal headings, not the painting-view heading. Explicit
-start poses for later legs are hypothetical; retain that distinction in the
-recording. Plan B-to-A from a return-facing start (-12.514 degrees for the saved
-coordinates), including the separate return turn in the execution sequence.
-Check the complete paths against the fresh map and camera: no unknown
-floor, occupied/inflated-body collision, unexpected loop or unexplained pivot.
-For this short trial, reject a leg longer than its direct distance plus 0.5 m.
-This is a predeclared trial route limit, not a general navigation acceptance test.
-If any leg fails, stop preparation and report the route blockage; do not add P1,
-P3 or a longer detour during the run. The exact route can still change after the
-precheck; watch the actual motion and retain the 16-second STOP watchdog.
-
-`experiments/entity_association/plan_visibility_route.py` asks only Nav2's
-`ComputePathToPose`; it does not navigate, publish velocity or change maps. At
-handover, copy it to `/tmp/visibility-plan.py` on Orin, then invoke it from Bash
-after sourcing `~/ugv/ros_nav/env.sh` and `~/ugv/ros_nav/dds.sh`. For example, the
-hypothetical A-to-B check is:
+Use the committed diagnostic helpers described in the
+[experiment README](../../experiments/entity_association/README.md), staged together
+outside the deploy tree. The prepared launcher defaults to stationary verification;
+only `--execute --motion-authorized` enables motion. Use a fresh session name, for
+example `visibility-independent-20261006-1`; existing outputs and recording markers
+must be refused. Do not reuse the old per-command scratch caller.
 
 ```bash
-python3 /tmp/visibility-plan.py --start -18.239 -15.030 131 --goal -19.050 -14.850 167.486
+bash /tmp/visibility-trial-COMMIT/run_prepared_trial.sh \
+  --session visibility-independent-20261006-1 --execute --motion-authorized
 ```
 
-Replace the example start heading with the planned arrival heading at A. Omit
-`--start` for a check from the actual current pose. Save every JSON path/error.
-The helper's live planning action was verified on October 6; current ROS availability
-and revised paths must still be verified at handover. Planning requests have bounded waits, and
-unavailable or timed-out planning means no movement.
-Wrap each helper invocation in an external timeout as well; DDS can defeat ROS
-wait timeouts. Strip carriage returns from PowerShell-fed Bash scripts before
-executing them on Orin.
+Replace COMMIT with the staged and hash-verified source commit. Before moving,
+the launcher must verify live navigation, stationary motor output, at least 60%
+charge, changing fresh IMU feedback, trusted fresh scan agreement of at least
+90% within 0.25 m/10 degrees, active navigation/board recording and an active
+world-call recording following a fresh stationary depth look. Never reset or
+force-fit maps to make preparation pass.
 
-For the stationary turn check, copy the prepared costmap capture helper to
-`/tmp/visibility-costmap.py`, source the same ROS environment and run it with
-`timeout --kill-after=2 15 python3 /tmp/visibility-costmap.py`. Save its JSON
-locally and immediately run:
+Use `visibility_trial_card.json` only while map ID `7da19bef3888` still applies.
+Save the actual current pose as HOME. The two candidate observation positions
+are B (-19.050, -14.850) and C (-20.000, -14.200), with view headings 82.67 and
+67.12 degrees. Recheck HOME-B, B-C, C-B and B-HOME against current live planner
+paths and costmaps. Later starts are hypothetical and must face along travel;
+the executor separately checks its actual turn and route at each leg. Reject
+unknown/occupied body space or a route longer than direct distance plus 0.5 m.
+The apparently obvious farther-west extension (-20.150, -14.850) is not an
+alternative: it intersects the saved obstacle map. Do not improvise another route.
 
-```powershell
-python experiments/entity_association/check_recorded_turn.py --snapshot <new-costmap-json> --live
-```
+Collection and return run serially in one process, without conversational waits.
+Reserve 15 seconds for return preparation. A translation has a 16-second STOP
+watchdog and a turn an 8-second watchdog; admit each only with its allowance
+remaining. Begin checked return as soon as collection ends or no further action
+fits. If the first return motor command has not started by 60 seconds, STOP for
+recovery instead of making a late unverified move. A fresh check failure, partial
+move, external STOP or watchdog ends automatic execution; do not treat an
+unreached waypoint as reached. At 35% charge, end collection and return; at 15%,
+STOP for manual recovery. These are operational limits, not battery calibration.
 
-This uses the robot transform in the **local grid's own frame**, checks its
-centre against inflated-body contact and the physical body against lethal or
-unknown cells. Never apply inflation to the whole body a second time, reuse an
-old snapshot, substitute map coordinates for odometry, or treat the snapshot
-as continuing collision protection. A failed check ends collection; Nav2's
-actual motion/collision result remains authoritative.
+Return through successfully reached points in reverse order to HOME. Restore
+neither old map coordinates nor an assumed heading. Verify STOP and zero motor
+output, then acknowledge recorder closure and preserve its data. Tell the owner
+when movement is finished so charging can resume. Report map-estimated return
+error and heading difference plainly; do not claim measured docking precision.
 
-Before first movement, complete battery/status/camera, fresh read-only `measure`
-and changing raw IMU checks. Require at least 60% charge, trusted localization,
-a fresh fit of at least 90% agreeing within 0.25 m and 10 degrees, live lidar and
-Nav2, and no active motion. Start navigation and passive board recorders for
-**300 seconds**, then enable the unique world-call recording session. Verify they
-are producing data before beginning; if setup has consumed a minute of their
-window, restart the support recordings before driving. Never wait for a recorder
-to expire merely to release the rover after returning.
-If another session's call-recording marker already exists, coordinate ownership
-instead of overwriting it.
+## Evidence and decision
 
-Run commands serially and wait for each final response, including any yielded
-tool session. The schedule is a maximum allowance, not a prediction:
+Copy and hash-verify the complete navigation/board recordings, world-call before
+and after stores, event/map files, photographs and retained raw depth before
+saying it is safe to power off. Confirm the world manifest and navigation
+checkpoint both acknowledge closure. A periodic open checkpoint protects some
+data after a fault but does not prove the final STOP was recorded.
 
-| Time from first motion | Permitted work |
-|---|---|
-| 0-32 s | At most two translations, HOME to A to B; each has a 16 s watchdog |
-| By 48 s | At most one completed framing turn, only if necessary and budget permits |
-| By 56 s | One stationary fresh depth inspection; admit only with 8 s remaining |
-| By 60 s | Begin return; no more outbound moves or inspections |
+Obtain two clear views of one distinguishable background painting, at least
+0.4 m apart with 12 degrees measured bearing separation, plus an occluded view.
+The prepared B/C positions predict about 15.5 degrees; actual images and bearings
+decide whether coverage passed. Retain foreground chair regions separately, all
+missed detections, valid parts, mixed masks and missing depth. Do not lower the
+coverage threshold if a time-bounded run supplies less than intended.
 
-At each arrival, check command completion and battery before admitting another
-action. A camera preview can determine whether to stop at A or proceed to B, but
-its elapsed time counts too. Only inspect while stationary, with the intended
-painting in view. The 8-second inspection allowance is not a hard timeout: if a
-look runs longer, do not launch competing motion; finish/cancel it as supported,
-return immediately and record the timing failure. A failed movement, watchdog
-STOP, 35% battery or uncertain position ends evidence collection immediately.
-At B, the stored painting placement suggests a view heading near 83 degrees.
-Use that only for initial framing; verify the actual photograph. Compute any
-relative chassis turn from the freshly measured heading, and keep it inside the
-existing outbound allowance. The predicted A/B parallax is only 10.93 degrees;
-do not substitute that for measured bearings or claim the 12-degree acceptance
-criterion has been met. This run's priority is the missing side view.
+Review full photographs and stored outlined pixels with assignments/candidate
+results hidden. Freeze physical labels and the final candidate source hash before
+scoring. Distinguish pure object, valid part, mixed, non-object and unresolved
+individual identity. Previous development refinements and corrected historical
+labels cannot become independent acceptance truth by being scored again.
 
-Return through the reached, checked points in reverse order: B to A to HOME, or
-A to HOME if B was never reached. At B, first check the fresh local body/turn
-clearance and turn toward A (approximately -12.514 degrees in this map). Use the
-measured current heading to compute the wrapped relative turn; do not assume
-the requested arrival or camera heading was achieved. Treat that turn as a
-return leg with the same 16-second watchdog, then recheck the actual B-to-A path
-from the achieved pose. If returning directly from A, similarly check and face
-HOME before asking for its route. After a partial/failed move, STOP and obtain a
-fresh position check before choosing a return segment; if that check fails, leave
-the rover stopped and request manual recovery. Do not mark an unreached point as
-a completed leg. Return commands carry `return_leg` and retain the per-command
-watchdog. Restore the starting heading only if a checked turn is appropriate;
-otherwise report the difference rather than spending extra battery docking.
+First reproduce every actual original checkpoint and ordered map query, and all
+available retained depth answers. The candidate extends mapped reach to valid
+stored depth only during existing-record matching; discovery/refitting and other
+gates stay unchanged. In frame assignment, apply the existing 0.15 global rival
+veto additionally only where the original unextended ray forbids that candidate.
+Reject candidate queries whose answers differ across saved pass grids, including
+failures swallowed by production fallback handling.
 
-At HOME, send STOP and verify zero commanded speed and zero motor PWM, save the
-final camera, pose and battery, and tell the owner movement is finished and the
-charger can be connected. Close the world recorder after the final stationary
-settle; retain support recording through that STOP. Copy and hash-check evidence
-before saying it is safe to power off. Report map-estimated return error plainly.
+Retain at least 98% of existing useful connections, create no reviewed clean
+cross-object connection, and gain a genuine clear/occluded painting connection.
+Report all unreviewed changes, failed coverage and missing evidence. Do not call
+a small successful subset deployment acceptance or merge old records on its
+strength. Preserve all earlier frozen scores, including mixed-crop failures.
 
-## Freeze and judge the result
-
-Review the physical subject and selected pixels with assignments and candidate
-results hidden. Distinguish pure object, valid part, mixed, non-object and unresolved
-individual identity. Preserve explicit corrections alongside original labels.
-A mixed historical crop cannot become independent acceptance truth by analyst
-relabeling after scoring.
-
-Reproduce every actual control checkpoint, ordered map query and retained depth
-answer before any candidate replay. Use the matching-only measured-visibility
-candidate derived from a61f1c4: extend mapped reach only to valid stored depth
-during existing-record matching, with original discovery/refitting and all other
-gates. For a frame-assignment candidate forbidden by its original unextended ray,
-also apply the existing global rival veto at its unchanged 0.15 threshold. Do not
-apply that extra veto to originally admissible candidates: the wider rule loses
-a reviewed correct chair connection. Freeze the final source hash and independent
-physical labels before the next candidate score; this refinement was developed
-after the October 6 failures and is not independent evidence itself.
-Reject any candidate query with different answers across the recorded pass grids,
-including failures caught by the production map callback.
-
-Retain the 98% existing useful-link minimum and zero new reviewed clean cross-object
-connections. Require a genuine clear/occluded painting connection gained. Report
-all unreviewed changes, failed coverage and missing measurements; a mixed crop
-needs separate treatment, not a forced single-object label. Do not count a small
-successful subset as deployment acceptance or claim complete old-record repair.
-
-Pure-table/glass views and independently measured transparent-object distance remain
-separate owed controls. The partial/whole armchair representation issue and duplicate
-historical placements need separate work. A guard against frozen rotation feedback
-also remains unimplemented: reproduce failed feedback and healthy moving/stationary
-recordings before proposing control changes. Recovery after one power cycle does
-not establish that the sensor fault cannot recur.
+Pure-table/glass observations with independently measured distance, partial/whole
+armchair representation and duplicate historical placements remain separate owed
+controls. A frozen-rotation-feedback guard also remains unimplemented; it needs
+reproduction against failed and healthy moving/stationary recordings before a
+control change. A successful power cycle does not establish that fault is gone.
