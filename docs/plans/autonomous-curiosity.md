@@ -609,8 +609,12 @@ Most of M3 is still physical:
   followed by a recorded decision ([the trace](../progress/2026-10-06-every-move-traced-to-its-episode.md)).
 - **Criterion 12 on the rover.** A voice request and a manual drive during a
   run, against the declared priority, and a map change or a lost pose revoking a
-  drive that is moving. The manual drive was shown on 2026-10-02 (S3); the rest
-  are scripted with the next session.
+  drive that is moving. The manual drive of 2026-10-02 (S3) ended the run but
+  was itself refused as busy; that is [fixed](../progress/2026-10-06-a-person-who-takes-over-gets-their-move.md)
+  and not yet seen on the rover. The voice trial (`m3_trials.py voice`: the
+  owner tells the voice model to turn while a leg is moving) shows both. A map
+  change and a pose jump ending a run are tested offline only; neither can be
+  produced on the rover without throwing its map away.
 - **The hardware limits P0 found.** The depth camera drops off USB, which cost five
   checks in M0a's runs, and a charge gives about 20 to 25 minutes of this driving.
   Both bound how long a session can usefully run.
