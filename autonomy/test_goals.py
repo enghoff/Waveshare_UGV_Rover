@@ -264,6 +264,122 @@ def test_the_pocket_by_the_charger_is_not_somewhere_to_drive() -> None:
               here.reach.standing is not None, True)
 
 
+def _costmap_of(situation: Situation, inscribed_m: float):
+    """The planner's costmap rebuilt from a map: the bridge's goal fit runs on it.
+
+    Occupied cells lethal, the ring within the inscribed radius of them 253, and
+    unknown 255 -- the static layer and its inflation, which is what the bridge
+    reads when it decides whether the body fits.
+    """
+    import mapgrid
+
+    grid = situation.grid
+    goal_fit = mapgrid.goal_fit
+    _free, unknown = mapgrid.frontier.classify(grid)
+    clear = mapgrid._clear_of_walls(grid, bytearray(b"\1") * len(grid.data),
+                                    inscribed_m)
+    data = bytearray(len(grid.data))
+    for here, value in enumerate(grid.data):
+        if value >= mapgrid.frontier.OCCUPIED_AT:
+            data[here] = goal_fit.LETHAL
+        elif not clear[here]:
+            data[here] = goal_fit.INSCRIBED
+        elif unknown[here]:
+            data[here] = goal_fit.UNKNOWN
+    return goal_fit.CostGrid(grid.width, grid.height, grid.resolution,
+                             grid.origin_x, grid.origin_y, bytes(data))
+
+
+def test_a_goal_with_no_room_for_the_body_is_not_somewhere_to_drive() -> None:
+    """Seven recorded drives the bridge refused in two seconds, on their own maps.
+
+    **The fault, from the record.** The walk of 2026-10-05 kept the rover's
+    centre 0.20 m from walls, which is the planner's test for a route, and let a
+    goal count if it was within half a metre of that floor. The bridge's test
+    for a goal is stricter: no part of the body may lie over the 253 ring, so the
+    centre needs about twice the clearance. Seven drives in the record -- two of
+    them in M3 session 3 -- were chosen on the first rule and refused on the
+    second, "there is nowhere within half a metre of that spot where the rover's
+    body fits". Here: the bridge's own `goal_fit.fit` on each recorded map
+    refuses the goal, the walk now refuses it too, and the goal of the next drive
+    that arrived is still somewhere to go.
+    """
+    import gzip
+    import json
+
+    import mapgrid
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures",
+                        "no-room-for-the-body.json.gz")
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        cases = json.load(handle)["cases"]
+    check("the record holds the seven", len(cases), 7)
+    goal_fit = mapgrid.goal_fit
+    body = goal_fit.polygon_from("", BODY["inscribed_radius_m"])
+    for case in cases:
+        name = "episode %d" % case["episode"]
+        recorded = a_situation(FINISHED)
+        recorded["map"] = dict(case["map"])
+        recorded["nav"]["pose"] = dict(case["pose"])
+        here = _with_body(recorded)
+        goal = case["goal"]
+        x, y = float(goal["x_m"]), float(goal["y_m"])
+        check(name + ": the bridge's own fit finds nowhere for the body",
+              goal_fit.fit(_costmap_of(here, BODY["inscribed_radius_m"]), body,
+                           x, y, math.radians(float(goal["heading_deg"]))),
+              None)
+        check(name + ": ...and the walk refuses the goal",
+              here.reach.reachable(x, y), None)
+        check(name + ": ...while the goal of the next drive that arrived is "
+              "still somewhere to go",
+              here.reach.reachable(case["arrived"]["x_m"],
+                                   case["arrived"]["y_m"]) is not None, True)
+
+
+def test_a_place_called_fit_is_one_the_bridge_accepts() -> None:
+    """The walk's fitting floor never includes a cell the bridge would refuse.
+
+    The walk stamps the body as every cell it could touch, so that it can be
+    laid round every wall at once; the bridge lays its polygon down at one pose
+    at a time. Checked on the cluttered room of a recorded map, at every cell the
+    walk calls fit near the goal, and at the turns and millimetre offsets that
+    change which edge cells the polygon touches.
+    """
+    import gzip
+    import json
+
+    import mapgrid
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures",
+                        "no-room-for-the-body.json.gz")
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        case = json.load(handle)["cases"][-1]
+    recorded = a_situation(FINISHED)
+    recorded["map"] = dict(case["map"])
+    recorded["nav"]["pose"] = dict(case["pose"])
+    here = _with_body(recorded)
+    grid = here.grid
+    goal_fit = mapgrid.goal_fit
+    costmap = _costmap_of(here, BODY["inscribed_radius_m"])
+    body = goal_fit.polygon_from("", BODY["inscribed_radius_m"])
+    fits = mapgrid._where_the_body_fits(grid, BODY["inscribed_radius_m"])
+    col, row = grid.cell_of(float(case["goal"]["x_m"]), float(case["goal"]["y_m"]))
+    tried = refused = 0
+    for r in range(row - 30, row + 31):
+        for c in range(col - 30, col + 31):
+            if not fits[r * grid.width + c]:
+                continue
+            px, py = grid.point_of(c, r)
+            for dx, dy in ((0.0, 0.0), (0.0004, -0.0004), (-0.0004, 0.0004)):
+                for turn in range(0, 30, 5):
+                    tried += 1
+                    if not goal_fit.fits(costmap, body, px + dx, py + dy,
+                                         math.radians(turn)):
+                        refused += 1
+    check("the walk calls places fit near the goal", tried > 1000, True)
+    check("...and the bridge refuses none of them, turned or shifted", refused, 0)
+
+
 # --- going where a thing would come out better -------------------------------
 
 def _thing_and_room(major_deg: float, **kwargs):
@@ -422,6 +538,8 @@ TESTS = (
     test_the_frontiers_are_the_rovers_own_and_not_a_second_opinion,
     test_a_gap_the_body_does_not_fit_through_is_not_a_way_there,
     test_the_pocket_by_the_charger_is_not_somewhere_to_drive,
+    test_a_goal_with_no_room_for_the_body_is_not_somewhere_to_drive,
+    test_a_place_called_fit_is_one_the_bridge_accepts,
     test_a_look_across_the_uncertainty_beats_a_look_along_it,
     test_no_placement_is_ever_predicted_better_than_this_rover_manages,
     test_a_thing_nobody_has_measured_the_distance_to_wants_the_depth_camera,

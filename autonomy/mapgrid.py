@@ -46,19 +46,29 @@ from typing import Any
 # `selftest.py`, and putting it on the path would quietly hand this component
 # somebody else's modules under names it uses itself. The failure looks like a
 # test that cannot find its own helper, and it takes a while to see why.
-try:
-    import frontier
-except ImportError:                                            # pragma: no cover
-    import importlib.util
+#
+# `goal_fit.py` comes the same way and for the same reason: it is the bridge's
+# own test of whether the body fits where a goal was set, and a goal this module
+# calls reachable has to be one the bridge will accept.
+def _from_ros_nav(name: str):
+    try:
+        return __import__(name)
+    except ImportError:                                        # pragma: no cover
+        import importlib.util
 
-    _path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         os.pardir, "ros_nav", "frontier.py")
-    _spec = importlib.util.spec_from_file_location("frontier", _path)
-    if _spec is None or _spec.loader is None:
-        raise
-    frontier = importlib.util.module_from_spec(_spec)
-    sys.modules["frontier"] = frontier
-    _spec.loader.exec_module(frontier)
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            os.pardir, "ros_nav", name + ".py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+
+
+frontier = _from_ros_nav("frontier")
+goal_fit = _from_ros_nav("goal_fit")
 
 #: How far the lidar is worth believing for "standing there would reveal this
 #: much". The scanner reaches 8 m and the costmap marks obstacles to 6, but the
@@ -67,6 +77,10 @@ except ImportError:                                            # pragma: no cove
 #: Four metres is a room's width and it keeps the estimate conservative, which
 #: is the direction an estimate that decides where to drive should err in.
 SENSE_DEPTH_M = 4.0
+
+#: How far from a cell's middle a goal's own point may sit, in cells, for the
+#: body stamp in `_could_cover`.
+SLACK_CELLS = 0.05
 
 
 class NoMap(Exception):
@@ -135,17 +149,21 @@ class Reach:
     at least that far from anything occupied, which is the planner's own test
     for the centre of the body.
 
-    A goal off that floor is still reachable if it is within `goal_reach_m` of
-    it, because the bridge moves a goal that far onto floor where the body fits
-    before it plans (`goal_fit.py`); a frontier is always next to unknown ground
-    and often next to a wall, so without that allowance nearly none would be.
-    The allowance is walked over free cells, so it never reaches through a wall
-    into the next room.
+    **A goal is where the bridge will send the rover, not where it was set.**
+    Before it plans, the bridge moves a goal to the nearest place within
+    `goal_reach_m` where the whole body fits (`goal_fit.py`), and refuses it if
+    there is none. That floor is narrower than the walk's: no part of the body
+    may lie over the planner's 253 ring, so the centre keeps about twice the
+    clearance a route needs. A goal counts as reachable only if that place
+    exists and the walk reaches it. A frontier is always next to unknown ground
+    and often next to a wall, so without the move nearly none would be.
 
-    Replayed over every drive the autonomy record held on 2026-10-05, with the
-    rover's 0.20 m and the bridge's 0.5 m: all 183 that arrived are still
-    reachable, and 10 of the 27 that failed are not -- all seven frontiers, and
-    three viewpoints with nowhere near them for the body.
+    Replayed over every drive the autonomy record held on 2026-10-05, the body's
+    walk kept all 183 that arrived and refused all seven frontiers in the
+    pocket. Replayed again on 2026-10-06 over all 230 drives, the bridge's own
+    fit refuses all ten goals the bridge refused for want of room for the body
+    -- seven of which the walk alone had let through -- and keeps all 200 that
+    arrived.
 
     `standing` is None when there is no such floor within half a metre of the
     rover -- a rover parked half under a sofa, or a pose that has drifted into a
@@ -167,8 +185,8 @@ class Reach:
             self.distance = [-1] * (grid.width * grid.height)
         else:
             walked = frontier.reachable_from(grid, self.roomy, self.standing)
-            self.distance = _moved_onto(grid, self.free, self.roomy, walked,
-                                        goal_reach_m)
+            self.distance = _moved_by_the_bridge(grid, self.free, walked,
+                                                 inscribed_m, goal_reach_m)
 
     def reachable(self, x: float, y: float) -> float | None:
         """How far the rover must walk over known floor to stand at a point.
@@ -314,40 +332,144 @@ def _clear_of_walls(grid: "frontier.Grid", free: bytearray,
     return out
 
 
-def _moved_onto(grid: "frontier.Grid", free: bytearray, roomy: bytearray,
-                walked: list, reach_m: float) -> list:
-    """The walk, extended to goals the bridge would move onto the floor it reached.
+def _moved_by_the_bridge(grid: "frontier.Grid", free: bytearray, walked: list,
+                         inscribed_m: float, reach_m: float) -> list:
+    """The walk, as the steps to wherever the bridge would send a goal at each cell.
 
-    A free cell off that floor -- too near a wall for the body -- takes the walk
-    to the nearest reached cell, plus the steps between, if they are within
-    `reach_m`. Four-connected over free cells for the walk's own reason, which
-    also keeps the allowance from reaching through a wall. A roomy cell the walk
-    did not reach is never entered: the bridge would leave a goal there where it
-    is, and the planner could not get to it.
+    Every free cell is a goal somebody might set. The bridge sends one to the
+    nearest place within `reach_m` where the body fits, in `goal_fit.fit`'s own
+    order of trying, and the walk to that place, plus the cells it was moved,
+    is what the goal costs. No such place, or one the walk does not reach --
+    which is how the bridge sends a goal through a wall into a room the rover
+    cannot get to -- and the cell is -1.
+
+    The body is the circle the rover runs (`ros_nav/dwb_config.py`), at the
+    inscribed radius the bridge sends, stamped as every cell it could touch at
+    any heading (`_could_cover`). So a place called fit here is one the bridge
+    would accept, and the bridge may accept a few this refuses -- the cheap side
+    to be wrong on, since a refused goal costs a choice and a failed drive costs
+    one of three failures in a row.
     """
-    if reach_m <= 0.0:
+    if inscribed_m <= 0.0 or reach_m <= 0.0:
         return walked
-    limit = int(reach_m / grid.resolution + 1e-3)
-    width, height = grid.width, grid.height
-    out = list(walked)
-    shifted = [0] * len(walked)
-    # Nearest walk first, so that between two reached cells equally near a goal
-    # the one the rover gets to sooner is the one it is credited with.
-    queue = collections.deque(sorted((here for here, d in enumerate(walked)
-                                      if d >= 0), key=lambda here: walked[here]))
-    while queue:
-        here = queue.popleft()
-        if shifted[here] >= limit:
+    fits = _where_the_body_fits(grid, inscribed_m)
+    width, height, res = grid.width, grid.height, grid.resolution
+    order = [(round(away / res), round(dx / res), round(dy / res))
+             for away, dx, dy in goal_fit.candidates(
+                 goal_fit.CostGrid(1, 1, res, 0.0, 0.0, b"\0"), 0.0, 0.0,
+                 reach_m)]
+    span = max(abs(dcol) for _shift, dcol, _drow in order)
+    flat = [(shift, drow * width + dcol) for shift, dcol, drow in order]
+    # Only a cell with walkable fitting floor within reach can come out
+    # reachable, and the search is longest exactly where there is none, so those
+    # are ruled out first, a row run at a time.
+    runs: dict[int, list[int]] = {}
+    for _shift, dcol, drow in order:
+        low, high = runs.get(drow, (dcol, dcol))
+        runs[drow] = (min(low, dcol), max(high, dcol))
+    near = bytearray(len(walked))
+    for here, steps in enumerate(walked):
+        if steps < 0 or not fits[here]:
             continue
         row, col = divmod(here, width)
-        for there, inside in ((here - 1, col > 0), (here + 1, col + 1 < width),
-                              (here - width, row > 0),
-                              (here + width, row + 1 < height)):
-            if not inside or out[there] >= 0 or not free[there] or roomy[there]:
+        for drow, (first, last) in runs.items():
+            r = row + drow
+            if 0 <= r < height:
+                lo, hi = max(0, col + first), min(width - 1, col + last)
+                near[r * width + lo:r * width + hi + 1] = b"\1" * (hi - lo + 1)
+    out = [-1] * len(walked)
+    for here, is_free in enumerate(free):
+        if not is_free or not near[here]:
+            continue
+        row, col = divmod(here, width)
+        if span <= col < width - span and span <= row < height - span:
+            for shift, delta in flat:
+                there = here + delta
+                if fits[there]:
+                    if walked[there] >= 0:
+                        out[here] = walked[there] + shift
+                    break
+            continue
+        for shift, dcol, drow in order:
+            c, r = col + dcol, row + drow
+            if not (0 <= c < width and 0 <= r < height):
                 continue
-            out[there] = out[here] + 1
-            shifted[there] = shifted[here] + 1
-            queue.append(there)
+            there = r * width + c
+            if fits[there]:
+                if walked[there] >= 0:
+                    out[here] = walked[there] + shift
+                break
+    return out
+
+
+def _could_cover(radius_cells: float, slack_cells: float = SLACK_CELLS
+                 ) -> list[tuple[int, int]]:
+    """Every cell a body of this radius could touch, centred on the middle cell.
+
+    The bridge's body is a twelve-sided polygon with its corners on the circle,
+    so nothing it covers lies outside the disc. Which edge cells it touches
+    changes with a millimetre's shift or a few degrees' turn, so the stamp takes
+    every cell the disc reaches with its centre up to `slack_cells` from the
+    middle of the cell, which is never fewer than the bridge counts.
+    """
+    reach = int(math.ceil(radius_cells + slack_cells)) + 1
+    out = []
+    for drow in range(-reach, reach + 1):
+        for dcol in range(-reach, reach + 1):
+            gap_x = max(0.0, abs(dcol) - 0.5 - slack_cells)
+            gap_y = max(0.0, abs(drow) - 0.5 - slack_cells)
+            if math.hypot(gap_x, gap_y) < radius_cells:
+                out.append((dcol, drow))
+    return out
+
+
+def _where_the_body_fits(grid: "frontier.Grid", inscribed_m: float) -> bytearray:
+    """Cells where the bridge's goal fit would let the rover stand.
+
+    `goal_fit.fits` on the costmap the planner would build from this map: the
+    body may cover no occupied cell and no cell within `inscribed_m` of one (the
+    253 ring, as `_clear_of_walls` draws it). The cells a body covers when it is
+    centred on a cell are the same set wherever the cell is, so both rings fold
+    into one stamp, laid once round every occupied cell as runs along each row --
+    a per-cell polygon test would cost the Orin seconds per decision. Unknown and
+    off-map ground do not block, as they do not for the bridge.
+    """
+    res = grid.resolution
+    covered = _could_cover(inscribed_m / res)
+    limit = inscribed_m / res + 1e-3
+    reach = int(limit)
+    ring = [(dcol, drow) for drow in range(-reach, reach + 1)
+            for dcol in range(-reach, reach + 1) if math.hypot(dcol, drow) <= limit]
+    # A cell is ruled out when an occupied cell lies within the ring of any cell
+    # its body covers: the occupied cell minus that offset, for every pair.
+    stamp: dict[int, set] = collections.defaultdict(set)
+    for bcol, brow in covered:
+        for rcol, rrow in ring:
+            stamp[-(brow + rrow)].add(-(bcol + rcol))
+    runs = []
+    for drow, cols in sorted(stamp.items()):
+        cols = sorted(cols)
+        start = previous = cols[0]
+        for dcol in cols[1:] + [None]:
+            if dcol is not None and dcol == previous + 1:
+                previous = dcol
+                continue
+            runs.append((drow, start, previous))
+            if dcol is not None:
+                start = previous = dcol
+    width, height = grid.width, grid.height
+    out = bytearray(b"\1") * (width * height)
+    for here, value in enumerate(grid.data):
+        if value < frontier.OCCUPIED_AT:
+            continue
+        row, col = divmod(here, width)
+        for drow, first, last in runs:
+            r = row + drow
+            if not 0 <= r < height:
+                continue
+            lo, hi = max(0, col + first), min(width - 1, col + last)
+            if lo <= hi:
+                out[r * width + lo:r * width + hi + 1] = bytes(hi - lo + 1)
     return out
 
 

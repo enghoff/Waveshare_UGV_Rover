@@ -68,6 +68,13 @@
           "strip": "ros_nav"
         },
         {
+          "comment": "The bridge's test of whether the body fits where a goal was set, deployed here as well so that a goal the executive calls reachable is one the bridge will accept. Same arrangement as frontier.py above.",
+          "patterns": [
+            "ros_nav/goal_fit.py"
+          ],
+          "strip": "ros_nav"
+        },
+        {
           "comment": "The daemon's permission rules, deployed here as well as into the daemon so that what the executive expects and what the rover enforces cannot come apart. Same arrangement as frontier.py above: one file in the repository, editing it marks both components changed.",
           "patterns": [
             "rover_daemon/permission.py"
