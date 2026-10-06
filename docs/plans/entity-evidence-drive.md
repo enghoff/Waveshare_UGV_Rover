@@ -57,6 +57,12 @@ tape-measured docking precision from map estimates.
 
 ## Morning run card
 
+The [October 6 live precheck](../progress/2026-10-06-morning-route-precheck.md)
+failed B-to-A: 3.260 m planned for 0.831 m direct. This card is therefore blocked
+for execution as written. Prepare and check return heading changes explicitly,
+including any stationary turn and its clearance/time allowance, before another
+handover. Do not repeat the rejected return request or silently waive the limit.
+
 Preparation must finish with the rover off. The prepared local caller is
 `.cache/visibility_morning_call.py`, targeting the unused
 `captures/visibility-morning-prepared-1` directory. Use matching world session
@@ -105,8 +111,8 @@ python3 /tmp/visibility-plan.py --start -18.239 -15.030 131 --goal -19.050 -14.8
 
 Replace the example start heading with the planned arrival heading at A. Omit
 `--start` for a check from the actual current pose. Save every JSON path/error.
-The helper is prepared and syntax-checked offline; ROS availability and live
-paths must be verified at handover. Planning requests have bounded waits, and
+The helper's live planning action was verified on October 6; current ROS availability
+and revised paths must still be verified at handover. Planning requests have bounded waits, and
 unavailable or timed-out planning means no movement.
 
 Before first movement, complete battery/status/camera, fresh read-only `measure`
