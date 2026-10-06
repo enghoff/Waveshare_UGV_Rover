@@ -14,8 +14,9 @@ at speed was tried twice and never pressed, so it is still owed.
 
 ## How it was done
 
-A stand-in executive, `m3_trials.py` in the scratchpad, opened its own
-fenced run. It took a permit and dispatched one `drive_to` through the daemon's
+A stand-in executive opened its own fenced run. The script, `m3_trials.py`,
+and every sample it took are kept in `captures/m3-trials-2026-10-06/`, with
+the replays behind the morning's other entries. It took a permit and dispatched one `drive_to` through the daemon's
 `autonomy_act`, exactly as the executive does, and renewed every second. A
 second process watched the rover eight times a second on a connection of its
 own and made the disruption one second after the rover reached speed. The
