@@ -596,14 +596,13 @@ Most of M3 is still physical:
   it was aimed at, which waits on the identity work (R-WS-13). Until then a
   run's geometry goals mostly spend battery, and a session's count of looks is
   not a count of work done.
-- **The console's stop at speed.** Criterion 9 is met on the rover, and so is
-  R-AUT-11 ([2026-10-06](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md)),
-  and the safe area's margin is now set from measured stops (0.6 m, criterion
-  10). The console's button is still unmeasured at speed: it was exercised on a
-  slow turn on 2026-10-02 and asked for twice on 2026-10-06 without a press. It
-  sends the same `stop_driving` that stopped the rover in 0.11 m. It wants a
-  trial where the owner is told the moment to press, from beside the console.
-  No drive has yet been refused on the new margin.
+- **Criteria 9 and 10 are met on the rover** (2026-10-06:
+  [the trials](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md) and
+  [the console's stop](../progress/2026-10-06-the-console-stop-at-speed.md), at
+  rest within 0.17 m at 0.41 m/s), and the safe area's margin is set from them
+  (0.6 m). No drive has yet been refused on the new margin. Before a session,
+  check `gyro_bias_dps` reads about 0.4 (a reboot left it at -2,063 and the
+  rover unable to finish a turn), and reload the console after any restart.
 - **The hardware limits P0 found.** The depth camera drops off USB, which cost five
   checks in M0a's runs, and a charge gives about 20 to 25 minutes of this driving.
   Both bound how long a session can usefully run.
