@@ -1,0 +1,11 @@
+{
+  "map_id": "7da19bef3888",
+  "points": [
+    {"xy": [-19.05, -14.85], "view_heading_deg": 82.67},
+    {"xy": [-20.0, -14.2], "view_heading_deg": 67.12}
+  ],
+  "target_xy": [-18.513, -10.676],
+  "required_measured_parallax_deg": 12,
+  "required_baseline_m": 0.4,
+  "limit": "Saved-grid preparation only. Live preflight must recheck HOME and both directions. Pure/occluded target coverage is judged from retained images before candidate scoring."
+}

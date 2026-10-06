@@ -1,5 +1,26 @@
 # Reviewing entity association
 
+The prepared serial trial is `run_prepared_trial.sh` with a fresh `--session`.
+Stage that launcher, `prepare_visibility_trial.py`, `record_navigation_trial.py`,
+`run_visibility_trial.py`, `serial_visibility_trial.py`, `visibility_trial_card.json`,
+`check_recorded_turn.py`, `capture_route_costmaps.py` and `plan_visibility_route.py`
+together in a new diagnostic directory on Orin, outside the deployment tree.
+The default performs stationary preflight only. After an untethered owner handover,
+`--execute --motion-authorized` enables the same checked route and serial return.
+Outputs go under `~/.ugv/diagnostics/<session>`; world calls remain under
+`~/.ugv/world/recordings/<session>`. Existing recording markers are refused.
+
+The recorder checkpoints atomically every five seconds and acknowledges explicit
+close. An error/forced exit leaves an open checkpoint, never final-STOP proof.
+The trial reserves 15 seconds for return preparation, starts return directly after
+collection, and requests STOP if no return motor command starts by 60 seconds.
+Each motion retains its 16-second STOP watchdog. A failed/partial move or failed
+fresh check stops for recovery; its requested goal is never treated as reached.
+STOP and zero motor output are verified before closing support recording. Default
+preflight issues no motion or STOP and can be verified while charging. The local
+recording/timing tests use saved real episodes and calls; they do not prove new
+routes or runtime hardware behavior.
+
 The [October 6 side-view recording](../../docs/progress/2026-10-06-side-painting-recording.md)
 reproduces clean painting depth beyond the map's foreground visibility cutoff.
 The fixed matching-only extension still splits the clean parts between old

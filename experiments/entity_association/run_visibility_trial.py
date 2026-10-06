@@ -1,0 +1,265 @@
+"""Run on Orin after stationary setup. Default is a movement-free preflight.
+
+An explicit --execute --motion-authorized is required after owner handover.
+Support/world recorders must already be active and verified. All evidence lands
+outside the deploy tree. This experiment never modifies navigation or perception.
+"""
+import argparse
+import base64
+import json
+import math
+from pathlib import Path
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from serial_visibility_trial import ReturnNow, bearing, run
+from check_recorded_turn import check as turn_check
+import goal_fit
+
+
+def rpc(port, request, timeout=8):
+    with socket.create_connection(('127.0.0.1', port), timeout=3) as sock:
+        sock.settimeout(timeout)
+        sock.sendall((json.dumps(request)+'\n').encode())
+        answer = json.loads(sock.makefile().readline())
+    if not answer.get('ok'):
+        raise RuntimeError(str(answer))
+    return answer
+
+
+def path_check(plan, snapshot, start, goal):
+    direct = math.dist(start, goal)
+    if not plan.get('ok') or not plan.get('path') or plan['length_m'] > direct+.5:
+        raise RuntimeError('Missing or looping path')
+    g = snapshot['grids']['global']
+    if g['frame'] != 'map' or not 0 <= g['age_s'] <= 2:
+        raise RuntimeError('Wrong or stale global grid')
+    if g['origin_orientation'] != [0.0, 0.0, 0.0, 1.0]:
+        raise RuntimeError('Rotated grid unsupported')
+    data = base64.b64decode(g['data'], validate=True)
+    if len(data) != g['width']*g['height']:
+        raise RuntimeError('Incomplete grid')
+    grid = goal_fit.CostGrid(g['width'], g['height'], g['resolution'], *g['origin'], list(data))
+    footprint = goal_fit.polygon_from('', .20/math.cos(math.pi/32), sides=32)
+    points = [p[:2] for p in plan['path']]
+    if math.dist(points[0], start) > .25 or math.dist(points[-1], goal) > .1:
+        raise RuntimeError('Path endpoints do not describe this leg')
+    for a,b in zip(points, points[1:]):
+        count = max(1, math.ceil(math.dist(a,b)/(g['resolution']/2)))
+        for i in range(count+1):
+            x,y = (a[j]+(b[j]-a[j])*i/count for j in range(2))
+            if grid.cost(*grid.cell_of(x,y)) >= 253 or any(
+                grid.cost(c,r) >= 254 for c,r in goal_fit.covered(grid, footprint, x,y,0)):
+                raise RuntimeError('Path crosses occupied or unknown floor')
+
+
+class Live:
+    def __init__(self, directory, card, support, session):
+        self.directory, self.card, self.support, self.session = directory, card, support, session
+        self.aborted = threading.Event()
+        self.deadline = None
+        self.return_started = False
+        self.return_motion = False
+        self.guard = None
+        self.stop_seq = None
+
+    def log(self, kind, **values):
+        with (self.directory/'events.jsonl').open('a') as handle:
+            handle.write(json.dumps({'at': time.time(), 'kind': kind, **values})+'\n')
+
+    def call(self, name, arguments=None, timeout=8):
+        started = time.time()
+        result = rpc(8769, {'call': name, 'arguments': arguments or {}}, timeout)
+        self.log('rpc', call=name, arguments=arguments or {}, started_at=started, result=result)
+        return result
+
+    def reserve(self, seconds, returning=False):
+        if self.aborted.is_set():
+            raise RuntimeError('Watchdog stopped the trial')
+        if not returning and self.deadline and time.monotonic()+seconds+15 > self.deadline:
+            raise ReturnNow()
+
+    def helper(self, filename, arguments=(), returning=False):
+        self.reserve(8, returning)
+        script = Path(__file__).with_name(filename)
+        answer = subprocess.run([sys.executable, str(script), *map(str,arguments)],
+                                capture_output=True, text=True, timeout=8, check=True)
+        result = json.loads(answer.stdout)
+        self.log('helper', name=filename, result=result)
+        return result
+
+    def health(self, returning=False):
+        self.reserve(5, returning)
+        status = self.call('nav_status', timeout=3)
+        if self.stop_seq is not None and status.get('stop_seq') != self.stop_seq:
+            raise RuntimeError('An external STOP changed control ownership')
+        if (status.get('map_id') != self.card['map_id'] or status.get('driving') or
+            status.get('exploring') or status.get('autonomy') or status.get('estop') or
+            status.get('pwm') != [0,0] or not all(status.get(k) for k in
+                ('board_ok','lidar_live','nav2_ready','position_trusted')) or
+            status.get('scan_age_s', 99) > 1 or status.get('transform_age_s',99) > 1):
+            raise RuntimeError('Navigation/board/localization is not ready and stationary')
+        measurement = rpc(8773, {'op':'measure'}, timeout=3)
+        self.log('measure', result=measurement)
+        if (not measurement.get('trusted') or measurement.get('score',0) < .90 or
+            abs(measurement.get('moved_m',99)) > .25 or abs(measurement.get('turned_deg',99)) > 10):
+            raise RuntimeError('Fresh stationary localization check failed')
+        charge = self.call('battery', timeout=3)
+        if charge.get('reading_age_s',99) > 5:
+            raise RuntimeError('Battery reading stale')
+        if charge['percent'] < 35:
+            raise RuntimeError('Battery too low for automatic trial motion')
+        return status, charge
+
+    def preflight(self, points):
+        status, charge = self.health(returning=True)
+        self.stop_seq = status['stop_seq']
+        if charge['percent'] < 60:
+            raise RuntimeError('Start charge below 60%')
+        marker = json.loads((Path.home()/'.ugv/world/record-calls.json').read_text())
+        if marker.get('session') != self.session:
+            raise RuntimeError('World recorder belongs to a different session')
+        nav = json.loads((self.support/'navigation.json').read_text())
+        meta = nav.get('trial_recording', {})
+        if meta.get('closed') is not False or not 0 <= time.time()-meta.get('saved_at',0) < 8:
+            raise RuntimeError('Navigation checkpoint is absent, closed or stale')
+        if not all(nav.get(k) for k in ('poses','costmaps','params')):
+            raise RuntimeError('Navigation recorder is not capturing complete inputs')
+        rows = []
+        with socket.create_connection(('127.0.0.1',8772), 3) as sock:
+            sock.settimeout(3)
+            stream = sock.makefile()
+            end = time.monotonic()+3
+            while time.monotonic() < end and len(rows) < 2:
+                row = json.loads(stream.readline())
+                if row.get('telemetry') and row.get('telemetry_age',99) < 1:
+                    rows.append(row)
+        self.log('board_preflight', rows=rows)
+        keys = ('ax','ay','az','gx','gy','gz')
+        if len(rows) != 2 or tuple(rows[0]['telemetry'][k] for k in keys) == tuple(rows[1]['telemetry'][k] for k in keys):
+            raise RuntimeError('No changing fresh IMU feedback')
+        if time.time()-(self.support/'board.jsonl').stat().st_mtime > 3:
+            raise RuntimeError('Passive board recorder is stale')
+        home = [status['pose']['x_m'], status['pose']['y_m']]
+        route = [home] + [p['xy'] for p in points]
+        for a,b in list(zip(route,route[1:])) + list(zip(reversed(route),list(reversed(route))[1:])):
+            heading = bearing(a,b)
+            plan = self.helper('plan_visibility_route.py', ['--start',*a,heading,'--goal',*b,heading], True)
+            grid = self.helper('capture_route_costmaps.py', returning=True)
+            path_check(plan, grid, a,b)
+        self.log('preflight_complete', home=home, status=status)
+        latest, _ = self.health(returning=True)
+        if math.dist(home,[latest['pose']['x_m'],latest['pose']['y_m']]) > .05:
+            raise RuntimeError('Rover moved during preflight; obtain a new handover')
+        return home
+
+    def arm(self, deadline):
+        self.deadline = deadline
+        def expired():
+            if not self.return_motion:
+                self.aborted.set()
+                self.stop()
+        self.guard = threading.Timer(max(0,deadline-time.monotonic()), expired)
+        self.guard.daemon = True
+        self.guard.start()
+
+    def motion(self, call, arguments, returning):
+        self.reserve(16, returning)
+        if returning:
+            if time.monotonic() > self.deadline and not self.return_motion:
+                raise RuntimeError('Return motor deadline missed; stop for recovery')
+            self.return_motion = True
+        def expired():
+            self.aborted.set()
+            self.stop()
+        guard = threading.Timer(16, expired)
+        guard.daemon = True
+        guard.start()
+        try:
+            answer = self.call(call, arguments, timeout=20)
+            if self.aborted.is_set() or answer.get('reason') not in (None,'arrived'):
+                raise RuntimeError('Motion did not complete normally')
+            status = self.call('nav_status', timeout=3)
+            if status.get('driving') or status.get('pwm') != [0,0] or status.get('move',{}).get('reason') != 'arrived':
+                raise RuntimeError('Motion completion/STOP not confirmed')
+        finally:
+            guard.cancel()
+
+    def face(self, heading, returning=False):
+        status, _ = self.health(returning)
+        angle = (heading-status['pose']['heading_deg']+180)%360-180
+        if abs(angle) <= 5:
+            return
+        grid = self.helper('capture_route_costmaps.py', returning=returning)
+        if not turn_check(grid, now=time.time())['ok']:
+            raise RuntimeError('No fresh turn clearance')
+        self.motion('turn_in_place', {'angle_deg':angle}, returning)
+
+    def travel(self, xy, returning=False):
+        status, _ = self.health(returning)
+        start = [status['pose']['x_m'],status['pose']['y_m']]
+        if math.dist(start,xy) <= .15:
+            return
+        heading = bearing(start, xy)
+        self.face(heading, returning)
+        status, _ = self.health(returning)
+        start = [status['pose']['x_m'],status['pose']['y_m']]
+        plan = self.helper('plan_visibility_route.py',['--goal',*xy,heading], returning)
+        grid = self.helper('capture_route_costmaps.py', returning=returning)
+        path_check(plan, grid, start,xy)
+        self.motion('drive_to', {'x_m':xy[0],'y_m':xy[1],'heading_deg':heading,'speed_ms':.34}, returning)
+        status = self.call('nav_status', timeout=3)
+        if math.dist([status['pose']['x_m'],status['pose']['y_m']],xy) > .3:
+            raise RuntimeError('Arrival outside trial tolerance')
+
+    def inspect(self):
+        self.reserve(8)
+        status, _ = self.health()
+        self.reserve(8)
+        self.call('world_inspect', {'fresh':True,'keep_depth':True,'settle':True,'wait':True}, timeout=8)
+
+    def begin_return(self):
+        self.return_started = True
+        self.log('return_started')
+
+    def stop(self):
+        self.call('stop_driving', timeout=3)
+
+    def verify_stop(self):
+        status = self.call('nav_status', timeout=3)
+        return (not status.get('driving') and status.get('speed_ms') == 0 and
+                status.get('turn_dps') == 0 and status.get('pwm') == [0,0])
+
+    def disarm(self):
+        if self.guard:
+            self.guard.cancel()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--card', type=Path, required=True)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--support', type=Path, required=True)
+    parser.add_argument('--session', required=True)
+    parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--motion-authorized', action='store_true')
+    args = parser.parse_args()
+    if args.execute and not args.motion_authorized:
+        parser.error('Owner handover required before movement')
+    args.output.mkdir(parents=True, exist_ok=False)
+    card = json.loads(args.card.read_text())
+    backend = Live(args.output, card, args.support, args.session)
+    if args.execute:
+        result = run(backend, card['points'])
+    else:
+        result = {'home': backend.preflight(card['points']), 'movement': False}
+    (args.output/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+    print(json.dumps(result))
+
+
+if __name__ == '__main__':
+    main()
