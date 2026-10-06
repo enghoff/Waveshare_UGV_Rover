@@ -3,8 +3,8 @@
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
-the rover in supervised stop trials and in M0a's inspection runs. Five of M3's twenty
-supervised sessions have run, about 33 minutes; [the third](../progress/2026-10-06-m3-session-3.md)
+the rover in supervised stop trials and in M0a's inspection runs. Six of M3's twenty
+supervised sessions have run, about 43 minutes; [the third](../progress/2026-10-06-m3-session-3.md)
 showed R-AUT-13's ending, and on 2026-10-06 a repeated request, a hung executive
 and a lost connection were [tried on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md).
 M3's criteria 6, 7, 9 and 10 are met; what remains is the session count and
@@ -576,12 +576,14 @@ refused by name.
 Most of M3 is still physical:
 
 - **The twenty supervised sessions**, totalling at least two hours of autonomy
-  time in a pre-cleared area, with the owner present. Five have happened
+  time in a pre-cleared area, with the owner present. Six have happened
   ([1](../progress/2026-10-05-m3-session-1.md), 8.7 minutes;
   [2](../progress/2026-10-05-m3-session-2.md), 11 minutes, stopped at 5% battery;
   [3](../progress/2026-10-06-m3-session-3.md), 3.6 minutes, ended by going home;
   [4 and 5](../progress/2026-10-06-m3-sessions-4-and-5.md), 8.3 and 1.5 minutes,
-  both stopped on the battery, 44 drives and none failed);
+  both stopped on the battery, 44 drives and none failed;
+  [6](../progress/2026-10-06-m3-session-6.md), 10.4 minutes, its way home refused
+  by the new margin);
   M0a's runs were its own protocol and do not count towards them. Nothing below
   criterion 3 can be answered without them. Open each with no action limit and
   a safe area fenced to the cleared room, drawn 0.6 m beyond where the run
