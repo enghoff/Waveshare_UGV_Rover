@@ -84,6 +84,7 @@ class Trial(unittest.TestCase):
         backend.deadline = 60
         backend.call = lambda name,*args,**kwargs: ({'move':{'reason':'arrived'},'pwm':[0,0]}
                                                    if name=='nav_status' else {'ok':True})
+        backend.wait_for_still = lambda: {'move':{'reason':'arrived'}}
         with patch('time.monotonic',return_value=20), patch('threading.Timer') as timer:
             backend.motion('turn_in_place',{'angle_deg':60},False)
             self.assertEqual(timer.call_args.args[0],8)
@@ -135,6 +136,7 @@ class Trial(unittest.TestCase):
         backend.log = lambda *a,**k: None
         charge = {'percent':34,'reading_age_s':0}
         backend.call = lambda name,**kw: first_status if name=='nav_status' else charge
+        backend.wait_for_still = lambda: first_status
         with patch('experiments.entity_association.run_visibility_trial.rpc',
                    return_value={'trusted':True,'score':.99,'moved_m':0,'turned_deg':0}):
             with self.assertRaises(ReturnNow): backend.health()

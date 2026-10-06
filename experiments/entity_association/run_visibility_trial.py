@@ -94,7 +94,7 @@ class Live:
 
     def health(self, returning=False):
         self.reserve(5, returning)
-        status = self.call('nav_status', timeout=3)
+        status = self.wait_for_still()
         if self.stop_seq is not None and status.get('stop_seq') != self.stop_seq:
             raise RuntimeError('An external STOP changed control ownership')
         if (status.get('map_id') != self.card['map_id'] or status.get('driving') or
@@ -116,6 +116,33 @@ class Live:
         if charge['percent'] <= 35 and not returning:
             raise ReturnNow()
         return status, charge
+
+    def wait_for_still(self, timeout=3):
+        """Command completion can precede physical rest; require repeated feedback.
+
+        Exact zero uses the bridge's rounded measured odometry, not its command.
+        The 0.4 s window and 3 s bound are trial policy, not stopping calibration.
+        No movement or pose correction is issued here.
+        """
+        deadline = time.monotonic() + timeout
+        quiet_since = None
+        while time.monotonic() < deadline:
+            status = self.call('nav_status', timeout=min(.5, deadline-time.monotonic()))
+            now = time.monotonic()
+            quiet = (status.get('driving') is False and status.get('board_ok') is True
+                     and status.get('speed_ms') == 0 and status.get('turn_dps') == 0
+                     and status.get('pwm') == [0,0]
+                     and isinstance(status.get('transform_age_s'), (int,float))
+                     and 0 <= status['transform_age_s'] <= .2)
+            if quiet:
+                if quiet_since is None:
+                    quiet_since = now
+                if now < deadline and now-quiet_since >= .4:
+                    return status
+            else:
+                quiet_since = None
+            time.sleep(min(.1, max(0, deadline-time.monotonic())))
+        raise RuntimeError('Measured motion did not remain stopped within 3 seconds')
 
     def preflight(self, points):
         status, charge = self.health(returning=True)
@@ -186,8 +213,8 @@ class Live:
             answer = self.call(call, arguments, timeout=limit+4)
             if self.aborted.is_set() or answer.get('reason') not in (None,'arrived'):
                 raise RuntimeError('Motion did not complete normally')
-            status = self.call('nav_status', timeout=3)
-            if status.get('driving') or status.get('pwm') != [0,0] or status.get('move',{}).get('reason') != 'arrived':
+            status = self.wait_for_still()
+            if self.aborted.is_set() or status.get('move',{}).get('reason') != 'arrived':
                 raise RuntimeError('Motion completion/STOP not confirmed')
         finally:
             guard.cancel()
@@ -233,9 +260,8 @@ class Live:
         self.call('stop_driving', timeout=3)
 
     def verify_stop(self):
-        status = self.call('nav_status', timeout=3)
-        return (not status.get('driving') and status.get('speed_ms') == 0 and
-                status.get('turn_dps') == 0 and status.get('pwm') == [0,0])
+        self.wait_for_still()
+        return True
 
     def disarm(self):
         if self.guard:
