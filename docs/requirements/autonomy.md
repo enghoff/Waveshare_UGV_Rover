@@ -256,8 +256,12 @@ it was. See [the replay](../progress/2026-10-01-hypothesis-inspection-replay.md)
 <a id="r-aut-13"></a>
 ### R-AUT-13 — A run with nothing left worth doing goes further, then back to where it started, and ends
 
-- **State:** open
-- **Blocked by:** a run on the rover that ends this way; see [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
+- **State:** settled
+- **Evidence:** [M3 session 3 on 2026-10-06](../progress/2026-10-06-m3-session-3.md):
+  a fenced run found nothing left worth doing after 3.6 minutes, drove back to
+  16 cm from where it was opened and ended without latching; six goals taken
+  only because nothing nearer was worth doing, in sessions 1 and 2 (episodes 733
+  to 776); `python autonomy/selftest.py`
 
 A run never stands still waiting for something to become worth doing. When
 nothing nearby is worth its cost, it takes the goal whose only fault is the trip;
@@ -267,7 +271,7 @@ ends the run without latching. A rover that cannot act at all waits two minutes,
 then does the same. A run that stood about on a draining battery, or ended
 somewhere nobody chose while it could still get back, would violate this.
 
-**Built and tested on 2026-10-03, not yet shown on the rover.** The daemon keeps
-where each run started; the executive goes back and hands the run in. See
+**Shown on the rover on 2026-10-06.** The daemon keeps where each run started;
+the executive goes back and hands the run in. See
 [the decision](../decisions/a-run-with-nothing-to-do-goes-home.md) and
 [autonomy/README.md](../../autonomy/README.md).

@@ -3,8 +3,9 @@
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
-the rover in supervised stop trials and in M0a's inspection runs. M3's twenty
-supervised sessions have begun: [the first](../progress/2026-10-05-m3-session-1.md) ran on 2026-10-05. Later phases remain proposed. This is the
+the rover in supervised stop trials and in M0a's inspection runs. Three of M3's twenty
+supervised sessions have run, about 23 minutes; [the third](../progress/2026-10-06-m3-session-3.md)
+showed R-AUT-13's ending on 2026-10-06. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -572,16 +573,20 @@ refused by name.
 Most of M3 is still physical:
 
 - **The twenty supervised sessions**, totalling at least two hours of autonomy
-  time in a pre-cleared area, with the owner present. Two have happened, both on
-  2026-10-05 ([1](../progress/2026-10-05-m3-session-1.md), 8.7 minutes;
-  [2](../progress/2026-10-05-m3-session-2.md), 11 minutes, stopped at 5% battery);
+  time in a pre-cleared area, with the owner present. Three have happened
+  ([1](../progress/2026-10-05-m3-session-1.md), 8.7 minutes;
+  [2](../progress/2026-10-05-m3-session-2.md), 11 minutes, stopped at 5% battery;
+  [3](../progress/2026-10-06-m3-session-3.md), 3.6 minutes, ended by going home);
   M0a's runs were its own protocol and do not count towards them. Nothing below
-  criterion 3 can be answered without them. Open each with no action limit.
-- **R-AUT-13's ending on the rover.** The back-off from a wall now works on the
-  hardware ([session 2](../progress/2026-10-05-m3-session-2.md)); no run has yet
-  run out of things to look at before its limit or its battery. Start sessions on
-  a full charge: session 2 went from 70% to 5% in 11 minutes, and runs carry no
+  criterion 3 can be answered without them. Open each with no action limit and
+  a safe area fenced to the cleared room. A fenced run ends by going home
+  ([R-AUT-13](../requirements/autonomy.md#r-aut-13), settled by session 3); an
+  unfenced one has the whole flat and ends on the battery, since runs carry no
   battery floor.
+- **Looks that improve nothing.** None of session 3's 19 looks improved a
+  placement, and nine stored nothing because the rover's own looking had just
+  taken the same picture. Whether a geometry goal's promised gain is real wants
+  checking before sessions count looks as work done.
 - **The stop and takeover trials that did not finish.** The console's stop button
   was only exercised on a slow turn, and its repeat at speed was cut short by the
   battery; it sends the same request that was measured at speed. A hung executive
