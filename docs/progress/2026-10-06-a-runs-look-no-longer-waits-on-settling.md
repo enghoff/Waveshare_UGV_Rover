@@ -43,5 +43,8 @@ only stops a run tripping over it.
   timeout is restored. `rover_daemon/test_inspection_limits.py`: a run's
   recording-only look waits 9 s, and a settling one 5 s. autonomy 789,
   rover_daemon 1121, drive_web 608 and ros_nav 574 passed.
-- On the rover: see the deployment note below. **Not yet seen in a run.**
-  The next session's looks are where it shows.
+- On the rover: deployed at 75abb76 (autonomy, rover_daemon), with both
+  suites passing there. The running daemon loads the 9 s wait and the executive
+  the 13 s call. A recording-only look asked of the daemon with that wait
+  answered in 0.73 s. The pending pool stood at 2,011. **Not yet seen in a
+  run.** The next session's looks are where it shows.
