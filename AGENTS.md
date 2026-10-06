@@ -18,6 +18,23 @@ settings — is a supporting clause at most, and usually is not needed at all. S
 plainly when something is unproven, failed or was skipped. Two sentences beat two
 paragraphs. Finish with the next step if there is one.
 
+## Keep working until blocked or ready to drive
+
+**Proceed proactively with authorized work until it is complete, genuinely blocked,
+or the rover is needed immediately.** A progress report, completed subtask or request
+for status is not a reason to end the work or ask whether to continue. Make routine
+decisions using your judgment, and finish independent work while an answer is pending.
+If blocked, say exactly what prevents progress and what is needed to unblock it.
+
+**Request the rover only when the next action is the run itself.** Its battery drains
+even while idle. Finish all planning, recording/replay analysis, implementation,
+offline checks, staging and movement-free verification that can be done beforehand.
+Have the executable run, recording, success/failure criteria, time limits, STOP and
+return-to-charging plan ready. Only checks that require the actual untethered starting
+state should remain for handover. Do not ask the owner to disconnect the charger and
+then leave the rover waiting while you finish preparations. This rule does not grant
+motion authority: obtain the required handover before driving.
+
 ## Reproduce faults before fixing them
 
 **A fix for a fault nobody reproduced is a guess.** Replay the reproduction first,
