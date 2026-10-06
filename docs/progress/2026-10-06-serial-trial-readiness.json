@@ -1,0 +1,328 @@
+{
+  "requirements": [
+    "R-WS-13",
+    "R-WS-17",
+    "R-WS-18"
+  ],
+  "independent_acceptance": false,
+  "motion_executed": false,
+  "production_change": false,
+  "local_tests_passed": 15,
+  "source_commit": "6c363d9",
+  "source_sha256": {
+    "run_prepared_trial.sh": "03a6db5b1de7a696fe6d6d3ed39d210b82fc323cddec0241cd2de41ca4e4c1a7",
+    "prepare_visibility_trial.py": "2728ff4206ae1b25a571f135d27c19c99e14c87d246c4d0d93f9d6c72cbfd4c7",
+    "record_navigation_trial.py": "46ae2b61f8182552dac21122ba7b63c01b6b845d6a1da8dee4726d7d2b84cdb7",
+    "run_visibility_trial.py": "06a41344fe83c8b3be349255fc2534c63657f2e6a94efd90939bc3bf9bfad9a4",
+    "serial_visibility_trial.py": "0485ecf91e6ba062e567bac97616293560a86ab019769fb07441c31d9a7ff2dc",
+    "visibility_trial_card.json": "a91e6e9b3c55607c4fc3a46319b6aaa9529d9abf422b00e2b9f0cc36c4546a82",
+    "check_recorded_turn.py": "ff8a50119acd2728200a65c2ad7ba3d6300f2e477d98e119737c2262407dd0f5",
+    "capture_route_costmaps.py": "f0b1cc4169d1d8e0525689c1f6c32d69b19397dc48589131deb98f3a5fe63d93",
+    "plan_visibility_route.py": "4749903a8d05bbf4591d6582c57ebffb301283ce191ac0fe953f59251d8ee8e1"
+  },
+  "checks": {
+    "1c3b20c": {
+      "result": {
+        "motion_requested": false,
+        "home": [
+          -17.641,
+          -15.616
+        ],
+        "movement": false,
+        "preflight_pass": true,
+        "world_close": {
+          "ok": true,
+          "status": "unchanged",
+          "unchanged": true,
+          "inference_id": 14256,
+          "changed_share": 0.0078,
+          "duration_s": 0.33,
+          "detail": "the same picture as the last look -- 0.8% of it differed, 6 looks running",
+          "returned": 0,
+          "stored": 0,
+          "placed": 0,
+          "matched": 0,
+          "created": 0,
+          "ambiguous": 0,
+          "rejected": 0,
+          "settled": false,
+          "entities": [],
+          "decisions": [],
+          "took_s": 0.71
+        },
+        "recorder_exit": 0,
+        "navigation_closed": true,
+        "navigation_counts": {
+          "poses": 150,
+          "costmaps": 29,
+          "plans": 4,
+          "commands": 0
+        },
+        "board_error": [],
+        "world_recording_expected": "/home/jetson/.ugv/world/recordings/visibility-readiness-1c3b20c"
+      },
+      "sha256": {
+        "result.json": "f658b6476d3d0cbb4a08b5c640eabd51bc936649fa11aabbfec3f250059f26fb",
+        "support/navigation.log": "b52c7ade06eda1a41af872ac4a364e21f6aefe4da15753f0b41281e12adc0939",
+        "support/board.jsonl": "5178fac062723184c4b9b681eedb27ae792f2caea9c1456bf95057825b0b4cef",
+        "support/stop": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "support/navigation.json": "f5e28a9e1eb64dabe577d9366c087f9d3a01b1728fbc415d46ac267e0c2ee7b3",
+        "run/events.jsonl": "b1c479217d07d7fee2cb9d095d9ff8dfcb3e5fee4e5db8f694d76950ab11bbf5"
+      },
+      "navigation_closure": {
+        "closed": true,
+        "reason": "requested",
+        "saved_at": 1791261125.5234528
+      },
+      "path_lengths_m": [
+        1.6037585503109846,
+        1.1514271933390507,
+        1.1514271933390507,
+        1.6037585503109846
+      ],
+      "charge_percent": [
+        85,
+        85
+      ],
+      "motion_calls": []
+    },
+    "1b6f742": {
+      "result": {
+        "motion_requested": false,
+        "world_warmup": {
+          "ok": true,
+          "status": "ok",
+          "inference_id": 14257,
+          "frame_id": "20261006-100522-bc849c",
+          "scene": "",
+          "duration_s": 0.73,
+          "returned": 7,
+          "stored": 7,
+          "placed": 7,
+          "matched": 0,
+          "created": 0,
+          "ambiguous": 0,
+          "still_waiting": 0,
+          "settled": false,
+          "moved_m": 0.0,
+          "turned_deg": 0.0,
+          "pose": {
+            "x_m": -17.641,
+            "y_m": -15.616,
+            "heading_deg": -42.3,
+            "checked": {
+              "off_deg": 0.0,
+              "off_m": 0.028,
+              "score": 0.989
+            }
+          },
+          "rejected": 0,
+          "entities": [],
+          "detail": "7 of 8 regions kept; 5 of 7 ranged by the depth camera, 2 outside its view; identity not settled yet",
+          "decisions": [],
+          "map_session": 67,
+          "model_id": "tensorrt",
+          "found": 8,
+          "timings": {
+            "regions_ms": 23,
+            "dino_ms": 50,
+            "dino_alone_ms": 49,
+            "siglip_ms": 32
+          },
+          "look_s": 0.24,
+          "took_s": 4.41
+        },
+        "home": [
+          -17.641,
+          -15.616
+        ],
+        "movement": false,
+        "preflight_pass": true,
+        "world_close": {
+          "ok": true,
+          "status": "unchanged",
+          "unchanged": true,
+          "inference_id": 14258,
+          "changed_share": 0.0,
+          "duration_s": 0.33,
+          "detail": "the same picture as the last look -- 0.0% of it differed",
+          "returned": 0,
+          "stored": 0,
+          "placed": 0,
+          "matched": 0,
+          "created": 0,
+          "ambiguous": 0,
+          "rejected": 0,
+          "settled": false,
+          "entities": [],
+          "decisions": [],
+          "took_s": 0.71
+        },
+        "recorder_exit": 0,
+        "navigation_closed": true,
+        "navigation_counts": {
+          "poses": 194,
+          "costmaps": 37,
+          "plans": 4,
+          "commands": 0
+        },
+        "board_error": [],
+        "world_recording_expected": "/home/jetson/.ugv/world/recordings/visibility-readiness-1b6f742",
+        "world_recording_complete": true
+      },
+      "sha256": {
+        "result.json": "2f62ebf3e1a01eb3d0296ce81d7e5c65ceebc26bebca0cf6d708eda837c094cd",
+        "support/navigation.log": "5beeba601293315d510b3f48ec87399be1d71826ee579fddc2baf66684a879da",
+        "support/board.jsonl": "de3ed6ec6d0d1c23c89fef40ba5e4b7def7724a72de1b9af8b15880b9418fefc",
+        "support/navigation.json": "fee0f88d4dd2ea244cac1143e07d2991c300f2efd3a3313c1eb0b8d21c70e549",
+        "run/events.jsonl": "776d8504adb0878bacd68263b5e5a0be0f2965d15a0614c1484bd67041e3c1e9"
+      },
+      "navigation_closure": {
+        "closed": true,
+        "reason": "requested",
+        "saved_at": 1791261333.342686
+      },
+      "path_lengths_m": [
+        1.6037585503109846,
+        1.1514271933390507,
+        1.1514271933390507,
+        1.6037585503109846
+      ],
+      "charge_percent": [
+        85,
+        85
+      ],
+      "motion_calls": []
+    },
+    "6c363d9": {
+      "result": {
+        "motion_requested": false,
+        "world_warmup": {
+          "ok": true,
+          "status": "ok",
+          "inference_id": 14259,
+          "frame_id": "20261006-100916-6bacc9",
+          "scene": "",
+          "duration_s": 0.67,
+          "returned": 5,
+          "stored": 5,
+          "placed": 5,
+          "matched": 0,
+          "created": 0,
+          "ambiguous": 0,
+          "still_waiting": 0,
+          "settled": false,
+          "moved_m": 0.0,
+          "turned_deg": 0.0,
+          "pose": {
+            "x_m": -17.641,
+            "y_m": -15.616,
+            "heading_deg": -42.3,
+            "checked": {
+              "off_deg": 0.0,
+              "off_m": 0.045,
+              "score": 0.991
+            }
+          },
+          "rejected": 0,
+          "entities": [],
+          "detail": "5 of 6 regions kept; 4 of 5 ranged by the depth camera, 1 outside its view; identity not settled yet",
+          "decisions": [],
+          "map_session": 67,
+          "model_id": "tensorrt",
+          "found": 6,
+          "timings": {
+            "regions_ms": 23,
+            "dino_ms": 38,
+            "dino_alone_ms": 38,
+            "siglip_ms": 26
+          },
+          "look_s": 0.2,
+          "took_s": 3.97
+        },
+        "home": [
+          -17.641,
+          -15.616
+        ],
+        "movement": false,
+        "preflight_pass": true,
+        "world_close": {
+          "ok": true,
+          "status": "unchanged",
+          "unchanged": true,
+          "inference_id": 14260,
+          "changed_share": 0.0,
+          "duration_s": 0.33,
+          "detail": "the same picture as the last look -- 0.0% of it differed",
+          "returned": 0,
+          "stored": 0,
+          "placed": 0,
+          "matched": 0,
+          "created": 0,
+          "ambiguous": 0,
+          "rejected": 0,
+          "settled": false,
+          "entities": [],
+          "decisions": [],
+          "took_s": 0.71
+        },
+        "recorder_exit": 0,
+        "navigation_closed": true,
+        "navigation_counts": {
+          "poses": 192,
+          "costmaps": 37,
+          "plans": 4,
+          "commands": 0
+        },
+        "board_error": [],
+        "world_recording_expected": "/home/jetson/.ugv/world/recordings/visibility-readiness-6c363d9",
+        "world_recording_complete": true
+      },
+      "sha256": {
+        "result.json": "addd37a14f178cc0792ef7c32b4a09f100a26b25d377b0a8d57fefbb218d1dff",
+        "support/navigation.log": "bb1419d10604dff38ac3161e9de5183ad71343d9987b2bff7fe7cddcc5130906",
+        "support/board.jsonl": "45581724572e91218b5bb5e20eeee6bac6d9fed3655f7c4efef96c9834656702",
+        "support/stop": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "support/navigation.json": "916061d23bac732dd7647f624955f74fcaff5a2fd294608b856a8055decb3710",
+        "run/events.jsonl": "b394acdee04f2fe7a6599631adc69b349c43a040af6a3cad8e9ff24578505d0f"
+      },
+      "navigation_closure": {
+        "closed": true,
+        "reason": "requested",
+        "saved_at": 1791261566.7735848
+      },
+      "path_lengths_m": [
+        1.6037585503109846,
+        1.1514271933390507,
+        1.1514271933390507,
+        1.6037585503109846
+      ],
+      "charge_percent": [
+        85,
+        85
+      ],
+      "motion_calls": []
+    }
+  },
+  "timing_model": {
+    "return_start_s": 12.905704021453857,
+    "result": {
+      "returned": true,
+      "reached": [
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "collection_complete": true,
+      "stop_verified": true,
+      "elapsed_s": 17.499038219451904
+    },
+    "limit": "Actual command durations without inter-command gaps; live-check duration omitted, not a hardware timing forecast."
+  },
+  "next": "Fresh untethered handover, then serial trial; no movement permission inferred."
+}
