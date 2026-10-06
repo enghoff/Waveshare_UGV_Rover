@@ -79,6 +79,29 @@ class Trial(unittest.TestCase):
             backend.aborted.set()
             with self.assertRaises(RuntimeError): backend.reserve(8,returning=True)
 
+    def test_motion_watchdogs_and_expired_return(self):
+        backend = Live(Path('.'),{},Path('.'),'unused')
+        backend.deadline = 60
+        backend.call = lambda name,*args,**kwargs: ({'move':{'reason':'arrived'},'pwm':[0,0]}
+                                                   if name=='nav_status' else {'ok':True})
+        with patch('time.monotonic',return_value=20), patch('threading.Timer') as timer:
+            backend.motion('turn_in_place',{'angle_deg':60},False)
+            self.assertEqual(timer.call_args.args[0],8)
+            backend.motion('drive_to',{'x_m':1,'y_m':0},False)
+            self.assertEqual(timer.call_args.args[0],16)
+        with patch('time.monotonic',return_value=61):
+            with self.assertRaises(RuntimeError): backend.motion('turn_in_place',{},True)
+
+    def test_deadline_stop_does_not_allow_more_motion(self):
+        backend = Live(Path('.'),{},Path('.'),'unused')
+        stops = []
+        backend.stop = lambda: stops.append(True)
+        with patch('threading.Timer') as timer:
+            backend.arm(60)
+            timer.call_args.args[1]()
+        self.assertEqual(stops,[True])
+        with self.assertRaises(RuntimeError): backend.reserve(1,returning=True)
+
     def test_saved_grid_new_side_segment(self):
         grid = json.loads((CAPTURE/'costmaps-preflight.json').read_text(encoding='utf-8-sig'))
         card = json.loads((ROOT/'experiments/entity_association/visibility_trial_card.json').read_text())

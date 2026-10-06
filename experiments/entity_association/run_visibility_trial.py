@@ -168,7 +168,8 @@ class Live:
         self.guard.start()
 
     def motion(self, call, arguments, returning):
-        self.reserve(16, returning)
+        limit = 8 if call == 'turn_in_place' else 16
+        self.reserve(limit, returning)
         if returning:
             if time.monotonic() > self.deadline and not self.return_motion:
                 raise RuntimeError('Return motor deadline missed; stop for recovery')
@@ -176,11 +177,11 @@ class Live:
         def expired():
             self.aborted.set()
             self.stop()
-        guard = threading.Timer(16, expired)
+        guard = threading.Timer(limit, expired)
         guard.daemon = True
         guard.start()
         try:
-            answer = self.call(call, arguments, timeout=20)
+            answer = self.call(call, arguments, timeout=limit+4)
             if self.aborted.is_set() or answer.get('reason') not in (None,'arrived'):
                 raise RuntimeError('Motion did not complete normally')
             status = self.call('nav_status', timeout=3)

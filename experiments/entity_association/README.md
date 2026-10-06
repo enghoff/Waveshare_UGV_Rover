@@ -14,12 +14,16 @@ The recorder checkpoints atomically every five seconds and acknowledges explicit
 close. An error/forced exit leaves an open checkpoint, never final-STOP proof.
 The trial reserves 15 seconds for return preparation, starts return directly after
 collection, and requests STOP if no return motor command starts by 60 seconds.
-Each motion retains its 16-second STOP watchdog. A failed/partial move or failed
+Translations retain a 16-second STOP watchdog; turns use an 8-second watchdog.
+A failed/partial move or failed
 fresh check stops for recovery; its requested goal is never treated as reached.
 STOP and zero motor output are verified before closing support recording. Default
 preflight issues no motion or STOP and can be verified while charging. The local
 recording/timing tests use saved real episodes and calls; they do not prove new
 routes or runtime hardware behavior.
+Preflight also forces a stationary fresh depth observation and verifies the world
+recorder is active. Stationary `--interrupt-recorder` checks SIGINT closure; it
+cannot be combined with `--execute`.
 
 The [October 6 side-view recording](../../docs/progress/2026-10-06-side-painting-recording.md)
 reproduces clean painting depth beyond the map's foreground visibility cutoff.
