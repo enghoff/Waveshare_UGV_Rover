@@ -1,0 +1,956 @@
+{
+  "requirements": [
+    "R-WS-13",
+    "R-WS-17",
+    "R-WS-18"
+  ],
+  "independent_acceptance": false,
+  "production_deployment": false,
+  "recording": {
+    "directory": "captures\\visibility-morning-prepared-3",
+    "remote_files_verified": 27,
+    "sha256": {
+      "support/board.jsonl": "e09ba8bd9db981991d2cdca010160863b05d555aff8a529e56bde736545a4666",
+      "frames/20261006-083600-abda9f.jpg": "dd3be9b1af7bd5806695d6bc02a348bb2e7d7c6d55fa1b6fe3851683d36d51fd",
+      "frames/20261006-083609-5d9e33.jpg": "0f82f6c8acab95e1c6f41cbe825805ebbfc5e9254635edc29a7d224d83d57378",
+      "frames/20261006-083610-44bba0.depth.gz": "f7421d613e2679699b38f83ce6f6783cb8f7dde860625b3abf58ad26f7930885",
+      "frames/20261006-083610-44bba0.jpg": "da4bdacb8e9b8cffdf45cd3e9342d10c3bee598a25b4e17f4f29bddb68b04569",
+      "frames/20261006-083636-89f25c.depth.gz": "7393d5eed753c8c6e5e655b637d4d88531eafb1598a6432e5929c6aaafff2610",
+      "frames/20261006-083636-89f25c.jpg": "01b1e7f4aeba1193a3570a8951ad49fcc43eeb98712a334ecbf3c44a0f0fe28c",
+      "frames/20261006-083641-275dc2.depth.gz": "0315e5bb854e4814a31f36ef7497922751b435fc2bc3022b7a8ec0896536eb7c",
+      "frames/20261006-083641-275dc2.jpg": "7b33e2556a701a4d68cb39a6778e0379a6af6891b988ce4b71ef76073d13ebe9",
+      "frames/20261006-083718-f706e7.jpg": "9d1f61c6a2753d65e666859305732d6604f6feb2ba0b38b0f4d06aa6446550b9",
+      "frames/20261006-083739-300760.depth.gz": "12d94f8e39c855e94110ebe0f1b2006ae6956fd0f22eab0b02f3175b588fb23a",
+      "frames/20261006-083739-300760.jpg": "1864eda38288750e222c3dde0ae8e9036f6ef483580a5a0ed5224c701f319b05",
+      "frames/20261006-083741-f3f031.depth.gz": "e0ac6a2ae79aa8ecc5839c4f0b6dad91d895ea6714506c1aa8058056b2d11eea",
+      "frames/20261006-083741-f3f031.jpg": "c37de6b6c825dc0824f5c592fbd9d1af7ca143133290fc455f9c2c482edcf6ad",
+      "frames/20261006-083826-87cb12.jpg": "62086ca408eb0444d3e41f85916df753296345223045b22be8687229f20d132a",
+      "frames/20261006-083838-094386.depth.gz": "8550bed0c18afe1a49d1b02812b610f1e5dbd1a1eae6fce55594ad73f9b1cf17",
+      "frames/20261006-083838-094386.jpg": "2483ac8235dfc9e185e9f46515a9d7deed044fab526fa0727293455902939342",
+      "frames/20261006-083839-c25f6e.depth.gz": "ac8fce2978e810af8f0cf2bbbba445dada95d51a63688a328db17b3b2f2bee73",
+      "frames/20261006-083839-c25f6e.jpg": "5b4e90cf3bb5fa2feab5bf8772b76c50e1d70eb7700eafcdf3410f841ee253f9",
+      "visibility-morning-prepared-3/after.db": "f4e26d7619654ab6b48d40ad690bced79e33ad8c40ef43fa55cd6acf8f270b97",
+      "visibility-morning-prepared-3/before.db": "3d9ae85b85042a5af5a25868346406b821e83883d796950591e78d9a6cfb0307",
+      "visibility-morning-prepared-3/events.jsonl": "5d6f203663450b745d2767febf1dfbde2d8de41d0da9c0fb0230ba794010ff74",
+      "visibility-morning-prepared-3/manifest.json": "b0d204df3a1f7f5a80ea536fcc4d7b435003bd4e0c7e02221539769c0084c74a",
+      "visibility-morning-prepared-3/maps/35ef3a799fb9dac86dc033332791095d62b06da4cc6be0f36bf042904443f4b2.json": "35ef3a799fb9dac86dc033332791095d62b06da4cc6be0f36bf042904443f4b2",
+      "visibility-morning-prepared-3/maps/900edb2178c314e8619c41d95d4f8b1745104ca498fdb4aeef52a2b6b5c768b2.json": "900edb2178c314e8619c41d95d4f8b1745104ca498fdb4aeef52a2b6b5c768b2",
+      "visibility-morning-prepared-3/maps/b73bd09b3e09df2533fc195502b67c55e2424a0cc810553bf8b5c6f0a9f68748.json": "b73bd09b3e09df2533fc195502b67c55e2424a0cc810553bf8b5c6f0a9f68748",
+      "visibility-morning-prepared-3/maps/fff4d959aec71d65a95cabda8d88cc97a7a7fd350510f84a95bae06e22de7923.json": "fff4d959aec71d65a95cabda8d88cc97a7a7fd350510f84a95bae06e22de7923"
+    },
+    "navigation_episode_present": false,
+    "navigation_loss_reason": "Interrupted timed recorder before its final write; no continuous navigation replay proof."
+  },
+  "control": {
+    "passes": 17,
+    "checkpoints": 57,
+    "reach_queries": 21106,
+    "all_exact": true
+  },
+  "depth": {
+    "available_answers": 66,
+    "ranges": 24,
+    "all_available_exact": true,
+    "all_retained_exact": false,
+    "missing_depth": [
+      {
+        "frame_id": "20261006-083609-5d9e33",
+        "sequence": 1256,
+        "observations": [
+          {
+            "id": 69812,
+            "range_m": null
+          },
+          {
+            "id": 69813,
+            "range_m": null
+          },
+          {
+            "id": 69814,
+            "range_m": null
+          },
+          {
+            "id": 69815,
+            "range_m": null
+          },
+          {
+            "id": 69816,
+            "range_m": null
+          },
+          {
+            "id": 69817,
+            "range_m": null
+          },
+          {
+            "id": 69818,
+            "range_m": null
+          },
+          {
+            "id": 69819,
+            "range_m": null
+          },
+          {
+            "id": 69820,
+            "range_m": null
+          }
+        ],
+        "reason": "Raw depth not retained; sampler answer cannot be checked."
+      }
+    ],
+    "flagged_ids": []
+  },
+  "coverage": {
+    "target_bearing_separation_deg": 10.7,
+    "minimum_deg": 12,
+    "pass": false,
+    "clean_stationary_pair_separation_deg": 0.5
+  },
+  "candidate": {
+    "commit": "a61f1c4",
+    "scope": "matching-only measured visibility",
+    "map_handling": "every candidate query invariant under all recorded pass grids",
+    "score": {
+      "independent_acceptance": false,
+      "same_pairs": 4,
+      "cross_pairs": 11,
+      "arms": {
+        "control": {
+          "same_links": [
+            [
+              69806,
+              69830
+            ]
+          ],
+          "cross_links": [],
+          "subjects": {
+            "painting-behind-chairs": [
+              null,
+              null
+            ],
+            "front-right-grey-dining-chair": [
+              "object:297",
+              "object:297",
+              null
+            ],
+            "front-left-grey-dining-chair": [
+              "object:250"
+            ]
+          }
+        },
+        "ray_candidate": {
+          "same_links": [
+            [
+              69806,
+              69830
+            ]
+          ],
+          "cross_links": [],
+          "subjects": {
+            "painting-behind-chairs": [
+              "object:351",
+              "object:328"
+            ],
+            "front-right-grey-dining-chair": [
+              "object:297",
+              "object:297",
+              null
+            ],
+            "front-left-grey-dining-chair": [
+              "object:250"
+            ]
+          },
+          "lost": [],
+          "gained": [],
+          "visibility_development_pass": false
+        }
+      },
+      "owner_changes": [
+        {
+          "id": 69900,
+          "control": null,
+          "ray_candidate": "object:488"
+        },
+        {
+          "id": 69902,
+          "control": null,
+          "ray_candidate": "object:383"
+        },
+        {
+          "id": 69894,
+          "control": null,
+          "ray_candidate": "object:383"
+        },
+        {
+          "id": 69872,
+          "control": null,
+          "ray_candidate": "object:328"
+        },
+        {
+          "id": 69841,
+          "control": null,
+          "ray_candidate": "object:328"
+        },
+        {
+          "id": 69831,
+          "control": null,
+          "ray_candidate": "object:351"
+        },
+        {
+          "id": 69898,
+          "control": "object:380",
+          "ray_candidate": "object:502"
+        }
+      ]
+    },
+    "changed_owner_review": [
+      {
+        "id": 69900,
+        "control": null,
+        "candidate": "object:488",
+        "judgment": "Wrong destination: selected pixels show armchair side/throw, not the white standing lamp in sampled record 488 references."
+      },
+      {
+        "id": 69902,
+        "control": null,
+        "candidate": "object:383",
+        "judgment": "Painting part consistent with sampled record 383 references."
+      },
+      {
+        "id": 69894,
+        "control": null,
+        "candidate": "object:383",
+        "judgment": "Painting part consistent with sampled record 383 references."
+      },
+      {
+        "id": 69872,
+        "control": null,
+        "candidate": "object:328",
+        "judgment": "Left-edge painting part consistent with sampled record 328 references; full-frame layout reviewed."
+      },
+      {
+        "id": 69841,
+        "control": null,
+        "candidate": "object:328",
+        "judgment": "Cleaner painting part consistent with sampled record 328 references."
+      },
+      {
+        "id": 69831,
+        "control": null,
+        "candidate": "object:351",
+        "judgment": "Same cleaner painting part, but sampled record 351 duplicates the physical painting in 328."
+      },
+      {
+        "id": 69898,
+        "control": "object:380",
+        "candidate": "object:502",
+        "judgment": "Bright window region consistent with sampled references of both old/new destinations 380/502."
+      }
+    ],
+    "historical_references": {
+      "object:328": [
+        68978,
+        68967
+      ],
+      "object:351": [
+        69554,
+        65143
+      ],
+      "object:488": [
+        66743,
+        64733
+      ],
+      "object:383": [
+        64731,
+        63955
+      ],
+      "object:502": [
+        69590,
+        69569
+      ],
+      "object:380": [
+        69031,
+        64728
+      ]
+    },
+    "review_limit": "All changed regions reviewed after scoring; selected archived references do not prove full destination purity. Original labels/scores unchanged.",
+    "decision": "Do not deploy alone: clean painting pair remains split and an armchair-side region gains a lamp attachment."
+  },
+  "execution": {
+    "return_started_s": 78.5,
+    "return_deadline_s": 60,
+    "deadline_pass": false,
+    "stop_at_s": 160.78,
+    "no_overlapping_motion_calls": true,
+    "watchdog_fired": false,
+    "start_pose": [
+      -17.543,
+      -15.702,
+      -174.3
+    ],
+    "final_fresh_pose": [
+      -17.621,
+      -15.596,
+      -42.3
+    ],
+    "return_error_m": 0.1316054710108968,
+    "heading_difference_deg": 132,
+    "start_charge_percent": 85,
+    "final_charge_percent": 75,
+    "final_motor_pwm": [
+      0,
+      0
+    ],
+    "rover_released": true
+  },
+  "evidence_sha256": {
+    "captures\\visibility-morning-prepared-3\\physical-subjects.json": "574ea3dacdd0da0dc8c67e4d53d5d60d063087c3affcc2a31db40c484969f79a",
+    "captures\\visibility-morning-prepared-3\\calls.jsonl": "457e90691c448c680e18270c7f45564e6e76603b23e4cbba86c3533f63b0d9fa",
+    "captures\\visibility-morning-prepared-3\\depth-reproduced.json": "b14900285fa0fdb5aa330f3979240a86ffc08048a82d5412e48b3dc7f5ae2602",
+    "captures\\visibility-morning-prepared-3\\subject-score.json": "fb96631390d612d980504715f0ca8d8a2c23daa9118e7b81887e51d9dd76ea43",
+    "captures\\visibility-morning-prepared-3\\outlined-review.jpg": "18cd24e1f73e316893634c960bc89735cf13dc70ae3548b1359e712faba8559a",
+    "captures\\visibility-morning-prepared-3\\changed-owner-review.jpg": "52089a065893d3a95792ca06c5a69888eedb5be551b78fa9ba9b3ccc3fae58d5",
+    ".cache\\visibility-morning3-control\\result.json": "0bbe3ffc1211077c19b423bf5059e441e778c86afdb0c0c13a3fb4eb509995b9",
+    ".cache\\visibility-morning3-trace\\subject-trace.json": "831c5158c69c067ed02639c8b71b283f72ff889c61a06e1ae75dcb3fbb089a54",
+    ".cache\\visibility-morning3-known-visibility\\result.json": "d79e607ff28c0115addb2331d1de305a2bda8a66385c04c67c06c21b32a29589",
+    ".cache/visibility-morning3-rival-veto-complete/result.json": "cbf737a3d48420d998d15cdff80b37522fa07e15167a7d95d684fbae8f4e3742",
+    ".cache/visibility-morning3-new-visibility-veto/result.json": "8bc6421bb7d698e680a51436e3c1b31f07a3e776b931e9f4c70bfd71c981903b",
+    ".cache/new-visibility-veto-older/result.json": "4b1f9a1de72b5edc9c23eb42d4ead5bdd7095cc9b521da0e6975751b4148e57c",
+    "experiments/entity_association/replay_visibility_rival_veto.py": "f31021491e8f0bc55a6e75acabc1b0c8e286d48eda2cf4e39be449835588b673",
+    "captures/visibility-morning-prepared-3/rival-veto-definition.json": "01e657d5a5a764880d3a21efa44fd9e3b2e337c5efcb82218e16a6671ee860b4",
+    "captures/visibility-morning-prepared-3/new-visibility-veto-definition.json": "28bc4d85aab88dd6a818ffcd23191a86e564bb44bc8ceff13555147097959f39"
+  },
+  "additional_diagnostics": {
+    "all_frame_rival_veto": {
+      "score": {
+        "independent_acceptance": false,
+        "same_pairs": 4,
+        "cross_pairs": 11,
+        "arms": {
+          "control": {
+            "same_links": [
+              [
+                69806,
+                69830
+              ]
+            ],
+            "cross_links": [],
+            "subjects": {
+              "painting-behind-chairs": [
+                null,
+                null
+              ],
+              "front-right-grey-dining-chair": [
+                "object:297",
+                "object:297",
+                null
+              ],
+              "front-left-grey-dining-chair": [
+                "object:250"
+              ]
+            }
+          },
+          "ray_candidate": {
+            "same_links": [
+              [
+                69831,
+                69841
+              ]
+            ],
+            "cross_links": [],
+            "subjects": {
+              "painting-behind-chairs": [
+                "object:328",
+                "object:328"
+              ],
+              "front-right-grey-dining-chair": [
+                "object:504",
+                null,
+                null
+              ],
+              "front-left-grey-dining-chair": [
+                "object:250"
+              ]
+            },
+            "lost": [
+              [
+                69806,
+                69830
+              ]
+            ],
+            "gained": [
+              [
+                69831,
+                69841
+              ]
+            ],
+            "visibility_development_pass": false
+          }
+        },
+        "owner_changes": [
+          {
+            "id": 69902,
+            "control": null,
+            "ray_candidate": "object:383"
+          },
+          {
+            "id": 69894,
+            "control": null,
+            "ray_candidate": "object:383"
+          },
+          {
+            "id": 69839,
+            "control": null,
+            "ray_candidate": "object:324"
+          },
+          {
+            "id": 69841,
+            "control": null,
+            "ray_candidate": "object:328"
+          },
+          {
+            "id": 69829,
+            "control": null,
+            "ray_candidate": "object:324"
+          },
+          {
+            "id": 69831,
+            "control": null,
+            "ray_candidate": "object:328"
+          },
+          {
+            "id": 69822,
+            "control": null,
+            "ray_candidate": "object:324"
+          },
+          {
+            "id": 69540,
+            "control": null,
+            "ray_candidate": "object:326"
+          },
+          {
+            "id": 69376,
+            "control": null,
+            "ray_candidate": "object:322"
+          },
+          {
+            "id": 68969,
+            "control": null,
+            "ray_candidate": "object:322"
+          },
+          {
+            "id": 69846,
+            "control": "object:241",
+            "ray_candidate": "object:531"
+          },
+          {
+            "id": 69836,
+            "control": "object:241",
+            "ray_candidate": "object:531"
+          },
+          {
+            "id": 69003,
+            "control": "object:241",
+            "ray_candidate": null
+          },
+          {
+            "id": 68995,
+            "control": "object:241",
+            "ray_candidate": null
+          },
+          {
+            "id": 69830,
+            "control": "object:297",
+            "ray_candidate": null
+          },
+          {
+            "id": 69806,
+            "control": "object:297",
+            "ray_candidate": "object:504"
+          },
+          {
+            "id": 69805,
+            "control": "object:326",
+            "ray_candidate": null
+          },
+          {
+            "id": 69856,
+            "control": "object:331",
+            "ray_candidate": "object:450"
+          },
+          {
+            "id": 69815,
+            "control": "object:375",
+            "ray_candidate": "object:340"
+          },
+          {
+            "id": 69898,
+            "control": "object:380",
+            "ray_candidate": "object:502"
+          },
+          {
+            "id": 69852,
+            "control": "object:400",
+            "ray_candidate": null
+          },
+          {
+            "id": 69808,
+            "control": "object:410",
+            "ray_candidate": null
+          },
+          {
+            "id": 69843,
+            "control": "object:422",
+            "ray_candidate": "object:249"
+          },
+          {
+            "id": 69833,
+            "control": "object:422",
+            "ray_candidate": "object:249"
+          },
+          {
+            "id": 69901,
+            "control": "object:431",
+            "ray_candidate": "object:315"
+          },
+          {
+            "id": 69890,
+            "control": "object:431",
+            "ray_candidate": "object:315"
+          },
+          {
+            "id": 69882,
+            "control": "object:431",
+            "ray_candidate": null
+          },
+          {
+            "id": 69823,
+            "control": "object:444",
+            "ray_candidate": "object:373"
+          },
+          {
+            "id": 69814,
+            "control": "object:444",
+            "ray_candidate": "object:373"
+          },
+          {
+            "id": 69802,
+            "control": "object:444",
+            "ray_candidate": "object:373"
+          },
+          {
+            "id": 69896,
+            "control": "object:490",
+            "ray_candidate": "object:376"
+          },
+          {
+            "id": 69865,
+            "control": "object:490",
+            "ray_candidate": null
+          },
+          {
+            "id": 67672,
+            "control": "object:490",
+            "ray_candidate": null
+          },
+          {
+            "id": 69875,
+            "control": "object:491",
+            "ray_candidate": null
+          },
+          {
+            "id": 69862,
+            "control": "object:491",
+            "ray_candidate": null
+          },
+          {
+            "id": 69877,
+            "control": "object:509",
+            "ray_candidate": "object:303"
+          },
+          {
+            "id": 69860,
+            "control": "object:509",
+            "ray_candidate": "object:247"
+          },
+          {
+            "id": 69851,
+            "control": "object:509",
+            "ray_candidate": "object:538"
+          },
+          {
+            "id": 69810,
+            "control": "object:515",
+            "ray_candidate": null
+          }
+        ]
+      },
+      "changed_owners": 39,
+      "recorded_vetoes": 25529,
+      "control_exact": true,
+      "map_handling": "every candidate query invariant under all recorded pass grids",
+      "target_owners": {
+        "69900": null,
+        "69831": "object:328",
+        "69841": "object:328"
+      }
+    },
+    "new_visibility_rival_veto": {
+      "score": {
+        "independent_acceptance": false,
+        "same_pairs": 4,
+        "cross_pairs": 11,
+        "arms": {
+          "control": {
+            "same_links": [
+              [
+                69806,
+                69830
+              ]
+            ],
+            "cross_links": [],
+            "subjects": {
+              "painting-behind-chairs": [
+                null,
+                null
+              ],
+              "front-right-grey-dining-chair": [
+                "object:297",
+                "object:297",
+                null
+              ],
+              "front-left-grey-dining-chair": [
+                "object:250"
+              ]
+            }
+          },
+          "ray_candidate": {
+            "same_links": [
+              [
+                69831,
+                69841
+              ],
+              [
+                69806,
+                69830
+              ]
+            ],
+            "cross_links": [],
+            "subjects": {
+              "painting-behind-chairs": [
+                "object:328",
+                "object:328"
+              ],
+              "front-right-grey-dining-chair": [
+                "object:297",
+                "object:297",
+                null
+              ],
+              "front-left-grey-dining-chair": [
+                "object:250"
+              ]
+            },
+            "lost": [],
+            "gained": [
+              [
+                69831,
+                69841
+              ]
+            ],
+            "visibility_development_pass": true
+          }
+        },
+        "owner_changes": [
+          {
+            "id": 69902,
+            "control": null,
+            "ray_candidate": "object:383"
+          },
+          {
+            "id": 69894,
+            "control": null,
+            "ray_candidate": "object:383"
+          },
+          {
+            "id": 69841,
+            "control": null,
+            "ray_candidate": "object:328"
+          },
+          {
+            "id": 69831,
+            "control": null,
+            "ray_candidate": "object:328"
+          },
+          {
+            "id": 69898,
+            "control": "object:380",
+            "ray_candidate": "object:502"
+          }
+        ]
+      },
+      "changed_owners": 5,
+      "recorded_vetoes": 1304,
+      "control_exact": true,
+      "map_handling": "every candidate query invariant under all recorded pass grids",
+      "target_owners": {
+        "69900": null,
+        "69831": "object:328",
+        "69841": "object:328"
+      },
+      "older": {
+        "2026-10-01": {
+          "control_exact": true,
+          "comparison": {
+            "same_pair_retention": 0.9922239502332815,
+            "lost_same_pairs": [
+              [
+                48232,
+                48327
+              ],
+              [
+                48232,
+                48456
+              ],
+              [
+                48327,
+                48456
+              ],
+              [
+                48406,
+                48712
+              ],
+              [
+                48716,
+                48769
+              ]
+            ],
+            "new_same_pairs": [
+              [
+                48168,
+                48316
+              ],
+              [
+                48168,
+                48332
+              ],
+              [
+                48168,
+                48354
+              ],
+              [
+                48168,
+                48365
+              ],
+              [
+                48168,
+                48374
+              ],
+              [
+                48168,
+                48380
+              ],
+              [
+                48168,
+                48391
+              ],
+              [
+                48168,
+                48398
+              ],
+              [
+                48168,
+                48415
+              ],
+              [
+                48168,
+                48438
+              ],
+              [
+                48168,
+                48448
+              ],
+              [
+                48168,
+                48483
+              ],
+              [
+                48168,
+                48492
+              ],
+              [
+                48168,
+                48505
+              ],
+              [
+                48168,
+                48514
+              ],
+              [
+                48168,
+                48687
+              ],
+              [
+                48168,
+                48694
+              ],
+              [
+                48168,
+                48735
+              ],
+              [
+                48168,
+                48743
+              ],
+              [
+                48176,
+                48383
+              ],
+              [
+                48176,
+                48407
+              ],
+              [
+                48207,
+                48211
+              ],
+              [
+                48207,
+                48232
+              ],
+              [
+                48207,
+                48236
+              ],
+              [
+                48207,
+                48246
+              ],
+              [
+                48207,
+                48255
+              ],
+              [
+                48207,
+                48257
+              ],
+              [
+                48207,
+                48263
+              ],
+              [
+                48207,
+                48578
+              ],
+              [
+                48207,
+                48582
+              ],
+              [
+                48207,
+                48589
+              ],
+              [
+                48211,
+                48232
+              ],
+              [
+                48232,
+                48236
+              ],
+              [
+                48232,
+                48246
+              ],
+              [
+                48232,
+                48255
+              ],
+              [
+                48232,
+                48257
+              ],
+              [
+                48232,
+                48263
+              ],
+              [
+                48232,
+                48578
+              ],
+              [
+                48232,
+                48582
+              ],
+              [
+                48232,
+                48589
+              ],
+              [
+                48383,
+                48407
+              ]
+            ],
+            "new_cross_target_pairs": [
+              [
+                48456,
+                48769
+              ]
+            ],
+            "assigned_retention_pass": true,
+            "identity_preservation_pass": false,
+            "median_placement_improvement_m": 0.0,
+            "target_error_delta_m": {
+              "T1": 0.0,
+              "T2": 0.0,
+              "T3": 0.006657099640410891,
+              "T4": 0.0,
+              "T6": 0.0
+            },
+            "lost_target_placements": [],
+            "placement_benefit_pass": false
+          }
+        },
+        "2026-10-02 first": {
+          "control_exact": true,
+          "comparison": {
+            "same_pair_retention": 1.0,
+            "lost_same_pairs": [],
+            "new_same_pairs": [],
+            "new_cross_target_pairs": [],
+            "assigned_retention_pass": true,
+            "identity_preservation_pass": true,
+            "median_placement_improvement_m": 0.0,
+            "target_error_delta_m": {
+              "T1": 0.0,
+              "T2": 0.0,
+              "T6": 0.0
+            },
+            "lost_target_placements": [],
+            "placement_benefit_pass": false
+          }
+        },
+        "2026-10-02 redo": {
+          "control_exact": true,
+          "comparison": {
+            "same_pair_retention": 1.0,
+            "lost_same_pairs": [],
+            "new_same_pairs": [],
+            "new_cross_target_pairs": [],
+            "assigned_retention_pass": true,
+            "identity_preservation_pass": true,
+            "median_placement_improvement_m": 0.0,
+            "target_error_delta_m": {
+              "T1": 0.0,
+              "T2": 0.0,
+              "T3": 0.0,
+              "T4": 0.0,
+              "T6": 0.0
+            },
+            "lost_target_placements": [],
+            "placement_benefit_pass": false
+          }
+        }
+      }
+    }
+  },
+  "decision": "Keep narrow newly-visible rival-veto candidate for independent evaluation; do not deploy. Wider candidates fail; original mixed-crop benchmark failure preserved. Coverage and execution failures remain."
+}

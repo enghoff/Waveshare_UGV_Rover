@@ -1,5 +1,20 @@
 # Reviewing entity association
 
+The [October 6 side-view recording](../../docs/progress/2026-10-06-side-painting-recording.md)
+reproduces clean painting depth beyond the map's foreground visibility cutoff.
+The fixed matching-only extension still splits the clean parts between old
+painting records and adds an armchair-side region to a lamp. It is not deployed.
+`replay_visibility_rival_veto.py` is a further offline diagnostic: apply the
+existing global rival veto, at its existing threshold, to frame assignment costs
+alongside matching-only visibility. Exact control runs with that addition disabled;
+candidate queries retain the saved-pass map-invariance requirement. A local replay
+does not establish hardware acceptance or justify merging old records.
+The wider veto loses a correct chair connection. `--new-visibility-only` restricts
+it to candidates forbidden by the original ray, retaining that connection and
+joining two clean painting parts while avoiding the new lamp mistake.
+`--older-source .cache/depth-resolver-first` checks older controls and candidates;
+99.2% retention still carries the original mixed-crop identity-score failure.
+
 The latest [complete depth resolver study](../../docs/progress/2026-10-05-depth-resolver.md)
 corrects one painting attachment in an exact final-state replay; it also exposes
 genuine connection loss in the older complete-drive sensitivity. These scripts

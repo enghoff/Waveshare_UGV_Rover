@@ -14,6 +14,20 @@ relax the fixed criteria on the strength of corrected analyst labels.
 
 ## Next short recording
 
+Evaluate `replay_visibility_rival_veto.py --new-visibility-only` against independent
+evidence, with the existing thresholds and criteria. Preserve the wider failures
+and old mixed-crop identity-score failure recorded in the
+[October 6 measurement](../progress/2026-10-06-side-painting-recording.md).
+Do not deploy it, merge old records or claim acceptance from that small reviewed
+subset. Keep mixed-region and part/whole failures as separate controls.
+
+Before another recording, replace conversational timing with a verified serial
+executor that starts the checked return within the budget and waits for each
+call's completion. The existing admission guard does not ensure a timely return:
+the latest run began return at 78.5 seconds. Verify recorder completion/flush
+through final STOP; interrupting `nav_record.py` before its timed loop ends loses
+its in-memory episode. These preparations precede requesting the rover.
+
 Use the unchanged production resolver and verified optional call recorder. Obtain
 one distinguishable background painting from two clear positions with at least
 0.4 m baseline and 12 degrees measured bearing parallax, plus an intermediate
@@ -62,17 +76,13 @@ failed B-to-A: 3.260 m planned for 0.831 m direct. The
 [follow-up](../progress/2026-10-06-return-heading-and-owner-audit.md) finds a
 0.833 m live planner path when the hypothetical start faces the return leg.
 Use an explicit checked stationary return turn; do not repeat the rejected
-return request or silently waive the route limit. Actual turn execution remains
-unproven and must respect current local clearance and the motion watchdog.
-The rover was subsequently used outside this session and its starting pose
-changed. Coordinate control and charger state, then obtain a new HOME pose and
-fresh HOME-to-A route; the earlier starting-route proof is no longer current.
-The owner confirmed parking closer to the wall; that current-start query fails
-with `START_OCCUPIED`, and production's suggested short escape crosses the
-local obstacle map. Start the trial from clear floor away from the wall/chair.
-Do not command that escape, force a map fit or repeat a route from the earlier
-HOME as if the rover were still there. This is the outstanding hardware setup
-blocker; the revised B-to-A return check remains useful preparation.
+return request or silently waive the route limit. Actual return turns completed
+in the latest recording; any future turn still needs current local clearance.
+Obtain a new HOME pose and fresh routes at every handover. The owner's console
+drive successfully backed off from the wall and arrived, which supersedes the
+earlier planning-only parking blocker; that check omitted production recovery.
+Neither result makes an old route or costmap current. Coordinate charger/control
+state, repeat live prechecks, and never force a map fit to make a route pass.
 
 Finish local preparation before requesting hardware; live checks require the
 rover at handover. The prepared local caller is
@@ -213,8 +223,14 @@ relabeling after scoring.
 
 Reproduce every actual control checkpoint, ordered map query and retained depth
 answer before any candidate replay. Use the matching-only measured-visibility
-candidate frozen in a61f1c4: extend mapped reach only to valid stored depth during
-existing-record matching, with original discovery/refitting and all other gates.
+candidate derived from a61f1c4: extend mapped reach only to valid stored depth
+during existing-record matching, with original discovery/refitting and all other
+gates. For a frame-assignment candidate forbidden by its original unextended ray,
+also apply the existing global rival veto at its unchanged 0.15 threshold. Do not
+apply that extra veto to originally admissible candidates: the wider rule loses
+a reviewed correct chair connection. Freeze the final source hash and independent
+physical labels before the next candidate score; this refinement was developed
+after the October 6 failures and is not independent evidence itself.
 Reject any candidate query with different answers across the recorded pass grids,
 including failures caught by the production map callback.
 
