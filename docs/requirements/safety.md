@@ -275,3 +275,26 @@ and cannot be lengthened ([R-SAFE-12](#r-safe-12)).
 rather than from what each action said it would cost, so a move nobody is waiting
 for is charged for. The standing limits and the reason for each number are in
 [rover_daemon/permission.py](../../rover_daemon/permission.py).
+
+<a id="r-safe-17"></a>
+### R-SAFE-17 — A rover that cannot measure its own turning does not move by itself
+
+- **State:** proposed
+- **Proposed in:** [2026-10-06, the gyro gate](../progress/2026-10-06-a-rover-that-cannot-feel-itself-turn.md)
+
+The rover's turns end when its gyro says they have turned far enough. Three times
+the gyro has gone wrong and stayed wrong until the rover was switched fully off:
+its bias read +150 deg/s on 2026-10-03, exactly zero on 2026-10-05, and
+-2,063 deg/s on 2026-10-06. Each time navigation still called the position
+trusted, and a turn could not tell when it was done. On 2026-10-06 an
+autonomous leg stood for 27 s wanting a turn it never made.
+
+So an autonomous run is not opened, a drive is not dispatched, and a run that
+is open is ended, while the bias the base reports is exactly zero or beyond
+5 deg/s either way (`permission.rotation_fault`). A look is still allowed,
+because it turns nothing. What would make this false is an autonomous drive
+dispatched while the base reports such a bias.
+
+Proposed rather than settled: no fault has happened since the rule was
+deployed. Replayed over the 21,528 readings the base has logged, it refuses all
+339 taken during the three faults, and one other.

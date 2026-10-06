@@ -53,11 +53,12 @@ class FakeNav:
     """
 
     def __init__(self, *, where=(0.0, 0.0), map_id="map-1", trusted=True,
-                 settled=True) -> None:
+                 settled=True, gyro=0.41) -> None:
         self.where = where
         self.map_id = map_id
         self.trusted = trusted
         self.settled = settled
+        self.gyro = gyro
         self.driving = False
         self.stops = 0
         self.sent: list[dict[str, Any]] = []
@@ -72,7 +73,8 @@ class FakeNav:
                 "stop_seq": 0,
                 "pose": pose, "map_id": self.map_id,
                 "map_settled": self.settled, "map_kept": True,
-                "position_trusted": self.trusted, "match_score": 0.9}
+                "position_trusted": self.trusted, "match_score": 0.9,
+                "gyro_bias_dps": self.gyro}
 
     def stop(self) -> dict[str, Any]:
         self.stops += 1
@@ -362,6 +364,51 @@ def test_a_pose_nobody_trusts_stops_a_drive_and_not_a_look():
     check("...and does not refuse a look", looked["ok"], True)
 
 
+def test_a_rover_that_cannot_feel_itself_turn_does_not_drive():
+    """The base's gyro bias, as it read through the rover's three faults.
+
+    +150 deg/s on 2026-10-03, exactly zero on 2026-10-05 and -2,063 on
+    2026-10-06, each for as long as the rover stayed powered, and each time with
+    navigation calling the position trusted. On 2026-10-06 a leg stood for 27 s
+    wanting a turn it could not tell it had made. Healthy, it reads 0.2-0.8.
+    """
+    faulted = (150.483, 0.0, -2062.868)
+    healthy = (0.395, 0.424, 0.592, -0.9, 4.8, None)
+    check("every fault on record is a fault",
+          [bool(permission_mod.rotation_fault(v)) for v in faulted],
+          [True, True, True])
+    check("...and no healthy reading, nor one not yet measured, is",
+          [bool(permission_mod.rotation_fault(v)) for v in healthy],
+          [False] * len(healthy))
+
+    rover = a_rover(Clock(), nav=FakeNav(gyro=-2062.868))
+    rover.executive_launcher = lambda run_id: {"ok": True}
+    refused = rover.call("autonomy_start", {"via": "console"})
+    check("a run is not opened on a rover that cannot feel itself turn",
+          refused["ok"], False)
+    check("...and says why", "-2062.9 deg/s" in refused["error"], True)
+    check("...leaving nothing open",
+          rover.call("autonomy_status", {})["enabled"], False)
+
+    clock = Clock()
+    nav = FakeNav()
+    rover = a_rover(clock, nav=nav)
+    rover._tool_world_inspect = lambda arguments: {"ok": True, "regions": 3}
+    permit = permitted(rover, enabled(rover))
+    nav.gyro = 0.0
+    drive = act(rover, permit, "drive_to", "a#1", x_m=1.0, y_m=1.0)
+    check("a gyro that stops updating mid-run refuses a drive",
+          drive["refused"], "rotation")
+    check("...and not a look", act(rover, permit, "world_inspect", "a#2")["ok"],
+          True)
+    nav.driving = True
+    clock.tick(permission_mod.TICK_S)
+    why = rover.autonomy_tick()
+    check("...and the watchdog ends the run", "cannot measure its own turning"
+          in why, True)
+    check("...stopping the wheels", nav.stops >= 1, True)
+
+
 def test_a_goal_outside_the_safe_area_is_refused():
     rover = a_rover(Clock())
     permit = permitted(rover, enabled(
@@ -623,6 +670,7 @@ TESTS = (
     test_an_action_is_dispatched_once_and_repeats_are_answered,
     test_a_goal_chosen_on_another_map_is_refused,
     test_a_pose_nobody_trusts_stops_a_drive_and_not_a_look,
+    test_a_rover_that_cannot_feel_itself_turn_does_not_drive,
     test_a_goal_outside_the_safe_area_is_refused,
     test_the_wheels_are_taken_back_when_the_permission_runs_out,
     test_travel_is_spent_by_where_the_rover_actually_gets_to,

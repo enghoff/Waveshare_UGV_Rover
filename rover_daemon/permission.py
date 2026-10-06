@@ -222,6 +222,42 @@ ACTIONS: dict[str, tuple[str, ...]] = {
 #: rover recording evidence at the moment it is most worth having.
 DRIVING_ACTIONS = frozenset({"drive_to"})
 
+#: The largest gyro bias the base may report and still be believed. Every
+#: reading the base logged from 2026-09-08 on, 20,942 of them, lies between 0.2
+#: and 0.8 deg/s. Its three faults lie far outside and lasted for hours: +150
+#: deg/s on 2026-10-03, exactly zero on 2026-10-05 (the sensor had stopped
+#: updating), and -2,063 deg/s on 2026-10-06, after a reboot that did not cut
+#: the driver board's power. Each time navigation still called the position
+#: trusted, and a turn could not tell when it had finished; on 2026-10-06 a leg
+#: stood for 27 s wanting a 66-degree turn it never made.
+GYRO_BIAS_LIMIT_DPS = 5.0
+
+
+def rotation_fault(bias_dps: Any) -> str:
+    """Why the rover cannot measure its own turning, or '' when it can.
+
+    '' as well when the base has not yet reported a bias at all: that is a rover
+    still standing still long enough to measure one, not a fault, and the base
+    drives on the raw gyro meanwhile as it always has.
+    """
+    if bias_dps is None:
+        return ""
+    try:
+        bias = float(bias_dps)
+    except (TypeError, ValueError):
+        return f"the gyro's bias is not a number ({bias_dps!r})"
+    if bias != bias:
+        return "the gyro's bias is not a number"
+    if bias == 0.0:
+        return ("the gyro's bias reads exactly zero, which is what a sensor "
+                "that has stopped updating reports; a full power cycle has "
+                "cleared this before")
+    if abs(bias) > GYRO_BIAS_LIMIT_DPS:
+        return (f"the gyro's bias reads {bias:+.1f} deg/s against about +0.4 "
+                f"when it is healthy, so the rover cannot measure its own "
+                f"turning; a full power cycle has cleared this before")
+    return ""
+
 
 def _inspection_limits(asked: Any) -> dict[str, float] | str:
     """An inspection's declared limits, checked against the ceilings, or why not.
@@ -608,6 +644,9 @@ class Permission:
                 return Verdict(False, "pose",
                                "the rover does not know where it is on the map "
                                "well enough to be sent to a place on it")
+            turning = rotation_fault(facts.get("gyro_bias_dps"))
+            if turning:
+                return Verdict(False, "rotation", turning)
             if facts.get("map_settled") is False:
                 return Verdict(False, "map",
                                "the map has not settled since the last "
@@ -877,6 +916,12 @@ class Permission:
         if run is None or run.ended:
             return ""
         facts = dict(conditions or {})
+        # A rover that has lost its sense of turning cannot finish a turn, and
+        # one in the middle of a drive will stand there trying until something
+        # else gives up.
+        turning = rotation_fault(facts.get("gyro_bias_dps"))
+        if turning:
+            return "the rover cannot measure its own turning: " + turning
         fence = run.budget.get("geofence")
         if facts.get("driving") and fence:
             where = facts.get("where")
