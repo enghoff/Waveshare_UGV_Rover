@@ -1,0 +1,347 @@
+{
+  "requirements": [
+    "R-WS-13",
+    "R-WS-17",
+    "R-WS-18"
+  ],
+  "independent_acceptance": false,
+  "input_sha256": {
+    "captures\\visibility-morning-prepared-1\\return-facing-precheck.txt": "7195ab85828b47aa148eeacb09621d67c5b114e2a1648b27c18a9238fb0fa40a",
+    "captures\\visibility-morning-prepared-1\\current-costmaps.json": "2fb500d4d39d491ce4fe8f0ada0c5ac2dc6cc7e2c49e008f2e7d405202610e4a",
+    "captures\\visibility-morning-prepared-1\\turn-costmaps-with-pose.json": "6027888747e75c810cde2f40d98ffb104ed5814cc246a2e28f1193e6c341d45d",
+    "captures\\visibility-morning-prepared-1\\return-preparation-proof.json": "b492006a9249add6a41e2819fcca9eefd5aa03a31a846c66f52d7eaa4fe7bc22",
+    "captures\\visibility-morning-prepared-1\\turn-check-verification.json": "6ee2bfbf8ce875a9a907f6ca9c11839e396de9572e21e1b9ddc9173f11f5d271",
+    ".cache\\visibility-owner-audit\\review.json": "b2e5bcc58e1e06e6c7bec74226556e85213c8313e628ef6074a2b6c4f9b7bb0a",
+    "captures\\visibility-morning-prepared-1\\new-home-precheck.txt": "5ea34b0574e83f3fb75ae613ad835fc5a085365d5e91c62eeb3f4b2a63938ee2",
+    "captures\\visibility-morning-prepared-1\\parking-exit-candidates.json": "f3cf3bd102b417816961850472089c63b170feb9a83b12f2ee0ec764902fad3c",
+    "captures\\visibility-morning-prepared-1\\parking-exit-heading-candidates.json": "95c078af588ce91e7da900e81a166b2f8a6ef3367149cea0b58702ef5dd0f686",
+    "captures\\visibility-morning-prepared-1\\existing-backoff-preparation.json": "6975dd4a2b706a9f54502555a53c25ebd8280732a96bc919cbd13df5d32d2e74"
+  },
+  "return": {
+    "captured_at": 1791251799.964486,
+    "frame": "map",
+    "costmap_sha256": "2fb500d4d39d491ce4fe8f0ada0c5ac2dc6cc7e2c49e008f2e7d405202610e4a",
+    "turn_checks": [
+      {
+        "point": "A",
+        "known_clear_at_all_5deg_samples": true,
+        "max_cost": 0,
+        "sample_count": 73
+      },
+      {
+        "point": "B",
+        "known_clear_at_all_5deg_samples": true,
+        "max_cost": 0,
+        "sample_count": 73
+      }
+    ],
+    "route_checks": [
+      {
+        "leg": "HOME-A",
+        "max_footprint_cost": 0,
+        "known_clear": true,
+        "length_m": 1.0735637799607007
+      },
+      {
+        "leg": "A-B",
+        "max_footprint_cost": 0,
+        "known_clear": true,
+        "length_m": 0.8510570403155105
+      },
+      {
+        "leg": "B-A-return-facing",
+        "max_footprint_cost": 0,
+        "known_clear": true,
+        "length_m": 0.8326965118417851
+      },
+      {
+        "leg": "A-HOME",
+        "max_footprint_cost": 0,
+        "known_clear": true,
+        "length_m": 1.073609114684658
+      }
+    ],
+    "live_return_facing_length_m": 0.8326965118417851,
+    "live_return_original_length_m": 3.260168292585695,
+    "limits": "Current global grid and path queries are separate snapshots; not future local turning/collision proof. No movement requested. Local B check still required on arrival."
+  },
+  "turn_checks": [
+    {
+      "case": "real_snapshot",
+      "result": {
+        "ok": true,
+        "centre_cost": 217,
+        "max_covered_cost": 253,
+        "frame": "odom",
+        "body_pose": {
+          "frame": "odom",
+          "x_m": -0.4116038047133107,
+          "y_m": 0.37355056855223545,
+          "heading_deg": 21.495004337649092,
+          "age_s": 0.007368443
+        },
+        "costmap_age_s": 0.001662826,
+        "body_radius_m": 0.2,
+        "limit": "Snapshot only; Nav2 and live sensor checks still govern execution."
+      }
+    },
+    {
+      "case": "frame_mismatch",
+      "result": {
+        "ok": false,
+        "error": "Body pose must be in the local costmap frame."
+      }
+    },
+    {
+      "case": "stale_transform",
+      "result": {
+        "ok": false,
+        "error": "Local costmap or body transform is stale."
+      }
+    },
+    {
+      "case": "stale_grid",
+      "result": {
+        "ok": false,
+        "error": "Local costmap or body transform is stale."
+      }
+    },
+    {
+      "case": "incomplete_grid",
+      "result": {
+        "ok": false,
+        "error": "Incomplete costmap."
+      }
+    },
+    {
+      "case": "rotated_origin",
+      "result": {
+        "ok": false,
+        "error": "Rotated costmap origin is unsupported; do not ignore it."
+      }
+    },
+    {
+      "case": "occupied_centre",
+      "result": {
+        "ok": false,
+        "centre_cost": 253,
+        "max_covered_cost": 253,
+        "frame": "odom",
+        "body_pose": {
+          "frame": "odom",
+          "x_m": -0.4116038047133107,
+          "y_m": 0.37355056855223545,
+          "heading_deg": 21.495004337649092,
+          "age_s": 0.007368443
+        },
+        "costmap_age_s": 0.001662826,
+        "body_radius_m": 0.2,
+        "limit": "Snapshot only; Nav2 and live sensor checks still govern execution."
+      }
+    },
+    {
+      "case": "lethal_centre",
+      "result": {
+        "ok": false,
+        "centre_cost": 254,
+        "max_covered_cost": 254,
+        "frame": "odom",
+        "body_pose": {
+          "frame": "odom",
+          "x_m": -0.4116038047133107,
+          "y_m": 0.37355056855223545,
+          "heading_deg": 21.495004337649092,
+          "age_s": 0.007368443
+        },
+        "costmap_age_s": 0.001662826,
+        "body_radius_m": 0.2,
+        "limit": "Snapshot only; Nav2 and live sensor checks still govern execution."
+      }
+    },
+    {
+      "case": "unknown_centre",
+      "result": {
+        "ok": false,
+        "centre_cost": 255,
+        "max_covered_cost": 255,
+        "frame": "odom",
+        "body_pose": {
+          "frame": "odom",
+          "x_m": -0.4116038047133107,
+          "y_m": 0.37355056855223545,
+          "heading_deg": 21.495004337649092,
+          "age_s": 0.007368443
+        },
+        "costmap_age_s": 0.001662826,
+        "body_radius_m": 0.2,
+        "limit": "Snapshot only; Nav2 and live sensor checks still govern execution."
+      }
+    },
+    {
+      "case": "stale_capture_live",
+      "result": {
+        "ok": false,
+        "error": "Capture is stale; obtain a new snapshot before turning."
+      }
+    },
+    {
+      "case": "fresh_capture_live",
+      "result": {
+        "ok": true,
+        "centre_cost": 217,
+        "max_covered_cost": 253,
+        "frame": "odom",
+        "body_pose": {
+          "frame": "odom",
+          "x_m": -0.4116038047133107,
+          "y_m": 0.37355056855223545,
+          "heading_deg": 21.495004337649092,
+          "age_s": 0.007368443
+        },
+        "costmap_age_s": 0.001662826,
+        "body_radius_m": 0.2,
+        "limit": "Snapshot only; Nav2 and live sensor checks still govern execution."
+      }
+    }
+  ],
+  "changed_owner_review": {
+    "candidate_commit": "a61f1c4",
+    "candidate_result_sha256": "822c08d32b41474ed44bbe931d10177a1a1a823294248b68a13b025ab860d2d3",
+    "independent_acceptance": false,
+    "review_type": "Post-score exploratory review; assignments were already inspected. Existing frozen scores unchanged. Two selected historical examples per destination do not prove complete record purity.",
+    "image_manifest": {
+      "available": {
+        "20261005-095629-634d2b.jpg": "64970425be0ce5805d2479f03e2b9558f5011b53e72ac2ff2aa36330a0504491",
+        "20261005-111239-992929.jpg": "35da34584c4a9f447e399307980c33ff65101a194ea1c572024c5eae192e512a",
+        "20261005-111806-a51e9b.jpg": "4c42fb8fa8177c4f1cf5a7637ab5b4590cf218fd41b4b0daa8d375f8e58a82d3",
+        "20261005-111825-08de0f.jpg": "aa3af927cd5f527e34aedf80d9d6e8f5126b656c42963cf2fa97f0194d9e697f",
+        "20261005-111830-a61e62.jpg": "0698a460d7627ca08b4a8fa4ce2d7367fb75eb3a6709c865068f9c0b5aec03d3",
+        "20261005-112051-cbfc95.jpg": "9c100579256e93905b3fea195acc2ce425c334d655362864a819fbd3afbeb7bc",
+        "20261005-125746-655c0b.jpg": "90dceb3cab84f4acd401edc406aac870ac6a9cbe1559d5b06d25128c43fbe7be",
+        "20261005-130042-eefd9f.jpg": "8dc6b359ddbcf146c443d1730f74fe7d15e9775c2adf13df95ab0d9a3df1d68e",
+        "20261005-161742-fef6b3.jpg": "b3a318287fda306e67ebc3039de60584e398a884c2602d66f9f50d9c746238c9",
+        "20261005-162341-04637b.jpg": "d0f145746cd71d53bdbc6497f00221705a1f498f382542d33dc5ce090813a0e1",
+        "20261005-174029-1fe216.jpg": "8cf7744c3a55a14f495e2e6d05086290e160384bd19ecdb41946101284a7fa54",
+        "20261005-174049-ced888.jpg": "be140bf56993f1e7befbbaff495768755cf0700b0ba819ee94410215a4c23697",
+        "20261005-174100-8e568d.jpg": "491489d63c5e50752996fda0fa6acb28ffc8511d4ddcf7eae8d36a683a0a3b11",
+        "20261005-174122-8940be.jpg": "7c7a5fdf3bbe02a02129ef4a5047cf7ca53285e87116eb1b0594f924f0cea928",
+        "20261005-174205-983b36.jpg": "bed80b54edb7fee237217a3703f50cd4b7a22321124171a84b0dc74eac5990a6",
+        "20261005-174215-c2b8b7.jpg": "2138b48acfd6f5f727a5aaf6fe144232478a7eb7f09866044e4b40b9414dd4d0",
+        "20261005-174247-a13bd1.jpg": "fcce37207b34ab230e1086624975a871f61a1595b8d6835a8f8c7f58f62fdb41",
+        "20261005-174250-411237.jpg": "3904dfe55de86bcb20c93d0035303adcc8150fbd4c3763997158020858f3f66e"
+      },
+      "missing_observation_ids": []
+    },
+    "rows": [
+      {
+        "id": 68928,
+        "control": null,
+        "candidate": "object:301",
+        "judgment": "consistent painting part",
+        "references": [
+          68801,
+          68797
+        ],
+        "reason": "Same painting behind dining chairs; stored outline cuts out foreground chair tops. Still a separate historical record from object:328."
+      },
+      {
+        "id": 68967,
+        "control": null,
+        "candidate": "object:328",
+        "judgment": "consistent painting part",
+        "references": [
+          68948,
+          68581
+        ],
+        "reason": "Same painting; centre chair is excluded by stored outline. Not an unoccluded side-view control."
+      },
+      {
+        "id": 68978,
+        "control": null,
+        "candidate": "object:328",
+        "judgment": "consistent painting part",
+        "references": [
+          68948,
+          68581
+        ],
+        "reason": "Same painting; centre chair is excluded by stored outline. This is the previously scored useful gain."
+      },
+      {
+        "id": 68926,
+        "control": null,
+        "candidate": "object:401",
+        "judgment": "mixed or unresolved",
+        "references": [
+          68656,
+          67652
+        ],
+        "reason": "Doorway region and foreground chair remain within selected pixels; not a clean single-object acceptance label."
+      },
+      {
+        "id": 69013,
+        "control": "object:320",
+        "candidate": "object:466",
+        "judgment": "consistent occupied green armchair",
+        "references": [
+          69046,
+          67440,
+          67406,
+          66736
+        ],
+        "reason": "Candidate examples show same green armchair. Old owner examples include a green armchair part and the different purple armchair; this reveals existing mixed ownership, not a full cluster purity audit."
+      },
+      {
+        "id": 69040,
+        "control": null,
+        "candidate": "object:487",
+        "judgment": "consistent window-side landscape painting",
+        "references": [
+          67390,
+          66742
+        ],
+        "reason": "Same small landscape beside living-room window; no mixing with the dining-side landscape in the reviewed photos."
+      },
+      {
+        "id": 65145,
+        "control": null,
+        "candidate": "object:349",
+        "judgment": "consistent bright dining-room window region",
+        "references": [
+          69002,
+          68981
+        ],
+        "reason": "Same wall/window location; bright window and bordering wall. A region match does not validate its stored depth."
+      }
+    ],
+    "conclusion": "Six changes visually consistent with selected references; one mixed/unresolved. No reviewed obvious clean-object mismatch among these seven, but not independent acceptance, not a full owner-purity audit, and not a change to historical mixed-cross failure."
+  },
+  "this_session_motion_commands": 0,
+  "control_blocker": "Owner confirmed moving closer to wall. Fresh current-start Nav2 query fails START_OCCUPIED (205); existing nearest-fit escape intersects local occupied cells. Clear-floor placement and charger-disconnected handover required.",
+  "parking_start_plan": {
+    "ok": false,
+    "status": 6,
+    "error_code": 205,
+    "hypothetical_start": null,
+    "goal": [
+      -18.239,
+      -15.03,
+      138.45
+    ],
+    "length_m": 0,
+    "path": []
+  },
+  "existing_backoff_diagnostic": {
+    "fit": {
+      "x": -17.142088355503226,
+      "y": -15.934748338090532,
+      "yaw": -2.817525399307504,
+      "moved_m": 0.2500000037252903,
+      "turned_deg": 0.0
+    },
+    "bearing_deg": 126.86989764584402,
+    "distance_m": 0.2500000037252903,
+    "local_sweep_max_footprint_cost": 254,
+    "local_sweep_max_centre_cost": 253,
+    "limits": "Different snapshots; local/global transform aligned by same-capture body heading; no execution proof or authority."
+  }
+}

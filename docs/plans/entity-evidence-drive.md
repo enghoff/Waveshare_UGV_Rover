@@ -58,15 +58,27 @@ tape-measured docking precision from map estimates.
 ## Morning run card
 
 The [October 6 live precheck](../progress/2026-10-06-morning-route-precheck.md)
-failed B-to-A: 3.260 m planned for 0.831 m direct. This card is therefore blocked
-for execution as written. Prepare and check return heading changes explicitly,
-including any stationary turn and its clearance/time allowance, before another
-handover. Do not repeat the rejected return request or silently waive the limit.
+failed B-to-A: 3.260 m planned for 0.831 m direct. The
+[follow-up](../progress/2026-10-06-return-heading-and-owner-audit.md) finds a
+0.833 m live planner path when the hypothetical start faces the return leg.
+Use an explicit checked stationary return turn; do not repeat the rejected
+return request or silently waive the route limit. Actual turn execution remains
+unproven and must respect current local clearance and the motion watchdog.
+The rover was subsequently used outside this session and its starting pose
+changed. Coordinate control and charger state, then obtain a new HOME pose and
+fresh HOME-to-A route; the earlier starting-route proof is no longer current.
+The owner confirmed parking closer to the wall; that current-start query fails
+with `START_OCCUPIED`, and production's suggested short escape crosses the
+local obstacle map. Start the trial from clear floor away from the wall/chair.
+Do not command that escape, force a map fit or repeat a route from the earlier
+HOME as if the rover were still there. This is the outstanding hardware setup
+blocker; the revised B-to-A return check remains useful preparation.
 
-Preparation must finish with the rover off. The prepared local caller is
-`.cache/visibility_morning_call.py`, targeting the unused
-`captures/visibility-morning-prepared-1` directory. Use matching world session
-`visibility-morning-prepared-1`. Confirm neither exists before first use; if
+Finish local preparation before requesting hardware; live checks require the
+rover at handover. The prepared local caller is
+`.cache/visibility_morning_call.py`. The first two suffixes were used for movement-free
+prechecks; use `captures/visibility-morning-prepared-3` and matching world session
+`visibility-morning-prepared-3` for the next trial. Confirm neither exists before first use; if
 already used, choose a fresh suffix and update the caller before any RPC. Retain
 its motion lock, explicit permission token and return-leg flag. This card is preparation,
 not permission to move. Obtain a fresh handover with the charger disconnected.
@@ -91,7 +103,9 @@ last night's start for it. Recheck floor/obstacles in the current camera and gri
 Before moving, ask the live planner for HOME to A, A to B, B to A and A to HOME.
 Use travel bearings for goal headings, not the painting-view heading. Explicit
 start poses for later legs are hypothetical; retain that distinction in the
-recording. Check the complete paths against the fresh map and camera: no unknown
+recording. Plan B-to-A from a return-facing start (-12.514 degrees for the saved
+coordinates), including the separate return turn in the execution sequence.
+Check the complete paths against the fresh map and camera: no unknown
 floor, occupied/inflated-body collision, unexpected loop or unexplained pivot.
 For this short trial, reject a leg longer than its direct distance plus 0.5 m.
 This is a predeclared trial route limit, not a general navigation acceptance test.
@@ -114,6 +128,25 @@ Replace the example start heading with the planned arrival heading at A. Omit
 The helper's live planning action was verified on October 6; current ROS availability
 and revised paths must still be verified at handover. Planning requests have bounded waits, and
 unavailable or timed-out planning means no movement.
+Wrap each helper invocation in an external timeout as well; DDS can defeat ROS
+wait timeouts. Strip carriage returns from PowerShell-fed Bash scripts before
+executing them on Orin.
+
+For the stationary turn check, copy the prepared costmap capture helper to
+`/tmp/visibility-costmap.py`, source the same ROS environment and run it with
+`timeout --kill-after=2 15 python3 /tmp/visibility-costmap.py`. Save its JSON
+locally and immediately run:
+
+```powershell
+python experiments/entity_association/check_recorded_turn.py --snapshot <new-costmap-json> --live
+```
+
+This uses the robot transform in the **local grid's own frame**, checks its
+centre against inflated-body contact and the physical body against lethal or
+unknown cells. Never apply inflation to the whole body a second time, reuse an
+old snapshot, substitute map coordinates for odometry, or treat the snapshot
+as continuing collision protection. A failed check ends collection; Nav2's
+actual motion/collision result remains authoritative.
 
 Before first movement, complete battery/status/camera, fresh read-only `measure`
 and changing raw IMU checks. Require at least 60% charge, trusted localization,
@@ -123,6 +156,8 @@ Nav2, and no active motion. Start navigation and passive board recorders for
 are producing data before beginning; if setup has consumed a minute of their
 window, restart the support recordings before driving. Never wait for a recorder
 to expire merely to release the rover after returning.
+If another session's call-recording marker already exists, coordinate ownership
+instead of overwriting it.
 
 Run commands serially and wait for each final response, including any yielded
 tool session. The schedule is a maximum allowance, not a prediction:
@@ -141,9 +176,21 @@ painting in view. The 8-second inspection allowance is not a hard timeout: if a
 look runs longer, do not launch competing motion; finish/cancel it as supported,
 return immediately and record the timing failure. A failed movement, watchdog
 STOP, 35% battery or uncertain position ends evidence collection immediately.
+At B, the stored painting placement suggests a view heading near 83 degrees.
+Use that only for initial framing; verify the actual photograph. Compute any
+relative chassis turn from the freshly measured heading, and keep it inside the
+existing outbound allowance. The predicted A/B parallax is only 10.93 degrees;
+do not substitute that for measured bearings or claim the 12-degree acceptance
+criterion has been met. This run's priority is the missing side view.
 
 Return through the reached, checked points in reverse order: B to A to HOME, or
-A to HOME if B was never reached. After a partial/failed move, STOP and obtain a
+A to HOME if B was never reached. At B, first check the fresh local body/turn
+clearance and turn toward A (approximately -12.514 degrees in this map). Use the
+measured current heading to compute the wrapped relative turn; do not assume
+the requested arrival or camera heading was achieved. Treat that turn as a
+return leg with the same 16-second watchdog, then recheck the actual B-to-A path
+from the achieved pose. If returning directly from A, similarly check and face
+HOME before asking for its route. After a partial/failed move, STOP and obtain a
 fresh position check before choosing a return segment; if that check fails, leave
 the rover stopped and request manual recovery. Do not mark an unreached point as
 a completed leg. Return commands carry `return_leg` and retain the per-command

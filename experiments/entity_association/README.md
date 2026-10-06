@@ -595,3 +595,16 @@ This non-deployed preparation helper has bounded planner waits. The
 [drive plan](../../docs/plans/entity-evidence-drive.md) gives the trial route,
 preconditions, deadlines and return sequence. Live planner validation remains
 part of handover; an offline syntax check does not establish route feasibility.
+
+`capture_route_costmaps.py` reads the global and local `GetCostmap` services
+and prints timestamped JSON with base64 cell bytes. Run it under the rover ROS
+environment with an external timeout; it issues no motion or map mutation.
+Frames and origin orientation must be respected when checking a footprint.
+It includes the robot transform and ages in each costmap frame.
+`check_recorded_turn.py --snapshot <json> --live` checks the local frame/body,
+refusing stale captures, bad transforms and occupied/unknown floor. Omit `--live`
+only for archival diagnostics. The body centre uses the inflated contact band;
+the physical footprint uses lethal contact, avoiding doubled inflation. This is
+snapshot preparation evidence, not a motor guard or continuing collision check.
+The [return-heading diagnostic](../../docs/progress/2026-10-06-return-heading-and-owner-audit.md)
+records the live planning comparison and equivalent inline costmap capture.
