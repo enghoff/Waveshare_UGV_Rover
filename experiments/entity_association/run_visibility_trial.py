@@ -262,10 +262,10 @@ class Live:
             self.health(returning=True)
 
     def inspect(self):
-        self.reserve(8)
+        self.reserve(12)
         status, _ = self.health()
-        self.reserve(8)
-        self.call('world_inspect', {'fresh':True,'keep_depth':True,'settle':True,'wait':True}, timeout=8)
+        self.reserve(12)
+        self.call('world_inspect', {'fresh':True,'keep_depth':True,'settle':False,'wait':True}, timeout=12)
 
     def begin_return(self):
         self.return_started = True

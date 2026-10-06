@@ -50,5 +50,17 @@ class DirectTrial(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'missed'):
             b.face(55)
 
+    def test_depth_look_reserves_the_observed_lock_wait(self):
+        # Stationary readiness's actual depth look took 8.64 s: eight was too short.
+        b=Live(Path('.'),{},Path('.'),'unused'); reservations=[];calls=[]
+        b.reserve=lambda n,*a,**k:reservations.append(n)
+        b.health=lambda:({}, {})
+        b.call=lambda *a,**k:calls.append((a,k))
+        b.inspect()
+        self.assertEqual(reservations,[12,12])
+        self.assertGreater(calls[0][1]['timeout'],8.64)
+        self.assertFalse(calls[0][0][1]['settle'])
+        self.assertTrue(calls[0][0][1]['keep_depth'])
+
 
 if __name__=='__main__':unittest.main()
