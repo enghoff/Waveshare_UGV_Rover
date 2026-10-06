@@ -31,7 +31,8 @@ leg that has still not let go after 3 s is refused as busy, as before.
   one does. A person's turn mid-leg ended the run and was refused as busy: the
   check failed on the code before the fix. It passes now.
 - rover_daemon 1119, autonomy 785, drive_web 608 passed here.
-- Deployed at the commit after this entry's (rover_daemon only), with the
-  suite passing on the rover. **Not yet seen on the rover.** The next
+- Deployed at 685a541 (rover_daemon only). The suite passed on the rover, the
+  running daemon loads the eight person moves and the 3 s wait, and navigation
+  came back settled. **Not yet seen on the rover.** The next
   session's voice trial is where it will be: the owner tells the voice model to
   turn while a leg is moving.
