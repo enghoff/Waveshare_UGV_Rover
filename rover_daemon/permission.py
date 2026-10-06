@@ -110,9 +110,13 @@ POSE_JUMP_M = 0.5
 #: so the two are declared together.
 TICK_S = 0.5
 
-# Reserve room inside a declared boundary for the body and braking. Hardware
-# acceptance must measure whether this allowance is sufficient at trial speed.
-FENCE_MARGIN_M = 0.5
+#: Room reserved inside a declared boundary for the body and for stopping, set
+#: from stops measured on the rover on 2026-10-06 at its driving speed of
+#: 0.40-0.45 m/s: 0.20 m of body, plus 0.22 m driven before the next half-second
+#: tick can notice, plus 0.17 m, the longest stop after the watchdog had acted
+#: (a lost connection's permit). 0.59 m; it was 0.5, which the hung executive's
+#: stop, 0.31 m after its permit ran out, overran by a centimetre.
+FENCE_MARGIN_M = 0.6
 
 #: What one inspection of an uncertain hypothesis may spend, at most
 #: ([R-AUT-12](../docs/requirements/autonomy.md#r-aut-12)). A request declares

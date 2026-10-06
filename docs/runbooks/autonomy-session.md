@@ -161,7 +161,9 @@ distance the rover actually travelled after it was told.
 
 ## Boundary allowance
 
-Navigation and the watchdog reserve 0.5 m inside a declared safe area for the body
+Navigation and the watchdog reserve 0.6 m inside a declared safe area for the body
 and stopping. A route or adjusted goal reaching that inset is refused or cancelled.
-Start and goal must fit inside it. Physical braking and latency still require the
-supervised acceptance measurements; this number is not a certified stopping distance.
+Start and goal must fit inside it, so draw the area at least 0.6 m beyond where the
+rover stands when the run is opened. The number is set from stops measured on the
+rover at its 0.40-0.45 m/s driving speed (2026-10-06); it is not a certified
+stopping distance, and a faster rover needs it measured again.

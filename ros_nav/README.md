@@ -231,6 +231,7 @@ route against an inset of the safe area, including replans. `autonomy_guard.py`
 uses the same boundary arithmetic deployed from the daemon's `permission.py`.
 A violation cancels the goal; the daemon independently monitors position.
 
-The inset reserves 0.5 m for the body and stopping. This is not a measured stopping
-distance: R-SAFE-10 and R-SAFE-12 remain open until supervised moving trials prove
+The inset reserves 0.6 m for the body and stopping, set from stops measured on the
+rover on 2026-10-06 at its 0.40-0.45 m/s driving speed (`permission.FENCE_MARGIN_M`
+says how). R-SAFE-10 and R-SAFE-12 remain open until supervised moving trials prove
 the declared boundary is respected.

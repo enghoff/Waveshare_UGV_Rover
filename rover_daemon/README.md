@@ -501,8 +501,9 @@ lands before its delayed dispatch invalidates it. A late accepted Nav2 handle is
 cancelled if a stop arrived while acceptance was pending.
 
 The watchdog checks the rover's position against a configured safe area, with
-`permission.FENCE_MARGIN_M` reserved inside it. Navigation also checks adjusted
-goals and planned routes. This is software enforcement; the margin's adequacy for
-the footprint, latency and braking remains a supervised hardware acceptance item
-under R-SAFE-10, R-SAFE-11 and R-SAFE-12. Successful recovery stops do not forgive
+`permission.FENCE_MARGIN_M` reserved inside it: 0.6 m, the body plus one
+watchdog tick at driving speed plus the longest stop measured after the watchdog
+acted, on 2026-10-06. Navigation also checks adjusted goals and planned routes.
+That a boundary is actually respected remains a supervised hardware acceptance
+item under R-SAFE-10, R-SAFE-11 and R-SAFE-12. Successful recovery stops do not forgive
 failed goals.
