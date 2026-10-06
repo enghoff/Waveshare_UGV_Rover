@@ -168,10 +168,17 @@ unmapped ground really within reach of the goal.
 
 **What can be reached is walked with the rover's body** (`mapgrid.Reach`). The
 walk crosses only free cells further from anything occupied than the planner
-keeps the rover's centre, and a goal off that floor counts if it is within the
-distance the bridge moves a goal onto floor where the body fits. Both numbers
-come with the map from the navigation bridge (`inscribed_radius_m`, 0.20 m, and
-`goal_fit_reach_m`, 0.5 m); a map without them is walked as a point, as before.
+keeps the rover's centre. A goal is then taken where the bridge would send it:
+to the nearest place within its reach where the whole body fits clear of the
+planner's ring round every wall, which needs about twice the centre's
+clearance (`ros_nav/goal_fit.py`, deployed into this component as
+`frontier.py` is). It counts only if that place exists and the walk gets
+there. Both numbers come with the map from the navigation bridge
+(`inscribed_radius_m`, 0.20 m, and `goal_fit_reach_m`, 0.5 m); a map without
+them is walked as a point, as before. Taking a goal within half a metre of the
+centre's floor instead let seven recorded drives through that the bridge
+refused in two seconds for want of room for the body
+([the record](../docs/progress/2026-10-06-no-room-for-the-body.md)).
 Walked as a point, the survey's own walk went through gaps the planner will
 not, and every frontier a run chose before 2026-10-05 was in a pocket by the
 charger behind a 30-40 cm one: seven drives, all failed, two after Nav2 drove
@@ -264,10 +271,10 @@ what was hoped for. **ABORT** is any of that going wrong, and closes the episode
 `interrupted` with the reason.
 
 **A place navigation could not get to is not driven at again for half an
-hour.** The run's walk keeps the body's clearance, but it is still a walk over
-the map, not the planner: the costmap can change between a decision and its
-drive, and the bridge's own check of a goal is stricter than the walk's (the
-whole body, not its centre). When a drive fails or times out, the executive writes
+hour.** The run's walk keeps the body's clearance and the bridge's test of a
+goal, but it is still a walk over the map, not the planner: the costmap can
+change between a decision and its drive, and holds what the scanner sees now
+as well as what the map remembers. When a drive fails or times out, the executive writes
 the goal's place down (`cooling.after_failed_drive`), and any goal within half
 a metre of it is refused as "could not get there", the way the rover's own
 exploring blacklists a frontier it could not reach.
