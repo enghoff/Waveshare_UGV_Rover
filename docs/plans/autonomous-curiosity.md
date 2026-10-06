@@ -3,9 +3,11 @@
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
-the rover in supervised stop trials and in M0a's inspection runs. Three of M3's twenty
-supervised sessions have run, about 23 minutes; [the third](../progress/2026-10-06-m3-session-3.md)
-showed R-AUT-13's ending on 2026-10-06. Later phases remain proposed. This is the
+the rover in supervised stop trials and in M0a's inspection runs. Five of M3's twenty
+supervised sessions have run, about 33 minutes; [the third](../progress/2026-10-06-m3-session-3.md)
+showed R-AUT-13's ending, and on 2026-10-06 a repeated request, a hung executive
+and a lost connection were [tried on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md).
+Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -573,16 +575,20 @@ refused by name.
 Most of M3 is still physical:
 
 - **The twenty supervised sessions**, totalling at least two hours of autonomy
-  time in a pre-cleared area, with the owner present. Three have happened
+  time in a pre-cleared area, with the owner present. Five have happened
   ([1](../progress/2026-10-05-m3-session-1.md), 8.7 minutes;
   [2](../progress/2026-10-05-m3-session-2.md), 11 minutes, stopped at 5% battery;
-  [3](../progress/2026-10-06-m3-session-3.md), 3.6 minutes, ended by going home);
+  [3](../progress/2026-10-06-m3-session-3.md), 3.6 minutes, ended by going home;
+  [4 and 5](../progress/2026-10-06-m3-sessions-4-and-5.md), 8.3 and 1.5 minutes,
+  both stopped on the battery, 44 drives and none failed);
   M0a's runs were its own protocol and do not count towards them. Nothing below
   criterion 3 can be answered without them. Open each with no action limit and
-  a safe area fenced to the cleared room. A fenced run ends by going home
+  a safe area fenced to the cleared room, drawn 0.6 m beyond where the run
+  starts. A fenced run ends by going home
   ([R-AUT-13](../requirements/autonomy.md#r-aut-13), settled by session 3); an
   unfenced one has the whole flat and ends on the battery, since runs carry no
-  battery floor.
+  battery floor. Start each on a full charge and judge the battery at rest: a
+  reading while driving sags by up to 30 points.
 - **Looks that improve nothing.** Of 171 geometry goals on record, 10 improved
   their thing when measured and 9 more within a minute
   ([the measurement](../progress/2026-10-06-looks-seldom-reach-their-thing.md)).
@@ -590,13 +596,14 @@ Most of M3 is still physical:
   it was aimed at, which waits on the identity work (R-WS-13). Until then a
   run's geometry goals mostly spend battery, and a session's count of looks is
   not a count of work done.
-- **The stop and takeover trials that did not finish.** The console's stop button
-  was only exercised on a slow turn, and its repeat at speed was cut short by the
-  battery; it sends the same request that was measured at speed. A hung executive
-  and a dropped connection (criterion 9) have not been tried on the rover; both
-  should end in the permit expiry that was measured.
-- **A duplicate request on hardware** ([R-AUT-11](../requirements/autonomy.md#r-aut-11)):
-  a session in which an action asked for twice moves the rover once.
+- **The console's stop at speed.** Criterion 9 is met on the rover, and so is
+  R-AUT-11 ([2026-10-06](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md)),
+  and the safe area's margin is now set from measured stops (0.6 m, criterion
+  10). The console's button is still unmeasured at speed: it was exercised on a
+  slow turn on 2026-10-02 and asked for twice on 2026-10-06 without a press. It
+  sends the same `stop_driving` that stopped the rover in 0.11 m. It wants a
+  trial where the owner is told the moment to press, from beside the console.
+  No drive has yet been refused on the new margin.
 - **The hardware limits P0 found.** The depth camera drops off USB, which cost five
   checks in M0a's runs, and a charge gives about 20 to 25 minutes of this driving.
   Both bound how long a session can usefully run.

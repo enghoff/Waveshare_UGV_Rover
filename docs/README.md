@@ -26,13 +26,13 @@ the rover's behaviour that a plan can aim at and a measurement can move.
 
 | Area | `settled` | `failing` | `open` | `proposed` | `retired` | Total |
 |---|---|---|---|---|---|---|
-| [Safety and authority](requirements/safety.md) | 7 | -- | 4 | 4 | 1 | 16 |
+| [Safety and authority](requirements/safety.md) | 8 | -- | 3 | 4 | 1 | 16 |
 | [Mapping and movement](requirements/navigation.md) | 10 | 1 | 2 | 1 | -- | 14 |
 | [Visual memory](requirements/world-state.md) | 13 | -- | 2 | 2 | 1 | 18 |
 | [Control surface](requirements/control.md) | 10 | -- | -- | -- | -- | 10 |
 | [Host and deployment](requirements/platform.md) | 11 | -- | -- | -- | -- | 11 |
-| [Autonomy and its record](requirements/autonomy.md) | 12 | -- | 1 | -- | -- | 13 |
-| **All** | **63** | **1** | **9** | **7** | **2** | **82** |
+| [Autonomy and its record](requirements/autonomy.md) | 13 | -- | -- | -- | -- | 13 |
+| **All** | **65** | **1** | **7** | **7** | **2** | **82** |
 
 Currently failing: [R-NAV-6](requirements/navigation.md#r-nav-6).
 

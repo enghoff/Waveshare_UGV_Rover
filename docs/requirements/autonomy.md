@@ -191,9 +191,12 @@ that only writes down what it wanted cannot answer it.
 <a id="r-aut-11"></a>
 ### R-AUT-11 — An autonomous action request that arrives twice moves the rover once
 
-- **State:** open
-- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M3, criterion 11)
+- **State:** settled
+- **Evidence:** [2026-10-06, on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md):
+  a drive whose connection was cut mid-leg was asked for again with the same
+  identifier, once after reconnecting and once after arrival; both were refused
+  as already dispatched, and the run spent one action and one 4.4 m leg;
+  `python rover_daemon/selftest.py`
 
 Every autonomous action carries an identifier built from the episode it belongs
 to. A request whose identifier has already been dispatched is refused and
@@ -208,8 +211,7 @@ is not. What would make this false is a second drive, or a second look recorded
 against the same action.
 
 The rule is enforced by the daemon rather than by the caller, and the same
-module the daemon enforces with is what the executive plans against. What is
-owed for `settled` is a hardware session in which it holds.
+module the daemon enforces with is what the executive plans against.
 
 <a id="r-aut-12"></a>
 ### R-AUT-12 — Inspecting a hypothesis never treats it as an established identity

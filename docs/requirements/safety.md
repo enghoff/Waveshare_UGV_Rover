@@ -201,10 +201,13 @@ cannot give itself back what a person removed.
 <a id="r-safe-12"></a>
 ### R-SAFE-12 — The daemon enforces permission expiry and budgets on its own
 
-- **State:** open
-- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M3) — it stopped a moving rover on permit expiry on 2026-10-02; a hung
-  executive and a dropped connection have not been tried on the rover
+- **State:** settled
+- **Evidence:** [2026-10-06, on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md):
+  a hung executive and a lost connection each lost a moving rover its permit, at
+  rest 0.31 m and 0.27 m after expiry with Nav2 up, and neither the woken nor a
+  fresh executive got the run back; a restarted daemon came back with no run;
+  [2026-10-02](../progress/2026-10-02-first-m0a-runs.md) for a killed one;
+  `python rover_daemon/selftest.py`
 
 The check has to live below the thing being checked. If the executive is what
 notices that its own permission ran out, then an executive that has hung or is
