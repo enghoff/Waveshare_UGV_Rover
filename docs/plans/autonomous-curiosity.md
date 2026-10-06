@@ -7,7 +7,8 @@ the rover in supervised stop trials and in M0a's inspection runs. Five of M3's t
 supervised sessions have run, about 33 minutes; [the third](../progress/2026-10-06-m3-session-3.md)
 showed R-AUT-13's ending, and on 2026-10-06 a repeated request, a hung executive
 and a lost connection were [tried on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md).
-Later phases remain proposed. This is the
+M3's criteria 6, 7, 9 and 10 are met; what remains is the session count and
+criterion 12. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -600,9 +601,16 @@ Most of M3 is still physical:
   [the trials](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md) and
   [the console's stop](../progress/2026-10-06-the-console-stop-at-speed.md), at
   rest within 0.17 m at 0.41 m/s), and the safe area's margin is set from them
-  (0.6 m). No drive has yet been refused on the new margin. Before a session,
-  check `gyro_bias_dps` reads about 0.4 (a reboot left it at -2,063 and the
-  rover unable to finish a turn), and reload the console after any restart.
+  (0.6 m). No drive has yet been refused on the new margin. A rover whose gyro
+  has gone wrong is now refused a run ([R-SAFE-17](../requirements/safety.md#r-safe-17),
+  proposed); reload the console after any restart.
+- **Criteria 6 and 7 are met on the record**: every move made under a run in
+  sessions 1-5 pairs with a recorded episode's drive, and every failure was
+  followed by a recorded decision ([the trace](../progress/2026-10-06-every-move-traced-to-its-episode.md)).
+- **Criterion 12 on the rover.** A voice request and a manual drive during a
+  run, against the declared priority, and a map change or a lost pose revoking a
+  drive that is moving. The manual drive was shown on 2026-10-02 (S3); the rest
+  are scripted with the next session.
 - **The hardware limits P0 found.** The depth camera drops off USB, which cost five
   checks in M0a's runs, and a charge gives about 20 to 25 minutes of this driving.
   Both bound how long a session can usefully run.

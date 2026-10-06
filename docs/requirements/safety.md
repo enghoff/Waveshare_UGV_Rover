@@ -129,10 +129,11 @@ not the representation for anything the rover writes itself. See
 <a id="r-safe-9"></a>
 ### R-SAFE-9 — Every autonomous decision and physical action is attributable to a recorded episode
 
-- **State:** open
-- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M3) — autonomous actions moved the rover in M0a's runs of 2026-10-02, but no M3
-  session has yet been traced back movement by movement
+- **State:** settled
+- **Evidence:** [2026-10-06, the trace](../progress/2026-10-06-every-move-traced-to-its-episode.md):
+  every move navigation logged while a run was open in M3 sessions 1-5, 145 of
+  them, pairs with a `drive_to` a recorded episode dispatched; the two that do not
+  were hand drives between runs; `python autonomy/selftest.py`
 
 An action nobody can reconstruct afterwards cannot be reviewed, and a failure
 nobody can replay cannot be fixed under this repository's rules. Episodic
@@ -143,8 +144,7 @@ The decision half is settled ([R-AUT-1](autonomy.md#r-aut-1) and the M1 pass).
 The action half is built, and has carried real movement in M0a's runs: every autonomous action
 is dispatched through one call carrying the episode it belongs to and an
 identifier beginning with that episode's reference, and the daemon refuses an
-action that names neither. What is owed is a supervised session in which real
-movement is traced back that way.
+action that names neither.
 
 <a id="r-safe-10"></a>
 ### R-SAFE-10 — Autonomous runs are bounded by time, travel, actions and failures
