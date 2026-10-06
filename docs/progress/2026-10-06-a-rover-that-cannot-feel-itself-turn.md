@@ -44,7 +44,12 @@ watchdog tick of an open run. Replayed over the 21,528 readings, it refuses all
   that falls to zero mid-run refuses a drive, allows a look, and the watchdog
   ends the run and stops the wheels. rover_daemon 1116, ros_nav 574 and
   autonomy 785 passed.
-- On the rover, after the deploy: see the deployment note below.
+- On the rover, deployed at 4e12efb (rover_daemon, ros_nav and autonomy; their
+  suites passed there). The daemon then reported a bias of +0.57 deg/s.
+  Asked to open a run with a deliberately invalid budget, it got past the pose,
+  map and rotation checks and refused only on the budget, so nothing was
+  opened. The deployed rule refuses -2,063. Navigation came back settled. No
+  refusal on a real fault has been seen yet; that waits for the next one.
 
 ## What it does not do
 
