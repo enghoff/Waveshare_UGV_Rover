@@ -10,7 +10,7 @@ from board_link import (
     BATTERY_CELLS, BATTERY_MAX_AGE_S, CMD_LIGHTS, CMD_PROBE, PROBE_WAIT_S,
     _battery_percent, _battery_state, _battery_summary,
 )
-from rover_autonomy import RoverAutonomy
+from rover_autonomy import PERSON_MOVES, RoverAutonomy
 from rover_camera import RoverCamera, VisionLink
 from rover_depth import RoverDepth
 from rover_nav import CAMERA_FOV_DEG, RoverNav
@@ -390,7 +390,12 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         they are dispatched inside `_tool_autonomy_act`, which is the whole
         reason the two roads exist.
         """
-        self.autonomy_notice(name)
+        took_over = self.autonomy_notice(name)
+        if took_over and name in PERSON_MOVES:
+            # The person is in charge now: their move goes ahead once the
+            # stopped leg has let go of the wheels, rather than being refused
+            # as busy in the moment between.
+            self.autonomy_handover()
         handler = getattr(self, f"_tool_{name}", None)
         if handler is None:
             return {"ok": False, "error": f"no such tool: {name}"}

@@ -590,6 +590,65 @@ def test_driving_by_hand_takes_the_rover_back():
     check("...naming what happened", "by hand" in status["latch"]["why"], True)
 
 
+class WindingDownNav(FakeNav):
+    """A navigator whose stopped move takes a moment to let go of the wheels.
+
+    As the real one does: the stop reaches the board at once, but the thread
+    running the move holds the move mutex until Nav2 has answered the cancel,
+    and a move asked for in that moment is refused as busy.
+    """
+
+    LET_GO_S = 0.3
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.turns: list[str] = []
+
+    def stop(self) -> dict[str, Any]:
+        import threading
+        self.stops += 1
+        if self.driving:
+            threading.Timer(self.LET_GO_S, self._let_go).start()
+        return {"stopped": True, "latched": False}
+
+    def _let_go(self) -> None:
+        self.driving = False
+
+    def turn_in_place(self, angle_deg: float):
+        outcome = "busy" if self.driving else "arrived"
+        self.turns.append(outcome)
+
+        class Turned:
+            reason = outcome
+
+            @staticmethod
+            def asdict():
+                return {"reason": outcome}
+        return Turned()
+
+    def describe(self) -> dict[str, Any]:
+        return {"clear_ahead_m": 2.0, "text": "open floor"}
+
+
+def test_a_person_who_takes_the_rover_back_gets_what_they_asked_for():
+    """Recorded on 2026-10-02 (trial S3): a person's drive sent while an
+    autonomous leg was moving ended the run and was then itself refused as
+    "busy", because the stopped leg had not let go of the wheels. The voice
+    model's turn would meet the same refusal. The person is in charge now, so
+    their move waits for the hand-over the way `go_to_thing` already does."""
+    nav = WindingDownNav()
+    rover = a_rover(Clock(), nav=nav)
+    permit = permitted(rover, enabled(rover))
+    act(rover, permit, "drive_to", "a#1", x_m=1.0, y_m=0.0)
+    check("the autonomous leg is moving", nav.driving, True)
+
+    turned = rover.call("turn_in_place", {"angle_deg": 90})
+    check("a person's turn mid-leg ends the run",
+          rover.call("autonomy_status", {})["latched"], True)
+    check("...and is carried out, not refused as busy",
+          (turned.get("reason"), nav.turns), ("arrived", ["arrived"]))
+
+
 def test_driving_by_hand_with_no_run_open_is_just_driving():
     rover = a_rover(Clock())
     rover.call("drive_to", {"x_m": 1.0, "y_m": 1.0})
@@ -680,6 +739,7 @@ TESTS = (
     test_failures_in_a_row_end_the_run,
     test_stopping_the_rover_latches_autonomy_off,
     test_driving_by_hand_takes_the_rover_back,
+    test_a_person_who_takes_the_rover_back_gets_what_they_asked_for,
     test_driving_by_hand_with_no_run_open_is_just_driving,
     test_autonomys_own_stop_does_not_latch_it_off,
     test_a_restart_invalidates_every_permission_that_was_given,

@@ -70,6 +70,23 @@ HUMAN_MOVES = frozenset({
     "world_state_merge",
 })
 
+#: The person's calls above that set the wheels going themselves. When one of
+#: them is what ended a run, it is carried out once the stopped leg has let go
+#: of the wheels, rather than refused as busy in the moment between: recorded on
+#: 2026-10-02 (trial S3), a person's drive sent mid-leg ended the run and was
+#: then itself refused, so the person had stopped the rover and not moved it.
+PERSON_MOVES = frozenset({
+    "drive", "drive_to", "drive_to_map_point", "turn_in_place", "explore",
+    "go_to_thing", "run_script", "start_script",
+})
+
+#: How long a person's move waits for a stopped autonomous leg to let go. The
+#: same three seconds `go_to_thing` waits for any move it interrupts
+#: (`rover_recall.HANDOVER_S`); the stop itself reaches the wheels in well under
+#: half a second.
+TAKEOVER_HANDOVER_S = 3.0
+TAKEOVER_POLL_S = 0.05
+
 #: What a human intervention is called in the record, so that a person reading
 #: an episode a fortnight later is told which of these it was.
 TAKEOVER = {
@@ -537,9 +554,9 @@ class RoverAutonomy:
         return answer
 
     @serialized
-    def autonomy_notice(self, name: str) -> None:
+    def autonomy_notice(self, name: str) -> bool:
         """Called for every tool the daemon dispatches, and does nothing for
-        almost all of them.
+        almost all of them. True when this call ended a run that was open.
 
         It lives in `Rover.call` rather than in each movement tool because that
         is the one place every caller passes through, and a check that has to be
@@ -548,7 +565,7 @@ class RoverAutonomy:
         `_autonomy_do`.
         """
         if name not in HUMAN_MOVES:
-            return
+            return False
         run = self.permission.run
         running = run is not None and not run.ended
         if not running:
@@ -557,9 +574,26 @@ class RoverAutonomy:
             # setting off; ordinary manual driving on a rover with no run open
             # is simply driving, and a second stop changes nothing.
             if name != "stop_driving" or self.permission.latch is not None:
-                return
+                return False
         self.autonomy_taken("a person", TAKEOVER.get(name)
                             or f"somebody drove the rover by hand ({name})")
+        return running
+
+    def autonomy_handover(self) -> None:
+        """Wait, briefly, for a stopped autonomous leg to let go of the wheels.
+
+        Not serialized, and it must not be: the leg's own thread reports how it
+        ended through `autonomy_trip_ended`, which takes the autonomy lock, and
+        a wait held inside that lock would be a wait for itself. Returns when the
+        navigator has no move running or after `TAKEOVER_HANDOVER_S`, whichever
+        is first; a move that has still not let go by then is refused as busy,
+        as before, and says so.
+        """
+        if self.nav is None:
+            return
+        deadline = time.monotonic() + TAKEOVER_HANDOVER_S
+        while self.nav.driving and time.monotonic() < deadline:
+            time.sleep(TAKEOVER_POLL_S)
 
     @serialized
     def autonomy_trip_ended(self, asked: dict[str, Any], outcome: Any) -> None:
