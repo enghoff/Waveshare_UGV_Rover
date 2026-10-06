@@ -1,0 +1,313 @@
+{
+  "world_generation": "07dec15b41240130",
+  "input_sha256": {
+    "episodes.db": "fe319effbb1d6c401f8f5fd9dcff0b0fb91f2e57bc326a43f4353380cd7fbed6",
+    "world.db": "38a10cfa29896f415a179916d0c0f4e76a26b898e0a7b2f80c2ff5458ea7fee4"
+  },
+  "limits": [
+    "Owners are those in the copied world store, not at call time.",
+    "Physical identity and missed detection require image review.",
+    "Unchanged replies are not joined to a nearby frame by time.",
+    "Stores were backed up consecutively, not atomically together."
+  ],
+  "counts": {
+    "no_inspection_call": 24,
+    "target_no_longer_in_world_snapshot": 58,
+    "unchanged_picture": 88,
+    "inspection_failed": 16,
+    "frame_observations_elsewhere_or_unassigned": 92,
+    "target_has_frame_observation": 7
+  },
+  "decisions": 285,
+  "exact_frames": 157,
+  "unique_exact_frames": 157,
+  "exact_frames_with_surviving_target": 99,
+  "frames_with_depth": 153,
+  "frames_with_depth_on_target": 3,
+  "audit_sha256": "37615e859352ff0d8f24f227aee960f4ce2891f36aace179ad6c8fb42ae51183",
+  "case": {
+    "episode": 858,
+    "target": "object:328",
+    "decision_at": 1791286520.0429578,
+    "generation": "07dec15b41240130",
+    "target_exists_in_snapshot": true,
+    "target_before": {
+      "created_at": 1791041020.275914,
+      "exemplar_count": 5,
+      "id": "object:328",
+      "kind": "object",
+      "label": "",
+      "last_map_session": 67,
+      "last_seen_at": 1791286360.3020852,
+      "observation_count": 71,
+      "placement": {
+        "baseline_m": 1.292,
+        "error_major_deg": -50.6,
+        "error_major_m": 1.082,
+        "error_minor_m": 0.801,
+        "extent_m": 0.512,
+        "height_above_floor_m": 1.509,
+        "height_m": 1.274,
+        "height_sigma_m": 0.459,
+        "parallax_deg": 13.7,
+        "rays_agreeing": 15,
+        "refined_from": 15,
+        "spread_m": 0.716,
+        "stated_uncertainty_m": 1.082,
+        "uncertainty_m": 1.082,
+        "viewpoints": 7,
+        "x_m": -18.968,
+        "y_m": -12.391
+      },
+      "placement_map_session": 67,
+      "placement_uncertainty_m": 1.082,
+      "ranging": {
+        "looks": 71,
+        "never_ranged": false,
+        "only_outside_view": false,
+        "outside_view": 13,
+        "ranged": 46,
+        "unmeasurable": 12
+      }
+    },
+    "rationale": "object:328 is placed to 1.08 m, seen 71 times; a look from 1.5 m crossing at 80 degrees would bring that to about 0.10 m",
+    "measured": {
+      "battery_v": 11.65,
+      "placement_improved_m": 0.0,
+      "placement_uncertainty_after_m": 1.082,
+      "placement_uncertainty_before_m": 1.082,
+      "put_aside": true,
+      "travelled_m": 6.84,
+      "what": "the attempt"
+    },
+    "call_event": 22219,
+    "call_at": 1791286528.9385054,
+    "call": {
+      "call": "world_inspect",
+      "duration_s": 6.87,
+      "ok": true,
+      "params": {
+        "aim_at": {
+          "x_m": -18.968,
+          "y_m": -12.391
+        },
+        "map_id": "7da19bef3888",
+        "settle": true
+      },
+      "result": {
+        "action_id": "au/f00092601f8226df/episode:858#24",
+        "detail": "5 of 13 regions kept; 1 of them with no picture in it (a blown-out window, a bare wall); heading corrected by 5.0 deg against the map; 1 of 5 ranged by the depth camera, 4 outside its view; 8 matched, 36 ambiguous, 344 waiting for a look from elsewhere",
+        "frame_id": "20261006-170523-d27ce8",
+        "placed": 5,
+        "pose": {
+          "checked": {
+            "corrected": true,
+            "off_deg": 5.0,
+            "off_m": 0.082,
+            "score": 0.986
+          },
+          "heading_deg": 30.5,
+          "x_m": -19.85,
+          "y_m": -13.573
+        },
+        "status": "ok",
+        "stored": 5
+      }
+    },
+    "frame_id": "20261006-170523-d27ce8",
+    "observations": [
+      {
+        "id": 72147,
+        "entity_id": "object:336",
+        "inference_id": 14600,
+        "observed_at": 1791286524.2176237,
+        "bearing_deg": 26.2,
+        "range_m": null,
+        "range_absent": "outside the depth camera's view",
+        "bearing_sigma_deg": 0.0,
+        "bbox_json": "[0.1382, 0.6502, 0.9392, 0.8688]",
+        "observer_pose_json": "{\"x_m\": -19.85, \"y_m\": -13.573, \"heading_deg\": 30.5, \"checked\": {\"off_deg\": 5.0, \"off_m\": 0.082, \"score\": 0.986, \"corrected\": true}}",
+        "map_session": 67
+      },
+      {
+        "id": 72148,
+        "entity_id": "object:401",
+        "inference_id": 14600,
+        "observed_at": 1791286524.2176237,
+        "bearing_deg": 93.9,
+        "range_m": null,
+        "range_absent": "outside the depth camera's view",
+        "bearing_sigma_deg": 0.0,
+        "bbox_json": "[0.0, 0.0335, 0.1558, 0.6107]",
+        "observer_pose_json": "{\"x_m\": -19.85, \"y_m\": -13.573, \"heading_deg\": 30.5, \"checked\": {\"off_deg\": 5.0, \"off_m\": 0.082, \"score\": 0.986, \"corrected\": true}}",
+        "map_session": 67
+      },
+      {
+        "id": 72149,
+        "entity_id": "object:351",
+        "inference_id": 14600,
+        "observed_at": 1791286524.2176237,
+        "bearing_deg": 63.9,
+        "range_m": 2.664,
+        "range_absent": null,
+        "bearing_sigma_deg": 0.0,
+        "bbox_json": "[0.2406, 0.1292, 0.371, 0.3902]",
+        "observer_pose_json": "{\"x_m\": -19.85, \"y_m\": -13.573, \"heading_deg\": 30.5, \"checked\": {\"off_deg\": 5.0, \"off_m\": 0.082, \"score\": 0.986, \"corrected\": true}}",
+        "map_session": 67
+      },
+      {
+        "id": 72150,
+        "entity_id": "object:315",
+        "inference_id": 14600,
+        "observed_at": 1791286524.2176237,
+        "bearing_deg": -35.7,
+        "range_m": null,
+        "range_absent": "outside the depth camera's view",
+        "bearing_sigma_deg": 0.0,
+        "bbox_json": "[0.9142, 0.2736, 0.9883, 0.3609]",
+        "observer_pose_json": "{\"x_m\": -19.85, \"y_m\": -13.573, \"heading_deg\": 30.5, \"checked\": {\"off_deg\": 5.0, \"off_m\": 0.082, \"score\": 0.986, \"corrected\": true}}",
+        "map_session": 67
+      },
+      {
+        "id": 72151,
+        "entity_id": null,
+        "inference_id": 14600,
+        "observed_at": 1791286524.2176237,
+        "bearing_deg": 85.9,
+        "range_m": null,
+        "range_absent": "outside the depth camera's view",
+        "bearing_sigma_deg": 0.0,
+        "bbox_json": "[0.1365, 0.1886, 0.1942, 0.2859]",
+        "observer_pose_json": "{\"x_m\": -19.85, \"y_m\": -13.573, \"heading_deg\": 30.5, \"checked\": {\"off_deg\": 5.0, \"off_m\": 0.082, \"score\": 0.986, \"corrected\": true}}",
+        "map_session": 67
+      }
+    ],
+    "snapshot_owners": {
+      "object:336": 1,
+      "object:401": 1,
+      "object:351": 1,
+      "object:315": 1,
+      "None": 1
+    },
+    "target_observations": [],
+    "ranged_observations": [
+      72149
+    ],
+    "category": "frame_observations_elsewhere_or_unassigned"
+  },
+  "visual_review": {
+    "method": "post-assignment full-photo and stored-box review, not blind acceptance truth",
+    "same_physical_painting": [
+      72149,
+      70929
+    ],
+    "target_record": "object:328",
+    "new_observation_record": "object:351",
+    "prior_box": [
+      0.1581,
+      0.1243,
+      0.2884,
+      0.3806
+    ],
+    "new_box": [
+      0.2406,
+      0.1292,
+      0.371,
+      0.3902
+    ],
+    "prior_range_m": 1.28,
+    "new_range_m": 2.664,
+    "range_correctness": "both stored sampler answers reproduced exactly; no independent physical distance truth",
+    "image_sha256": {
+      "20261006-125013-67e5da.jpg": "2c5fcf42e27969494a312c6cdb67ae9278a51d3f22452590b5655fee7eb9c930",
+      "20261006-125516-840928.jpg": "b1c93c8a4f48c76d09d21cfb4bfc4c07d3b4157c5cf9d3fead17ab88d5038aaf",
+      "20261006-170239-b02bc2.jpg": "e563afe4e3b1a12f71442fbeb7366b0a0b1630101731259030e3ba8ff09ff9b7",
+      "20261006-170523-d27ce8.jpg": "ce1979ede954cda19f8c2c6c33f8fdd33913e04deea20433826c884f02ddbd13"
+    }
+  },
+  "depth_replay": [
+    {
+      "id": 70929,
+      "stored_range_m": 1.28,
+      "stored_method": "box",
+      "pan": 0.0,
+      "replay": {
+        "range_m": 1.28,
+        "sigma_m": 0.023,
+        "pixels": 528,
+        "valid": 0.652,
+        "method": "box"
+      },
+      "matches_stored": true,
+      "trace": null,
+      "header": {
+        "width": 320,
+        "height": 180,
+        "dtype": "uint16",
+        "unit": "mm",
+        "age_s": 0.407,
+        "apart_s": 0.0,
+        "taken_at": 1791271213.6721,
+        "off_s": 0.0029,
+        "lens": {
+          "fx": 500.3,
+          "fy": 500.17,
+          "cx": 321.23,
+          "cy": 190.69,
+          "width": 640.0,
+          "height": 360.0
+        }
+      },
+      "lens_inferred": false,
+      "depth_sha256": "d44bde6ab60be107982ccc09fc0851e9e6164da891a531968cd585f799c5301c"
+    },
+    {
+      "id": 72149,
+      "stored_range_m": 2.664,
+      "stored_method": "outline",
+      "pan": 0.0,
+      "replay": {
+        "range_m": 2.664,
+        "sigma_m": 0.084,
+        "pixels": 645,
+        "valid": 0.976,
+        "method": "outline"
+      },
+      "matches_stored": true,
+      "trace": {
+        "range_m": 2.664,
+        "band_share": 0.734624145785877,
+        "median_gap_m": 0.0740649168869254,
+        "valid_samples": 878,
+        "quantiles_m": [
+          2.4270155765993793,
+          2.5271514140046487,
+          2.7252367059913682,
+          2.9478650261837966,
+          3.0879894006997093
+        ],
+        "abstain": false
+      },
+      "header": {
+        "width": 320,
+        "height": 180,
+        "dtype": "uint16",
+        "unit": "mm",
+        "age_s": 0.305,
+        "apart_s": 0.0,
+        "taken_at": 1791286523.8427,
+        "off_s": 0.0156,
+        "lens": {
+          "fx": 500.3,
+          "fy": 500.17,
+          "cx": 321.23,
+          "cy": 190.69,
+          "width": 640.0,
+          "height": 360.0
+        }
+      },
+      "lens_inferred": false,
+      "depth_sha256": "9822bcc458fc37a0586a7d9c964fb298857aca1cd5fd62ea08e0ace0e0381495"
+    }
+  ]
+}

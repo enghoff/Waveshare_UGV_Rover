@@ -1,5 +1,13 @@
 # Reviewing entity association
 
+`audit_targeted_looks.py --directory CAPTURE --output REPORT.json` reads frozen
+`episodes.db` and `world.db`, traces chosen geometry goals through exact returned
+frame identifiers, and reports snapshot-time owners. It separates disappeared
+targets, failed/unchanged looks and missing frame evidence. These counts are not
+historical assignment replay or physical labels. The
+[targeted-look review](../../docs/progress/2026-10-06-targeted-look-provenance.md)
+shows why an unchanged target record need not mean the intended object was missed.
+
 The prepared serial trial is `run_prepared_trial.sh` with a fresh `--session`.
 Stage that launcher, `prepare_visibility_trial.py`, `record_navigation_trial.py`,
 `run_visibility_trial.py`, `serial_visibility_trial.py`, `visibility_trial_card.json`,
@@ -7,6 +15,11 @@ Stage that launcher, `prepare_visibility_trial.py`, `record_navigation_trial.py`
 together in a new diagnostic directory on Orin, outside the deployment tree.
 The default performs stationary preflight only. After an untethered owner handover,
 `--execute --motion-authorized` enables the same checked route and serial return.
+The current card uses direct navigation to 55-degree viewing headings and a
+checked direct return from either viewpoint. It omits preliminary chassis turns;
+fresh localization is required at arrival and a missed view heading is refused.
+The [latest stationary check](../../docs/progress/2026-10-06-direct-trial-blocked.md)
+failed starting localization, so this card is not yet cleared for execution.
 Outputs go under `~/.ugv/diagnostics/<session>`; world calls remain under
 `~/.ugv/world/recordings/<session>`. Existing recording markers are refused.
 
@@ -15,11 +28,18 @@ close. An error/forced exit leaves an open checkpoint, never final-STOP proof.
 The trial reserves 15 seconds for return preparation, starts return directly after
 collection, and requests STOP if no return motor command starts by 60 seconds.
 Translations retain a 16-second STOP watchdog; turns use an 8-second watchdog.
+Retained-depth looks reserve 12 seconds and omit synchronous identity settling.
 A failed/partial move or failed
 fresh check stops for recovery; its requested goal is never treated as reached.
 At 35% charge collection ends and return begins; at 15% automatic movement ends
 for manual recovery. An external STOP also ends this session's motion authority.
-STOP and zero motor output are verified before closing support recording. Default
+Before localization, after motion and after STOP, measured linear/angular velocity
+and PWM must remain zero for 0.4 seconds, with healthy board feedback and fresh
+transforms, within three seconds. This is trial admission policy, not calibrated
+stopping distance. The independent localization limits remain unchanged. The
+[first execution](../../docs/progress/2026-10-06-trial-turn-stop.md) explains why
+an `arrived` reply alone did not establish rest.
+STOP is verified before closing support recording. Default
 preflight issues no motion or STOP and can be verified while charging. The local
 recording/timing tests use saved real episodes and calls; they do not prove new
 routes or runtime hardware behavior.

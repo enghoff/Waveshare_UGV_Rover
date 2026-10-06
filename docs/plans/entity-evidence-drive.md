@@ -1,61 +1,74 @@
 # Independent visibility recording
 
 R-WS-13 remains open; R-WS-17 and R-WS-18 remain proposed. Keep the proposed 5%
-contamination target. Evaluate the narrower `replay_visibility_rival_veto.py
---new-visibility-only` candidate with its existing thresholds. Preserve the wider
-failures and old mixed-crop identity-score failure in the
-[October 6 measurement](../progress/2026-10-06-side-painting-recording.md).
+contamination target and the narrower `--new-visibility-only` candidate's existing
+thresholds. Preserve all earlier failures, including the mixed-crop score.
+The [targeted-look audit](../progress/2026-10-06-targeted-look-provenance.md)
+adds a real painting-to-duplicate example but is not independent acceptance truth.
 
-## Handover and execution
+## Blocker before handover
 
-Request the rover only when ready to run. Obtain explicit confirmation that the
-charger is disconnected and this session controls the rover. No chassis movement
-is authorized by this plan. Keep production perception/navigation unchanged.
+Stationary readiness found 17.5 degrees disagreement between reported heading
+and a trusted fresh scan fit. The unchanged limit is 10 degrees. No motion was
+requested. Do not ask for an untethered rover until trustworthy starting
+localization can pass this check. Do not force-fit or relax the check to get a
+pass. Independent confirmation/correction of the starting pose is still needed;
+software preparation and route clearance do not establish it.
 
-Use the committed diagnostic helpers described in the
-[experiment README](../../experiments/entity_association/README.md), staged together
-outside the deploy tree. The prepared launcher defaults to stationary verification;
-only `--execute --motion-authorized` enables motion. Use a fresh session name, for
-example `visibility-independent-20261006-1`; existing outputs and recording markers
-must be refused. Do not reuse the old per-command scratch caller.
+## Prepared execution
+
+The committed diagnostic bundle is `/tmp/visibility-trial-9de3802` on Orin,
+hash-verified against source. It is outside the deploy tree and may disappear on
+reboot; restage the nine files listed in the experiment README if necessary.
+Source and recorder checks are complete; successful motion remains unproven.
+
+After localization is resolved and a fresh charger-disconnected handover, use:
 
 ```bash
-bash /tmp/visibility-trial-COMMIT/run_prepared_trial.sh \
-  --session visibility-independent-20261006-1 --execute --motion-authorized
+bash /tmp/visibility-trial-9de3802/run_prepared_trial.sh \
+  --session visibility-independent-20261006-2 --execute --motion-authorized
 ```
 
-Replace COMMIT with the staged and hash-verified source commit. Before moving,
-the launcher must verify live navigation, stationary motor output, at least 60%
-charge, changing fresh IMU feedback, trusted fresh scan agreement of at least
-90% within 0.25 m/10 degrees, active navigation/board recording and an active
-world-call recording following a fresh stationary depth look. Never reset or
-force-fit maps to make preparation pass.
+A unique session and both flags are required. Obtain handover only when ready to
+execute immediately. Recheck actual HOME, map ID `7da19bef3888`, at least 60%
+charge, fresh changing IMU feedback, trusted scan agreement of at least 90%
+within 0.25 m/10 degrees, and complete active world/navigation/board recording.
 
-Use `visibility_trial_card.json` only while map ID `7da19bef3888` still applies.
-Save the actual current pose as HOME. The two candidate observation positions
-are B (-19.050, -14.850) and C (-20.000, -14.200), with view headings 82.67 and
-67.12 degrees. Recheck HOME-B, B-C, C-B and B-HOME against current live planner
-paths and costmaps. Later starts are hypothetical and must face along travel;
-the executor separately checks its actual turn and route at each leg. Reject
-unknown/occupied body space or a route longer than direct distance plus 0.5 m.
-The apparently obvious farther-west extension (-20.150, -14.850) is not an
-alternative: it intersects the saved obstacle map. Do not improvise another route.
+B is (-19.050, -14.850), C is (-20.000, -14.200). Both arrival headings are
+55 degrees. Predicted painting bearings are 82.67 and 67.12 degrees: offsets of
+27.67 and 12.12 degrees remain within the nominal forward depth field, but actual
+outlined-region depth and visibility must decide coverage. The gimbal must remain
+centred as in the recorded preparation; no ad hoc chassis-facing correction is
+allowed. The B/C baseline still predicts about 15.5 degrees parallax.
 
-Collection and return run serially in one process, without conversational waits.
-Reserve 15 seconds for return preparation. A translation has a 16-second STOP
-watchdog and a turn an 8-second watchdog; admit each only with its allowance
-remaining. Begin checked return as soon as collection ends or no further action
-fits. If the first return motor command has not started by 60 seconds, STOP for
-recovery instead of making a late unverified move. A fresh check failure, partial
-move, external STOP or watchdog ends automatic execution; do not treat an
-unreached waypoint as reached. At 35% charge, end collection and return; at 15%,
-STOP for manual recovery. These are operational limits, not battery calibration.
+Use navigation directly, including its normal turning, rather than a separate
+preliminary `turn_in_place`. Validate HOME-B, B-C, B-HOME and C-HOME against actual
+start/arrival headings. Reject occupied/unknown body space or paths longer than
+direct distance plus 0.5 m. Check current paths and costmaps again before each leg.
+The return is directly to HOME from either completed viewpoint, not through B.
+The old C-B return fails the route limit; the new direct returns passed stationary
+planning. A changed HOME may invalidate those proofs, so handover repeats them.
 
-Return through successfully reached points in reverse order to HOME. Restore
-neither old map coordinates nor an assumed heading. Verify STOP and zero motor
-output, then acknowledge recorder closure and preserve its data. Tell the owner
-when movement is finished so charging can resume. Report map-estimated return
-error and heading difference plainly; do not claim measured docking precision.
+Before and after motion, require measured speed/rotation/PWM zero continuously
+for 0.4 seconds, with healthy board/fresh transforms, within three seconds.
+Command completion alone is insufficient. Check fresh localization at arrival.
+If the requested observation heading is missed by more than five degrees, stop;
+do not issue an extra trial turn. An incomplete move or failed fresh check stops
+for recovery instead of pretending the goal was reached.
+
+The serial run reserves 15 seconds for return preparation, admits translations
+with a 16-second watchdog and retained-depth looks with 12 seconds available.
+Looks record without synchronous identity settling; the normal world-state
+clock handles settling, and the call recorder retains the actual passes.
+Return starts as soon as collection ends or no next action fits. If no return
+motor command begins by 60 seconds, STOP for recovery. At 35% charge return;
+at 15% stop for manual recovery. External STOP ends this session's control.
+
+Verify physical rest, close the recorders and tell the owner movement is finished
+so charging can resume. Report map-estimated return error and heading difference;
+this is not docking precision. Copy and hash-verify evidence before saying the
+rover may be powered off. No production perception/navigation change is part of
+this trial.
 
 ## Evidence and decision
 
@@ -94,6 +107,7 @@ strength. Preserve all earlier frozen scores, including mixed-crop failures.
 
 Pure-table/glass observations with independently measured distance, partial/whole
 armchair representation and duplicate historical placements remain separate owed
-controls. A frozen-rotation-feedback guard also remains unimplemented; it needs
-reproduction against failed and healthy moving/stationary recordings before a
-control change. A successful power cycle does not establish that fault is gone.
+controls. The newer rotation-feedback guard is documented in
+[the October 6 measurement](../progress/2026-10-06-a-rover-that-cannot-feel-itself-turn.md);
+respect it during handover. A successful power cycle alone does not establish
+that fault is gone.

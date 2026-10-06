@@ -1,0 +1,194 @@
+{
+  "source": "9de3802",
+  "source_hashes": {
+    "run_prepared_trial.sh": "03a6db5b1de7a696fe6d6d3ed39d210b82fc323cddec0241cd2de41ca4e4c1a7",
+    "prepare_visibility_trial.py": "c2bd40b00af447aba213d116a7f49c3da23cd664119c97eae7b9fe568bc9b5f6",
+    "record_navigation_trial.py": "46ae2b61f8182552dac21122ba7b63c01b6b845d6a1da8dee4726d7d2b84cdb7",
+    "run_visibility_trial.py": "fdd8818c91f61f215190bfd65e4c3e17de92cdc548ae2cd172ee45b0c738f375",
+    "serial_visibility_trial.py": "da5d446dda90c4e4c09fbeb7ddcf110ba98a044e53727c9c8b6c44694469e9c0",
+    "visibility_trial_card.json": "1e967f729df2363e6ce048853e371dd8960301ea91b8347fd71f3e27b575a843",
+    "check_recorded_turn.py": "ff8a50119acd2728200a65c2ad7ba3d6300f2e477d98e119737c2262407dd0f5",
+    "capture_route_costmaps.py": "f0b1cc4169d1d8e0525689c1f6c32d69b19397dc48589131deb98f3a5fe63d93",
+    "plan_visibility_route.py": "4749903a8d05bbf4591d6582c57ebffb301283ce191ac0fe953f59251d8ee8e1"
+  },
+  "recording_source": "b9454a9",
+  "readiness_result": {
+    "motion_requested": false,
+    "world_warmup": {
+      "ok": true,
+      "status": "ok",
+      "inference_id": 14691,
+      "frame_id": "20261006-191043-98566d",
+      "scene": "",
+      "duration_s": 0.98,
+      "returned": 14,
+      "stored": 12,
+      "placed": 12,
+      "matched": 0,
+      "created": 0,
+      "ambiguous": 0,
+      "still_waiting": 0,
+      "settled": false,
+      "moved_m": 0.0,
+      "turned_deg": 0.0,
+      "pose": {
+        "x_m": -17.125,
+        "y_m": -15.784,
+        "heading_deg": 160.0,
+        "checked": {
+          "off_deg": 17.5,
+          "off_m": 0.04,
+          "score": 0.981,
+          "corrected": true
+        }
+      },
+      "rejected": 2,
+      "entities": [],
+      "detail": "12 of 18 regions kept; heading corrected by 17.5 deg against the map; 6 of 12 ranged by the depth camera (1 from the box), 6 outside its view; identity not settled yet",
+      "decisions": [],
+      "map_session": 67,
+      "model_id": "tensorrt",
+      "found": 18,
+      "timings": {
+        "regions_ms": 23,
+        "dino_ms": 81,
+        "dino_alone_ms": 81,
+        "siglip_ms": 53
+      },
+      "look_s": 0.38,
+      "took_s": 8.64
+    },
+    "error": "Fresh stationary localization check failed",
+    "world_close": {
+      "ok": true,
+      "status": "unchanged",
+      "unchanged": true,
+      "inference_id": 14692,
+      "changed_share": 0.0,
+      "duration_s": 0.41,
+      "detail": "the same picture as the last look -- 0.0% of it differed",
+      "returned": 0,
+      "stored": 0,
+      "placed": 0,
+      "matched": 0,
+      "created": 0,
+      "ambiguous": 0,
+      "rejected": 0,
+      "settled": false,
+      "entities": [],
+      "decisions": [],
+      "took_s": 0.93
+    },
+    "recorder_exit": 0,
+    "navigation_closed": true,
+    "navigation_counts": {
+      "poses": 152,
+      "costmaps": 29,
+      "plans": 0,
+      "commands": 0
+    },
+    "board_error": [],
+    "world_recording_expected": "/home/jetson/.ugv/world/recordings/visibility-direct-readiness-b9454a9",
+    "world_recording_complete": true
+  },
+  "measure": {
+    "kind": "reply",
+    "ok": true,
+    "trusted": true,
+    "why": "the scan fits the map 6 cm and 17.5 degrees from where the rover thought it was, with 99% of it on a wall against 60% where it stood",
+    "settled": false,
+    "x_m": -17.125,
+    "y_m": -15.764,
+    "heading_deg": 160.0,
+    "moved_m": 0.06,
+    "turned_deg": 17.5,
+    "score": 0.988,
+    "rival": 0.777,
+    "guess_score": 0.603,
+    "points": 272,
+    "scored": 272,
+    "took_s": 0.09,
+    "was": {
+      "x_m": -17.125,
+      "y_m": -15.824,
+      "heading_deg": 142.5
+    }
+  },
+  "world_hashes": {
+    "visibility-direct-readiness-b9454a9/events.jsonl": "01d73aeeed575e7b33a2eca6da6b8c224ff203cf9c8a5d6053b78e4a51e0848f",
+    "visibility-direct-readiness-b9454a9/after.db": "2dd829ff6b9b80311280910d6a15d6832857ef44122e6329f9580a7f2607f039",
+    "visibility-direct-readiness-b9454a9/manifest.json": "e620d5f5ab75831730d826fada50b1ecb99d6309ecd3f86cdbafd36d4e8fbab3",
+    "visibility-direct-readiness-b9454a9/before.db": "81b8aecbb185b8a4ae8fc0e2f8b4f3afa96de0bb502b478c1014ddff28df2387",
+    "visibility-direct-readiness-b9454a9/maps/28232a9205d712fa482b74b5d4a0d7e22786c159b27ddc9f5068feed00febf65.json": "28232a9205d712fa482b74b5d4a0d7e22786c159b27ddc9f5068feed00febf65",
+    "frames/20261006-191043-98566d.jpg": "9393b34fa485a9b188e93eb9faa14115f7987636b0b9f9d446b1c54386ea083a",
+    "frames/20261006-191043-98566d.depth.gz": "d2769f2f5889c1357cc6be3fc7a01906ffe728bb5f844377c99bf7e08847f254"
+  },
+  "support_hashes": {
+    "result.json": "20e44e6306aff77cf30dc6a83fb69d87ddae7b152f2cf5f256de1b367029e5c4",
+    "support/navigation.log": "e65103c10a23d0ce4020db857263f421295d81a2d5920ca8453856c8344a5459",
+    "support/board.jsonl": "92fc12de6c64240fbafe02f8916fa77663f59d434b6384ee909c8ede8cc62b56",
+    "support/stop": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "support/navigation.json": "63ed256d1b7f4fb10d4b04fc8cf14a56b39e35e0f45563708156cba456eca1e1",
+    "run/events.jsonl": "ff557be11e849773f5d8ab94afbbd530a24c6fa6f3b0781ffb18d0602c6966d3"
+  },
+  "tests": 25,
+  "routes": [
+    {
+      "start": [
+        -17.125,
+        -15.824,
+        142.5
+      ],
+      "goal": [
+        -19.05,
+        -14.85,
+        55.0
+      ],
+      "accepted": true,
+      "length_m": 2.5376804536259576
+    },
+    {
+      "start": [
+        -19.05,
+        -14.85,
+        55.0
+      ],
+      "goal": [
+        -20,
+        -14.2,
+        55.0
+      ],
+      "accepted": true,
+      "length_m": 1.1572067328949793
+    },
+    {
+      "start": [
+        -20,
+        -14.2,
+        55.0
+      ],
+      "goal": [
+        -17.125,
+        -15.824,
+        -29.460782994347383
+      ],
+      "accepted": true,
+      "length_m": 3.7632950799725378
+    },
+    {
+      "start": [
+        -19.05,
+        -14.85,
+        55.0
+      ],
+      "goal": [
+        -17.125,
+        -15.824,
+        -26.83822550200051
+      ],
+      "accepted": true,
+      "length_m": 2.52369725871782
+    }
+  ],
+  "route_capture_sha256": "33424286c984e928f5f28b4736f0e88594b7b10f7376115b37b7e597b6409572"
+}
