@@ -24,7 +24,8 @@ t0 = time.time()
 while time.time() - t0 < 3600:
     st = call("autonomy_status")
     nav = call("nav_status")
-    pct = call("battery").get("percent")
+    bat = call("battery")
+    pct, volts = bat.get("percent"), bat.get("volts")
     run = st.get("run") or {}
     if run:
         seen_run = True
@@ -58,7 +59,7 @@ while time.time() - t0 < 3600:
     elif low_since is None:
         low_since = now
     if low_since is not None and now - low_since >= 12:
-        print(time.strftime("%H:%M:%S"), "BATTERY AT FLOOR", pct, flush=True)
+        print(time.strftime("%H:%M:%S"), "BATTERY AT FLOOR", pct, volts, flush=True)
         break
     if now - last_summary > 120:
         last_summary = now

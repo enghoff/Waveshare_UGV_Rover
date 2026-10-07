@@ -3,8 +3,8 @@
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
-the rover in supervised stop trials and in M0a's inspection runs. Nine M3 sessions
-have run, just over an hour, seven of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
+the rover in supervised stop trials and in M0a's inspection runs. Ten M3 sessions
+have run, about 70 minutes, eight of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
 showed R-AUT-13's ending, and on 2026-10-06 a repeated request, a hung executive
 and a lost connection were [tried on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md).
 M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
@@ -598,7 +598,9 @@ Most of M3 is still physical:
   over 4.6 s with [the swing fixed](../progress/2026-10-07-why-the-rover-turns-back-and-forth-on-the-spot.md),
   ended by going home past the margin;
   [9](../progress/2026-10-07-m3-session-9.md), about 3 minutes with the depth
-  camera off, stopped when the rover could no longer pivot at 30%);
+  camera off, stopped when the rover could no longer pivot at 30%;
+  [10](../progress/2026-10-07-m3-session-10.md), about 5 minutes, the owner in
+  view only once, the rover snagged once on shoes below the lidar's plane);
   M0a's runs were its own protocol and do not count towards them. Open each
   with no action limit. A fenced condition gets a safe area around the cleared
   room, drawn 0.6 m beyond where the run starts. A fenced run ends by going home
@@ -608,8 +610,14 @@ Most of M3 is still physical:
   reading while driving sags by up to 30 points. A supervised session may run
   down to 10% at rest, the owner's standing floor since 2026-10-07, and is then
   stopped and driven back to the charger. Session 9 found the rover could not
-  pivot at 30% (11.3 V at rest), and the percent reading is erratic, so the floor
-  wants setting in volts where pivots still work, once that is measured.
+  pivot at 30% (11.3 V at rest), and the percent reading is erratic; a floor in
+  volts is a proposal for the owner, and until they agree the floor is 10%.
+- **Contacts the lidar cannot see.** It scans one plane about 20 cm up, so
+  shoes and rugs are invisible to it. In session 10 the rover snagged on a pair
+  of shoes, and the owner reports it often snags on a rug. Criterion 5 counts
+  both. Shoes are a matter of clearing the floor; a rug in the room stays a
+  hazard until it is marked on the map as somewhere not to drive, or taken up
+  for sessions.
 - **Looks that improve nothing.** Of 171 geometry goals on record, 10 improved
   their thing when measured and 9 more within a minute
   ([the measurement](../progress/2026-10-06-looks-seldom-reach-their-thing.md)).
@@ -699,7 +707,8 @@ conditions are:
   appeared, with the map's restore, the gyro's bias and the depth camera all
   fresh;
 - **a person moving through the area**, crossing the rover's path and standing
-  where it wants to go;
+  where it wants to go, several times in a session. Session 10 had the owner in
+  view once, which does not count;
 - **furniture moved since the map was made**: something standing in a mapped
   gap, or a door open that the map has shut;
 - **the depth camera unavailable**, its service stopped for the run, which is
