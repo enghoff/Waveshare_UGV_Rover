@@ -1,11 +1,19 @@
 """Serial trial policy. Backend owns live checks; no conversational waits in a run.
 
-The 60-second limit is a deadline for the first return motor command, not merely
-for declining another observation. Slow/failed checks cause STOP, never unchecked
+The RETURN_BY_S limit is a deadline for the first return motor command, not
+merely for declining another observation. Slow/failed checks cause STOP, never unchecked
 motion. A partial move requires recovery rather than treating its goal as reached.
 """
 import math
 import time
+
+
+#: The first return motor command must start by this many seconds after the
+#: outbound leg begins. It was 60 until 2026-10-07, when a run that reached both
+#: viewpoints and centred the painting at each ran out at C before its look:
+#: two drives, two centring turns and two looks with their checks do not fit
+#: in 60 s on this chassis.
+RETURN_BY_S = 90
 
 
 class ReturnNow(Exception):
@@ -20,7 +28,7 @@ def run(backend, points, *, clock=time.monotonic, direct_return=False):
     home = backend.preflight(points)
     reached = [home]
     start = clock()
-    backend.arm(start + 60)
+    backend.arm(start + RETURN_BY_S)
     result = {'returned': False, 'reached': [], 'collection_complete': False}
     try:
         try:
