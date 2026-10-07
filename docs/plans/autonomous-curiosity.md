@@ -3,14 +3,15 @@
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
-the rover in supervised stop trials and in M0a's inspection runs. Eight M3 sessions
-have run, about an hour, six of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
+the rover in supervised stop trials and in M0a's inspection runs. Nine M3 sessions
+have run, just over an hour, seven of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
 showed R-AUT-13's ending, and on 2026-10-06 a repeated request, a hung executive
 and a lost connection were [tried on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md).
 M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
-the six conditions not yet driven, which replaced a count of twenty on 2026-10-07
+the five conditions not yet driven, which replaced a count of twenty on 2026-10-07
 ([the decision](../decisions/trials-are-sized-by-what-they-show.md)); the charger
-room's is met ([session 8](../progress/2026-10-07-m3-session-8.md)). M4 then waits on the world state before it needs the rover. Later phases remain proposed. This is the
+room's is met ([session 8](../progress/2026-10-07-m3-session-8.md)), and so is the
+depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 then waits on the world state before it needs the rover. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -595,7 +596,9 @@ Most of M3 is still physical:
   the lock, stopped by a person after a near goal swung on the spot for 72 s;
   [8](../progress/2026-10-07-m3-session-8.md), about 9 minutes, no short goal
   over 4.6 s with [the swing fixed](../progress/2026-10-07-why-the-rover-turns-back-and-forth-on-the-spot.md),
-  ended by going home past the margin);
+  ended by going home past the margin;
+  [9](../progress/2026-10-07-m3-session-9.md), about 3 minutes with the depth
+  camera off, stopped when the rover could no longer pivot at 30%);
   M0a's runs were its own protocol and do not count towards them. Open each
   with no action limit. A fenced condition gets a safe area around the cleared
   room, drawn 0.6 m beyond where the run starts. A fenced run ends by going home
@@ -604,7 +607,9 @@ Most of M3 is still physical:
   battery floor. Start each on a full charge and judge the battery at rest: a
   reading while driving sags by up to 30 points. A supervised session may run
   down to 10% at rest, the owner's standing floor since 2026-10-07, and is then
-  stopped and driven back to the charger.
+  stopped and driven back to the charger. Session 9 found the rover could not
+  pivot at 30% (11.3 V at rest), and the percent reading is erratic, so the floor
+  wants setting in volts where pivots still work, once that is measured.
 - **Looks that improve nothing.** Of 171 geometry goals on record, 10 improved
   their thing when measured and 9 more within a minute
   ([the measurement](../progress/2026-10-06-looks-seldom-reach-their-thing.md)).
@@ -698,7 +703,8 @@ conditions are:
 - **furniture moved since the map was made**: something standing in a mapped
   gap, or a door open that the map has shut;
 - **the depth camera unavailable**, its service stopped for the run, which is
-  how a USB drop leaves a run: looks that cannot range.
+  how a USB drop leaves a run: looks that cannot range. Met by session 9: the
+  looks neither failed nor stopped the run.
 
 ## Phase 4 -- semantic claims, knowledge gaps and active perception
 
