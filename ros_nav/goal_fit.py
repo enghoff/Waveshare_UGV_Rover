@@ -33,6 +33,7 @@ maps as it drives, and a goal in a room it has not seen yet is a normal thing to
 ask for rather than a mistake.
 """
 
+import heapq
 import json
 import math
 
@@ -145,26 +146,33 @@ def covered(grid, footprint, x, y, yaw):
     return cells
 
 
-def fits(grid, footprint, x, y, yaw):
-    """Can the rover stand here, facing this way, without being in something?"""
+def fits(grid, footprint, x, y, yaw, worst=INSCRIBED):
+    """Can the rover stand here, facing this way, without being in something?
+
+    `worst` is the lowest cost that counts as being in it: the inscribed ring
+    by default, and `LETHAL` for the live costmap, where only a cell the scan
+    hit is something the body would touch."""
     for col, row in covered(grid, footprint, x, y, yaw):
-        if blocked(grid.cost(col, row)):
+        if worst <= grid.cost(col, row) <= LETHAL:
             return False
     return True
 
 
-def line_fits(grid, footprint, a, b):
+def line_fits(grid, footprint, a, b, worst=INSCRIBED, skip_m=0.0):
     """Can the body drive straight from `a` to `b`, facing along the line?
 
     Sampled at the grid's own resolution, end to end, so nothing a cell wide is
-    stepped over."""
+    stepped over. The first `skip_m` is not checked: where the rover already
+    stands is not a question about the way ahead."""
     length = math.hypot(b[0] - a[0], b[1] - a[1])
     yaw = math.atan2(b[1] - a[1], b[0] - a[0])
     steps = max(1, int(math.ceil(length / grid.resolution)))
     for step in range(steps + 1):
         share = float(step) / steps
+        if share * length < skip_m:
+            continue
         if not fits(grid, footprint, a[0] + (b[0] - a[0]) * share,
-                    a[1] + (b[1] - a[1]) * share, yaw):
+                    a[1] + (b[1] - a[1]) * share, yaw, worst):
             return False
     return True
 
@@ -183,6 +191,12 @@ def straight_legs(grid, footprint, start, route, max_legs=4):
     line, a turn, as the rover drives naturally, instead of the curve the
     controller will not follow so close to where it is going (2026-10-07).
     """
+    return _legs(start, route, max_legs,
+                 lambda a, b: line_fits(grid, footprint, a, b))
+
+
+def _legs(start, route, max_legs, straight):
+    """`route` cut into the fewest lines `straight(a, b)` allows, or None."""
     points = list(route)
     if not points:
         return None
@@ -190,7 +204,7 @@ def straight_legs(grid, footprint, start, route, max_legs=4):
     while reached < len(points) - 1:
         onward = None
         for index in range(len(points) - 1, reached, -1):
-            if line_fits(grid, footprint, here, points[index]):
+            if straight(here, points[index]):
                 onward = index
                 break
         if onward is None or len(legs) >= max_legs:
@@ -198,6 +212,142 @@ def straight_legs(grid, footprint, start, route, max_legs=4):
         here, reached = tuple(points[onward]), onward
         legs.append(here)
     return legs
+
+
+def room_round(grid, start, goal, clear_m, tight_m, relax_m):
+    """Where the rover's centre may go on its way round something, one byte a
+    cell: at least `clear_m` from anything the costmap holds as lethal, or,
+    within `relax_m` of where it starts or is going, at least `tight_m`.
+
+    For the live costmap, where a person standing in the way is a few lethal
+    cells and nothing else: `clear_m` is the body's furthest corner and some to
+    spare, so at whatever heading it passes, it does not brush them. Distances
+    are from a lethal cell's edge, measured cell centre to cell centre.
+    """
+    res = grid.resolution
+    width, height = grid.width, grid.height
+    reach = int(math.ceil(clear_m / res)) + 1
+    nearest = [(reach + 1) ** 2] * (width * height)
+    disc = [(dc, dr, dc * dc + dr * dr)
+            for dc in range(-reach, reach + 1) for dr in range(-reach, reach + 1)
+            if dc * dc + dr * dr <= reach * reach]
+    data = grid.data
+    for index in range(width * height):
+        if data[index] != LETHAL:
+            continue
+        col, row = index % width, index // width
+        for dc, dr, d2 in disc:
+            c, r = col + dc, row + dr
+            if 0 <= c < width and 0 <= r < height and d2 < nearest[r * width + c]:
+                nearest[r * width + c] = d2
+    clear2 = (clear_m / res + 0.5) ** 2
+    tight2 = (tight_m / res + 0.5) ** 2
+    out = bytearray(width * height)
+    for index in range(width * height):
+        col, row = index % width, index // width
+        x = grid.origin_x + (col + 0.5) * res
+        y = grid.origin_y + (row + 0.5) * res
+        need = clear2
+        if (math.hypot(x - start[0], y - start[1]) <= relax_m
+                or math.hypot(x - goal[0], y - goal[1]) <= relax_m):
+            need = tight2
+        out[index] = 1 if nearest[index] >= need else 0
+    return out
+
+
+#: How much wider than it has to be the way round is searched for first. The
+#: shortest way hugs the edge of the room it is given, and a straight line
+#: between two points on a curved edge cuts inside it: round one person, legs
+#: at the edge took five, and with this much spare, two or three.
+ROUND_SPARE_M = 0.10
+
+
+def legs_round(grid, start, goal, clear_m, tight_m, relax_m, max_legs=4):
+    """A way round whatever is between `start` and `goal`, as straight legs.
+
+    The shortest way over `room_round`'s cells, eight-connected, cut into the
+    fewest straight lines that stay on them. It is searched for
+    `ROUND_SPARE_M` wider first, and as given if that finds nothing; the legs
+    are held to `clear_m` either way. Returns the legs' end points, the last
+    being `goal`, or None when there is no way or it takes more than
+    `max_legs`. Unlike `straight_legs` it needs no planner's route: it is for
+    the live costmap, which the global planner never sees (2026-10-07: M3
+    session 13, the owner standing in front of a near goal the planner drew
+    straight through them).
+    """
+    room = room_round(grid, start, goal, clear_m, tight_m, relax_m)
+    width, height = grid.width, grid.height
+    begin, end = grid.cell_of(*start), grid.cell_of(*goal)
+    for col, row in (begin, end):
+        if not (0 <= col < width and 0 <= row < height):
+            return None
+    if not room[end[1] * width + end[0]]:
+        return None
+    res = grid.resolution
+
+    def stays(a, b):
+        length = math.hypot(b[0] - a[0], b[1] - a[1])
+        steps = max(1, int(math.ceil(2.0 * length / res)))
+        for i in range(steps + 1):
+            col, row = grid.cell_of(a[0] + (b[0] - a[0]) * i / steps,
+                                    a[1] + (b[1] - a[1]) * i / steps)
+            if (col, row) == begin:
+                continue
+            if not (0 <= col < width and 0 <= row < height) \
+                    or not room[row * width + col]:
+                return False
+        return True
+
+    wider = room_round(grid, start, goal, clear_m + ROUND_SPARE_M, tight_m,
+                       relax_m)
+    for search in (wider, room):
+        route = _shortest(grid, search, begin, end, goal)
+        legs = _legs(start, route, max_legs, stays) if route else None
+        if legs:
+            return legs
+    return None
+
+
+def _shortest(grid, room, begin, end, goal):
+    """The shortest eight-connected way over `room` from cell `begin` to cell
+    `end`, as the cell centres after `begin` with `goal` itself last, or None.
+    """
+    width, height = grid.width, grid.height
+    if not room[end[1] * width + end[0]]:
+        return None
+    root2 = math.sqrt(2.0)
+
+    def guess(cell):
+        dc, dr = abs(cell[0] - end[0]), abs(cell[1] - end[1])
+        return max(dc, dr) + (root2 - 1.0) * min(dc, dr)
+
+    came, cost, frontier = {begin: None}, {begin: 0.0}, [(guess(begin), begin)]
+    while frontier:
+        _, cell = heapq.heappop(frontier)
+        if cell == end:
+            break
+        for dc in (-1, 0, 1):
+            for dr in (-1, 0, 1):
+                step = (cell[0] + dc, cell[1] + dr)
+                if step == cell or not (0 <= step[0] < width
+                                        and 0 <= step[1] < height):
+                    continue
+                if not room[step[1] * width + step[0]]:
+                    continue
+                spent = cost[cell] + (root2 if dc and dr else 1.0)
+                if spent < cost.get(step, float("inf")):
+                    cost[step], came[step] = spent, cell
+                    heapq.heappush(frontier, (spent + guess(step), step))
+    if end not in came:
+        return None
+    cells, cell = [], end
+    while cell is not None and cell != begin:
+        cells.append(cell)
+        cell = came[cell]
+    cells.reverse()
+    res = grid.resolution
+    return [(grid.origin_x + (c + 0.5) * res, grid.origin_y + (r + 0.5) * res)
+            for c, r in cells[:-1]] + [tuple(goal)]
 
 
 def candidates(grid, x, y, reach_m):

@@ -95,6 +95,46 @@ BLOCKED_ASK_S = 1.0
 ROUND_LEGS = 4
 ROUND_EXTRA_M = 3.0
 
+#: **A near goal looks for what is in its way on the live scan, not the map.**
+#: The planner's costmap is slam_toolbox's map alone (config/nav2.yaml), which
+#: a person standing in front of a still rover is never drawn into. In M3
+#: session 13 (2026-10-07) the planner drew a 1.0 m goal straight through the
+#: owner, the controller -- which sees them -- refused every move forward, and
+#: the rover swung on the spot for 25 s until the stall watch ended it. So the
+#: way is read on the local costmap: blocked when the body would sweep a cell
+#: the scan hit, bar the first `LIVE_SKIP_M`. A way round keeps the centre
+#: `ROUND_CLEAR_M` from them -- the footprint's furthest corner, 0.244 m, and
+#: 6 cm to spare -- or its half-width within `ROUND_RELAX_M` of either end.
+LIVE_SKIP_M = 0.10
+ROUND_CLEAR_M = 0.30
+ROUND_TIGHT_M = 0.14
+ROUND_RELAX_M = 0.30
+
+#: How often a near goal's drive looks at the live scan for something stepping
+#: into its way once it has set off, and how many times one goal may be
+#: stopped for that before it is handed back.
+LIVE_LOOK_S = 1.0
+NEAR_TRIES = 3
+
+#: How every near-goal sentence about something in the way begins, which is
+#: how the caller tells it from any other refusal.
+IN_THE_WAY = "something is in the way"
+
+
+def to_odom(correction, point):
+    """A point in the map frame, in the odom frame. `correction` is `map ->
+    odom` as `(x, y, yaw)`, as `correction()` reads it."""
+    dx, dy = point[0] - correction[0], point[1] - correction[1]
+    cos_yaw, sin_yaw = math.cos(correction[2]), math.sin(correction[2])
+    return (cos_yaw * dx + sin_yaw * dy, -sin_yaw * dx + cos_yaw * dy)
+
+
+def to_map(correction, point):
+    """A point in the odom frame, in the map frame: `to_odom` undone."""
+    cos_yaw, sin_yaw = math.cos(correction[2]), math.sin(correction[2])
+    return (correction[0] + cos_yaw * point[0] - sin_yaw * point[1],
+            correction[1] + sin_yaw * point[0] + cos_yaw * point[1])
+
 
 class NavMoves:
     """The half of `NavBridge` that asks Nav2 to move the rover."""
@@ -471,6 +511,74 @@ class NavMoves:
                                  grid.metadata.origin.position.y,
                                  bytes(bytearray(grid.data)))
 
+    def live_costmap(self):
+        """The local costmap -- the live scan round the rover, in the odom
+        frame -- and the `map -> odom` correction to read it by, or None.
+
+        The one costmap a person standing in the way is on; see `LIVE_SKIP_M`.
+        """
+        client = getattr(self, "live_client", None)
+        if client is None or not client.wait_for_service(timeout_sec=1.0):
+            return None
+        correction = self.correction()
+        if correction is None:
+            return None
+        future = client.call_async(GetCostmap.Request())
+        if not self.wait(future, COSTMAP_TIMEOUT_S):
+            return None
+        answer = future.result()
+        if answer is None:
+            return None
+        grid = answer.map
+        return (goal_fit.CostGrid(grid.metadata.size_x, grid.metadata.size_y,
+                                  grid.metadata.resolution,
+                                  grid.metadata.origin.position.x,
+                                  grid.metadata.origin.position.y,
+                                  bytes(bytearray(grid.data))), correction)
+
+    def seen_in_the_way(self, goal, live=None):
+        """A sentence when the live scan has something on the straight line
+        from the rover to `goal`, or "". Also "" when there is no live costmap,
+        pose or body to ask, which leaves a near goal to the planner as before.
+        """
+        live = live or self.live_costmap()
+        here = self.pose()
+        body = self.footprint() if live is not None else None
+        if live is None or here is None or body is None:
+            return ""
+        grid, correction = live
+        if goal_fit.line_fits(grid, body, to_odom(correction, here),
+                              to_odom(correction, goal), worst=goal_fit.LETHAL,
+                              skip_m=LIVE_SKIP_M):
+            return ""
+        return ("%s: the scan has something on the straight line to a goal "
+                "%.1f m away" % (IN_THE_WAY, math.hypot(goal[0] - here[0],
+                                                       goal[1] - here[1])))
+
+    def near_watch(self, goal, give_up=None):
+        """The give-up for a near goal's straight drive. Something stepping
+        into the way, looked for on the live scan every `LIVE_LOOK_S`, ends it;
+        so does the caller's own give-up, or the stall watch every goal has.
+        """
+        if give_up is None:
+            stall = frontier.Stall()
+
+            def give_up(now, feedback):
+                return stall.update(now, self.pose(),
+                                    int(feedback.get("recoveries") or 0))
+
+        looked = [None]
+
+        def watch(now, feedback):
+            if looked[0] is None or now - looked[0] >= LIVE_LOOK_S:
+                looked[0] = now
+                seen = self.seen_in_the_way(goal)
+                if seen:
+                    return seen
+            return give_up(now, feedback)
+
+        return watch
+
     def fit_goal(self, gx, gy, yaw):
         """Move a goal to the nearest place the rover's body will actually go.
 
@@ -704,29 +812,38 @@ class NavMoves:
                     goal, None if yaw is None else math.degrees(yaw), say,
                     give_up=give_up, guard=guard, unwedge=unwedge, near=False))
 
-        blocked = self.wait_for_the_way(goal, say, guard)
-        if blocked and not blocked.startswith("something is in the way"):
-            return tally({"reason": "blocked", "travelled_m": 0.0,
-                          "turned_deg": 0.0, "detail": blocked})
-        if blocked:
-            went = self.round_by_legs(goal, say, guard, blocked)
-            if went.get("reason") != "arrived" or yaw is None:
-                return tally(went)
-            moved[0] += float(went.get("travelled_m") or 0.0)
-            swung[0] += float(went.get("turned_deg") or 0.0)
-            here = self.pose()
-            off = math.degrees(wrap(yaw - here[2]))
-            if abs(off) <= FINAL_TURN_DEG:
-                return tally(dict(went, travelled_m=0.0, turned_deg=0.0))
-            turned = self.turn(off, say, guard=guard)
-            if turned.get("reason") == "arrived":
-                turned["detail"] = went.get("detail") or ""
-            return tally(turned)
+        watch = self.near_watch(goal, give_up)
+        for attempt in range(NEAR_TRIES):
+            blocked = self.wait_for_the_way(goal, say, guard)
+            if blocked and not blocked.startswith(IN_THE_WAY):
+                return tally({"reason": "blocked", "travelled_m": 0.0,
+                              "turned_deg": 0.0, "detail": blocked})
+            if blocked:
+                went = self.round_by_legs(goal, say, guard, blocked)
+                if went.get("reason") != "arrived" or yaw is None:
+                    return tally(went)
+                moved[0] += float(went.get("travelled_m") or 0.0)
+                swung[0] += float(went.get("turned_deg") or 0.0)
+                here = self.pose()
+                off = math.degrees(wrap(yaw - here[2]))
+                if abs(off) <= FINAL_TURN_DEG:
+                    return tally(dict(went, travelled_m=0.0, turned_deg=0.0))
+                turned = self.turn(off, say, guard=guard)
+                if turned.get("reason") == "arrived":
+                    turned["detail"] = went.get("detail") or ""
+                return tally(turned)
 
-        # Straight there, arriving the way it is travelling, so the planner has
-        # no heading to loop round for.
-        drove = self.goto(goal, None, say, give_up=give_up, guard=guard,
-                          unwedge=unwedge, near=False)
+            # Straight there, arriving the way it is travelling, so the planner
+            # has no heading to loop round for -- and stopping, to wait or go
+            # round, if something steps into the way once it has set off.
+            drove = self.goto(goal, None, say, give_up=watch, guard=guard,
+                              unwedge=unwedge, near=False)
+            if (drove.get("reason") == "blocked" and attempt + 1 < NEAR_TRIES
+                    and (drove.get("detail") or "").startswith(IN_THE_WAY)):
+                moved[0] += float(drove.get("travelled_m") or 0.0)
+                swung[0] += float(drove.get("turned_deg") or 0.0)
+                continue
+            break
         if drove.get("reason") != "arrived" or yaw is None:
             return tally(drove)
         moved[0] += float(drove.get("travelled_m") or 0.0)
@@ -743,9 +860,10 @@ class NavMoves:
     def wait_for_the_way(self, goal, say, guard=None):
         """Hold still while the straight way to a near goal is blocked.
 
-        Returns "" once the planner's route is within `DETOUR_SLACK_M` of the
-        straight line -- or when the planner does not answer, which leaves the
-        goal to Nav2 as before -- and a sentence when the way stayed blocked for
+        Returns "" once the live scan has nothing on the straight line
+        (`seen_in_the_way`) and the planner's route is within `DETOUR_SLACK_M`
+        of it -- or when the planner does not answer, which leaves the goal to
+        Nav2 as before -- and a sentence when the way stayed blocked for
         `BLOCKED_WAIT_S` or a stop came while waiting. Nothing moves in here.
         """
         seq = self.stop_seq
@@ -755,19 +873,25 @@ class NavMoves:
             if here is None:
                 return ""
             straight = math.hypot(goal[0] - here[0], goal[1] - here[1])
-            route, _ = self.route_to(goal[0], goal[1],
-                                     math.atan2(goal[1] - here[1], goal[0] - here[0]))
-            if route is None or route[0] <= straight + DETOUR_SLACK_M:
-                return ""
+            seen = self.seen_in_the_way(goal)
+            route = None
+            if not seen:
+                route, _ = self.route_to(
+                    goal[0], goal[1],
+                    math.atan2(goal[1] - here[1], goal[0] - here[0]))
+                if route is None or route[0] <= straight + DETOUR_SLACK_M:
+                    return ""
             if self.stop_seq != seq:
                 return "a stop was asked for while the way was blocked"
             stopped = autonomy_guard.refusal(guard, self.stop_seq, pose=here)
             if stopped:
                 return stopped
             if waited >= BLOCKED_WAIT_S:
-                return ("something is in the way: the only route was %.1f m for a "
-                        "goal %.1f m away, and it did not clear in %.0f s"
-                        % (route[0], straight, waited))
+                if seen:
+                    return "%s, and it did not clear in %.0f s" % (seen, waited)
+                return ("%s: the only route was %.1f m for a goal %.1f m away, "
+                        "and it did not clear in %.0f s"
+                        % (IN_THE_WAY, route[0], straight, waited))
             if waited == 0.0:
                 say("waiting", "something is in the way; waiting for it to move")
             time.sleep(BLOCKED_ASK_S)
@@ -776,23 +900,38 @@ class NavMoves:
     def round_by_legs(self, goal, say, guard, why):
         """Go round what is in the way, as straight legs with turns between.
 
-        The route is the planner's last answer from `wait_for_the_way`, cut by
-        `goal_fit.straight_legs` into the fewest lines the body fits down on the
-        costmap as it now is. Each leg is a turn to face its end and a straight
-        drive that stops at anything in its way (`drive`), checked against the
-        guard first. Where there is no such set of legs, the goal is handed back
-        as blocked with `why`.
+        Round something the live scan sees, the way is found on the live
+        costmap (`goal_fit.legs_round`), since the planner's map does not have
+        it. Otherwise the route is the planner's last answer from
+        `wait_for_the_way`, cut by `goal_fit.straight_legs` into the fewest
+        lines the body fits down on its costmap. Each leg is a turn to face its
+        end and a straight drive that stops at anything in its way (`drive`),
+        checked against the guard first. Where there is no such set of legs,
+        the goal is handed back as blocked with `why`.
         """
         here = self.pose()
-        route = getattr(self, "last_route", None)
-        body = self.footprint()
-        grid = self.costmap() if body else None
         straight = math.hypot(goal[0] - here[0], goal[1] - here[1])
-        length = sum(math.hypot(b[0] - a[0], b[1] - a[1])
-                     for a, b in zip(route or [], (route or [])[1:]))
-        legs = (goal_fit.straight_legs(grid, body, here[:2], route, ROUND_LEGS)
-                if route and grid is not None and length <= straight + ROUND_EXTRA_M
-                else None)
+        live = self.live_costmap()
+        if live is not None and self.seen_in_the_way(goal, live):
+            grid, correction = live
+            found = goal_fit.legs_round(
+                grid, to_odom(correction, here), to_odom(correction, goal),
+                ROUND_CLEAR_M, ROUND_TIGHT_M, ROUND_RELAX_M, ROUND_LEGS)
+            legs = [to_map(correction, end) for end in found] if found else None
+            ends = [tuple(here[:2])] + list(legs or [])
+            length = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                         for a, b in zip(ends, ends[1:]))
+            if legs and length > straight + ROUND_EXTRA_M:
+                legs = None
+        else:
+            route = getattr(self, "last_route", None)
+            body = self.footprint()
+            grid = self.costmap() if body else None
+            length = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                         for a, b in zip(route or [], (route or [])[1:]))
+            legs = (goal_fit.straight_legs(grid, body, here[:2], route, ROUND_LEGS)
+                    if route and grid is not None
+                    and length <= straight + ROUND_EXTRA_M else None)
         if not legs:
             return {"reason": "blocked", "travelled_m": 0.0, "turned_deg": 0.0,
                     "detail": why + ", and there is no way round it in %d straight "

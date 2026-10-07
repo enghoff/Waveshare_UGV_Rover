@@ -17,7 +17,8 @@ says how to check them on the rover.
 This file is the runner. The checks live beside it, one module per part of the
 stack, and each exports a `TESTS` tuple: the drive model, odometry and the IMU,
 the lidar scan, the two bridges, the configuration Nav2 is given, where the rover
-decides to go, how it follows a route once it has decided, how it keeps its
+decides to go, how it follows a route once it has decided, how it waits for
+or goes round something in the way of a goal close by, how it keeps its
 map between sessions and finds itself on it again, and how it decides on a cold
 boot whether the map it asked for really came back. `test_harness.py` holds the
 tally they share and the `sys.path` setup they all need.
@@ -36,12 +37,14 @@ from test_odometry import TESTS as ODOMETRY_TESTS
 from test_planning import TESTS as PLANNING_TESTS
 from test_refit import TESTS as REFIT_TESTS
 from test_scan import TESTS as SCAN_TESTS
+from test_way_round import TESTS as WAY_ROUND_TESTS
 
 
 def main():
     for test in (*CHASSIS_TESTS, *ODOMETRY_TESTS, *SCAN_TESTS, *BRIDGE_TESTS,
                  *CONFIG_TESTS, *PLANNING_TESTS, *CONTROL_TESTS, *REFIT_TESTS,
-                 *MAPRESTORE_TESTS, *MEASURE_TESTS, *AUTONOMY_GUARD_TESTS):
+                 *MAPRESTORE_TESTS, *MEASURE_TESTS, *AUTONOMY_GUARD_TESTS,
+                 *WAY_ROUND_TESTS):
         test()
     print("\n%d passed, %d failed" % (test_harness.PASSED, test_harness.FAILED))
     return 1 if test_harness.FAILED else 0

@@ -147,13 +147,19 @@ planner draws a several-metre loop rather than a turn on the spot, and the
 controller, so close to the goal, turns back and forth instead of driving it
 (2026-10-07, measured on the rover). Where the rover cannot turn, it falls back
 to the one goal. A goal with no heading, which is what a map click sends, is
-one goal as before. Facing a near goal, the rover asks the planner for the
-route first: if something not on the map is in the straight way -- a person,
-say -- it holds still and asks again every second, and drives once the way
-clears. After 3 s it goes round: the planner's route is cut into at most four straight
-legs the body fits down, each driven as a turn and a straight drive that stops
-for anything in its way. With no such legs the goal is handed back as blocked.
-It never swings on the spot over a curve it will not follow.
+one goal as before.
+
+Something in the way of a near goal is looked for on the live scan, because
+the planner's map does not have a person on it: the planner draws its straight
+line through them and the controller, which does see them, will not drive it.
+Before it sets off, and every second while it drives, the rover checks the
+straight line to the goal against the local costmap. Blocked, it stops and holds
+still, checking every second, and drives on once the way clears. After 3 s it
+goes round: a way over the live costmap that keeps its centre 0.3 m from
+whatever the scan sees, cut into at most four straight legs, each a turn and a
+straight drive that stops for anything in its way. With no such way the goal is
+handed back as blocked, and one stopped three times is handed back too. It
+never swings on the spot over a curve it will not follow.
 
 No goal turns on the spot for ever. A drive that has not got 0.5 m further on
 in 25 s while Nav2 attempts no recovery is ended and says so. Nav2's own

@@ -183,6 +183,11 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
         self.footprint_client = self.create_client(
             GetParameters, "/global_costmap/global_costmap/get_parameters",
             callback_group=self.group)
+        # And the live scan's, which the planner's does not have: what a near
+        # goal looks for a person in the way on (`seen_in_the_way`).
+        self.live_client = self.create_client(
+            GetCostmap, "/local_costmap/get_costmap",
+            callback_group=self.group)
         self.body = None
         self.inscribed_m = None
 
