@@ -235,6 +235,14 @@ def test_a_marked_place_is_not_chosen_as_a_drive_target() -> None:
     elsewhere = [{**rug[0], "min_x_m": goal["x_m"] + 5.0,
                   "max_x_m": goal["x_m"] + 6.0}]
     check("...and one off it is not", scoring.vetoes(candidate, here, areas=elsewhere), [])
+    # Session 13 chose spots 0.1-0.2 m off the rug's edge, where the tracks
+    # were on it: a goal that close counts as on it.
+    edge = [{**rug[0], "min_x_m": goal["x_m"] + 0.2, "max_x_m": goal["x_m"] + 1.0}]
+    check("a goal whose body would reach onto the rug is refused",
+          [one["veto"] for one in scoring.vetoes(candidate, here, areas=edge)],
+          ["not a place to stop"])
+    clear = [{**rug[0], "min_x_m": goal["x_m"] + 0.3, "max_x_m": goal["x_m"] + 1.0}]
+    check("...and one its body clears is not", scoring.vetoes(candidate, here, areas=clear), [])
     check("the areas on file belong to one map and no other",
           (bool(places.areas_for("7da19bef3888")), places.areas_for("another-map")),
           (True, []))

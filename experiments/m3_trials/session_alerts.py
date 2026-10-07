@@ -1,7 +1,8 @@
 """Live alerts for a supervised session: one line per event worth acting on.
 
-Polls every 2 s. Prints when a drive has gone 20 s without moving 0.3 m, when
-the run ends, when the battery reads 10% or less three times standing still,
+Polls every second. Prints when a drive has gone 20 s without moving 0.3 m,
+when a near goal finds something in its way (the wait, and going round), when
+the run ends, when the battery has read 10% or less for 12 s standing still,
 and a one-line summary every two minutes. Read-only.
 """
 import json, math, socket, time
@@ -20,6 +21,7 @@ seen_run = False
 low_since = None
 drive_id, drive_from, drive_at, warned = None, None, 0.0, False
 last_summary = 0.0
+last_way = None
 t0 = time.time()
 while time.time() - t0 < 3600:
     st = call("autonomy_status")
@@ -32,6 +34,12 @@ while time.time() - t0 < 3600:
     p = nav.get("pose") or {}
     now = time.time()
     doing = st.get("doing") or {}
+    move = nav.get("move") or {}
+    way = (move.get("seq"), move.get("why"))
+    if "in the way" in (move.get("why") or "") and way != last_way:
+        last_way = way
+        print(time.strftime("%H:%M:%S"), "IN THE WAY:", move.get("phase"), "-",
+              move.get("why"), flush=True)
     if nav.get("driving"):
         key = doing.get("id") or "manual"
         if key != drive_id:
@@ -65,4 +73,4 @@ while time.time() - t0 < 3600:
         last_summary = now
         print(time.strftime("%H:%M:%S"), "summary: battery", pct, "spent",
               json.dumps(run.get("spent")), flush=True)
-    time.sleep(2)
+    time.sleep(1)

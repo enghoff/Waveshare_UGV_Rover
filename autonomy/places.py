@@ -13,6 +13,11 @@ The areas live in `places.json` beside this file, keyed by map identity: a box
 drawn on one map means nothing on the next, so a new map starts with none
 until somebody draws them again. Each area is a box in that map's frame, with
 the name the record gives it and why it is there.
+
+**A place counts as on the area when any of the body would be.** A goal is the
+rover's centre, and in M3 session 13 the run chose spots 0.1-0.2 m outside
+the rug's edge, among the chair legs, where the tracks sat on the rug and the
+rover wedged. So a box refuses goals within `BODY_REACH_M` of it as well.
 """
 
 from __future__ import annotations
@@ -23,6 +28,11 @@ from typing import Any
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLACES = os.path.join(HERE, "places.json")
+
+#: The furthest the body reaches from the rover's centre: the corner of the
+#: footprint navigation drives with, 0.20 m ahead and 0.14 m aside
+#: (`ros_nav/dwb_config.py`), rounded up.
+BODY_REACH_M = 0.25
 
 _cache: dict[str, Any] = {"mtime": None, "areas": {}}
 
@@ -43,14 +53,15 @@ def areas_for(map_id: str | None, path: str = PLACES) -> list[dict[str, Any]]:
 
 
 def refusal(goal: dict[str, Any] | None,
-            areas: list[dict[str, Any]]) -> str:
-    """Why a drive target may not be chosen here, or "" when it may."""
+            areas: list[dict[str, Any]], reach_m: float = BODY_REACH_M) -> str:
+    """Why a drive target may not be chosen here, or "" when it may: when the
+    body, standing there at any heading, could be on a marked area."""
     if not goal or goal.get("x_m") is None or goal.get("y_m") is None:
         return ""
     x, y = float(goal["x_m"]), float(goal["y_m"])
     for area in areas:
-        if (area["min_x_m"] <= x <= area["max_x_m"]
-                and area["min_y_m"] <= y <= area["max_y_m"]):
+        if (area["min_x_m"] - reach_m <= x <= area["max_x_m"] + reach_m
+                and area["min_y_m"] - reach_m <= y <= area["max_y_m"] + reach_m):
             return ("the place it would drive to is on %s, which is not a place "
                     "to stop: %s" % (area.get("name", "a marked area"),
                                      area.get("why", "marked by the owner")))
