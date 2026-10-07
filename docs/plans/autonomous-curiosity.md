@@ -609,14 +609,14 @@ Most of M3 is still physical:
 - **Criteria 6 and 7 are met on the record**: every move made under a run in
   sessions 1-5 pairs with a recorded episode's drive, and every failure was
   followed by a recorded decision ([the trace](../progress/2026-10-06-every-move-traced-to-its-episode.md)).
-- **Criterion 12 on the rover.** A voice request and a manual drive during a
-  run, against the declared priority, and a map change or a lost pose revoking a
-  drive that is moving. The manual drive of 2026-10-02 (S3) ended the run but
-  was itself refused as busy; that is [fixed](../progress/2026-10-06-a-person-who-takes-over-gets-their-move.md)
-  and not yet seen on the rover. The voice trial (`m3_trials.py voice`: the
-  owner tells the voice model to turn while a leg is moving) shows both. A map
-  change and a pose jump ending a run are tested offline only; neither can be
-  produced on the rover without throwing its map away.
+- **Criterion 12 on the rover.** A person's manual move sent while a leg is
+  driving must end the run and then be carried out. The trial of 2026-10-02 (S3)
+  ended the run but its move was refused as busy; that is
+  [fixed](../progress/2026-10-06-a-person-who-takes-over-gets-their-move.md) and
+  owed a repeat on the rover, which needs nobody at the console. Voice is
+  [deferred](../decisions/m3-defers-the-voice-trial.md). A map change and a pose
+  jump ending a run are tested offline only; neither can be produced on the
+  rover without throwing its map away.
 - **The hardware limits P0 found.** The depth camera drops off USB, which cost five
   checks in M0a's runs, and a charge gives about 20 to 25 minutes of this driving.
   Both bound how long a session can usefully run.
@@ -655,8 +655,9 @@ Pass when all are true:
     acknowledged request alone is not a measurement;
 11. run budgets hold across background and nested actions, duplicate requests cannot
     repeat a move, and stale map/permission requests are refused at dispatch;
-12. concurrent voice/manual requests follow the declared priority, and map changes
+12. concurrent manual requests follow the declared priority, and map changes
     or loss of valid pose during execution revoke the affected movement.
+    (voice requests deferred by [the decision of 2026-10-07](../decisions/m3-defers-the-voice-trial.md))
 
 The 20-session count is deliberately about repeated opportunities for timing,
 interrupt and recovery faults rather than distance travelled.
