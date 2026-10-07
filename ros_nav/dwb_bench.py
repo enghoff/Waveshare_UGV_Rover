@@ -197,7 +197,12 @@ def planned_path(node, goal_xy, frame):
     goal.goal.header.stamp = node.get_clock().now().to_msg()
     goal.goal.pose.position.x = float(goal_xy[0])
     goal.goal.pose.position.y = float(goal_xy[1])
-    goal.goal.pose.orientation.w = 1.0
+    # A heading when one was given, because the route to a place depends on
+    # which way the rover must face there: a goal half a metre away facing
+    # back the way it came is planned as a loop of several metres.
+    heading = math.radians(float(goal_xy[2])) if len(goal_xy) > 2 else 0.0
+    goal.goal.pose.orientation.z = math.sin(heading / 2.0)
+    goal.goal.pose.orientation.w = math.cos(heading / 2.0)
     goal.planner_id = "GridBased"
     handle = node.settle(node.planner.send_goal_async(goal), 10.0)
     if handle is None or not handle.accepted:
@@ -485,9 +490,10 @@ def main():
     p.add_argument("--every-tick", action="store_true",
                    help="a line per control tick rather than a summary")
     p.add_argument("--goal", default="",
-                   help="x,y in the map frame. Asks the live planner for the real "
-                        "route there and scores that instead of a straight line, "
-                        "which is the only way to reproduce a particular run")
+                   help="x,y[,heading_deg] in the map frame. Asks the live planner "
+                        "for the real route there and scores that instead of a "
+                        "straight line, which is the only way to reproduce a "
+                        "particular run; without a heading the goal faces 0 deg")
     p.add_argument("--frame", default="",
                    help="the costmap frame; taken from the config when empty")
     args = p.parse_args()
@@ -550,11 +556,12 @@ def main():
 
         legs = []
         if args.goal:
-            x, y = [float(v) for v in args.goal.split(",")]
+            goal = [float(v) for v in args.goal.split(",")]
+            x, y = goal[:2]
             map_frame = whole["global_costmap"]["global_costmap"][
                 "ros__parameters"]["global_frame"]
             in_map = node.pose(map_frame)
-            path, note = planned_path(node, (x, y), map_frame)
+            path, note = planned_path(node, goal, map_frame)
             if path is None:
                 print("no route to score: %s" % note)
                 return 1

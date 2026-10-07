@@ -28,6 +28,7 @@ from rcl_interfaces.srv import GetParameters
 import goal_fit
 import route_cost
 import autonomy_guard
+import frontier
 from nav_codes import START_OCCUPIED, phrase_for, reason_for
 from nav_limits import (
     COSTMAP_TIMEOUT_S, DEFAULT_SPEED_MS, DEFAULT_TURN_DPS, PROGRESS_S,
@@ -35,6 +36,39 @@ from nav_limits import (
     TIME_ALLOWANCE_MIN_ROUTE_S, TIME_ALLOWANCE_SLACK, UNWEDGE_MOVED_M, duration,
     wrap,
 )
+
+#: **A goal nearer than this is driven as a turn, a straight line and a turn**,
+#: because the lattice planner will not turn on the spot when a loop is cheaper,
+#: and close to a goal the controller will not drive the loop. Measured on the
+#: rover on 2026-10-07 from where M3 session 7 rocked for 72 s: a goal 0.5 m
+#: away facing -70 deg planned as a 3.3 to 4.0 m loop from every start heading
+#: between 130 and 173 deg, and the real controller, given that loop, preferred
+#: turning on the spot to driving it by 45 points to 67 (dwb_bench.py), since
+#: the loop sets off away from the goal. Turned to face the goal first, the same
+#: goal planned as 0.48 m straight. 1.5 m covers every short goal that has
+#: planned a route round since the sessions began (0.22 to 1.2 m).
+NEAR_GOAL_M = 1.5
+
+#: How nearly the rover must face a near goal before driving to it. Measured
+#: the same day: facing within 15 to 30 deg of the goal it planned straight, and
+#: at 45 deg off it looped again. 20 leaves room for a turn that lands short.
+FACE_WITHIN_DEG = 20.0
+
+#: Turns allowed to face a near goal: one, and one more to correct it, because
+#: a turn is counted by the gyro and the gyro has been measured 7-9% out on a
+#: large turn (2026-10-01, 2026-10-07).
+FACE_TURNS = 2
+
+#: The heading asked for is turned to after arriving only when it is further
+#: off than the goal checker's own tolerance (yaw_goal_tolerance, 0.26 rad):
+#: anything closer Nav2 would have called arrived anyway. Measured the same
+#: day: facing the goal, a final heading 11.5 deg off planned straight and one
+#: 40 deg off looped, so the heading is never handed to the planner here.
+FINAL_TURN_DEG = 15.0
+
+#: Closer than this the rover is already there as far as the goal checker is
+#: concerned (xy_goal_tolerance), so a near goal is only its heading.
+THERE_M = 0.22
 
 
 class NavMoves:
@@ -77,11 +111,11 @@ class NavMoves:
 
         `give_up` is asked, every pass, whether this goal is worth continuing,
         and a sentence back from it cancels the goal and becomes the reason. It
-        is the opposite of `budget`, which can only ever push the deadline out,
-        and only `explore` passes one: a caller who asked for one particular
-        place is owed every recovery Nav2 has before being told no, and a caller
-        with sixteen other frontiers to try is not. See `frontier.Stall` for what
-        it watches and why Nav2 cannot see it.
+        is the opposite of `budget`, which can only ever push the deadline out.
+        `goto` always passes one: `explore` its own, everyone else
+        `frontier.Stall`, which leaves Nav2's recoveries alone and ends only a
+        goal that has gone nowhere with nothing being attempted. See
+        `frontier.Stall` for what it watches and why Nav2 cannot see it.
         """
         client = self.actions[kind]
         if not client.wait_for_server(timeout_sec=2.0):
@@ -448,7 +482,8 @@ class NavMoves:
                 "stand in, so the goal was moved %d cm to the nearest one it "
                 "fits" % round(placed["moved_m"] * 100))
 
-    def goto(self, where, yaw_deg, say, give_up=None, guard=None, unwedge=True):
+    def goto(self, where, yaw_deg, say, give_up=None, guard=None, unwedge=True,
+             near=True):
         """Somewhere on the map, with a planner and a costmap between.
 
         `where` is already in map coordinates -- the daemon converts an offset into
@@ -470,6 +505,16 @@ class NavMoves:
         drive backs off the way exploring does (`back_off`, the short shuffle
         `goal_fit` names), under the same guard as the drive, and asks once more.
         A second refusal is handed back rather than shuffled on.
+
+        **A goal nearer than `NEAR_GOAL_M` is a turn, a straight line and a
+        turn** (`near`), and `near=False` is how that sends its straight line.
+
+        **No goal turns on the spot for ever.** One with no `give_up` of its own
+        gets `frontier.Stall`: 25 s without getting 0.5 m further on, with Nav2
+        attempting nothing, ends it. Nav2's progress checker cannot see that,
+        because it counts a 20-degree swing as progress, and on 2026-10-07 a
+        drive swung between 143 and 167 degrees for 72 s until somebody stopped
+        it.
         """
         start = self.pose()
         if start is None:
@@ -492,6 +537,19 @@ class NavMoves:
         if blocked:
             return {"reason": "blocked", "travelled_m": 0.0,
                     "turned_deg": 0.0, "detail": blocked}
+
+        straight = math.hypot(gx - start[0], gy - start[1])
+        if near and straight < NEAR_GOAL_M:
+            return self.near(
+                (gx, gy), None if yaw_deg is None else yaw, note, say,
+                give_up=give_up, guard=guard, unwedge=unwedge)
+
+        if give_up is None:
+            watch = frontier.Stall()
+
+            def give_up(now, feedback):
+                return watch.update(now, self.pose(),
+                                    int(feedback.get("recoveries") or 0))
 
         previous_give_up = give_up
         if guard is not None:
@@ -519,7 +577,6 @@ class NavMoves:
         # there is to go on before the planner has answered; `budget` below
         # replaces it with the route as soon as there is one. See
         # ROUTE_SAMPLE_M for the 3 m goal that used to time out on 8.8 m of route.
-        straight = math.hypot(gx - start[0], gy - start[1])
         limit = max(TIME_ALLOWANCE_MIN_ROUTE_S,
                     TIME_ALLOWANCE_SLACK * straight / DEFAULT_SPEED_MS)
         # The longest route seen while this move has been running, kept rather
@@ -573,6 +630,70 @@ class NavMoves:
             outcome["detail"] = ("%s -- %s" % (outcome["detail"], note)
                                  if outcome.get("detail") else note)
         return outcome
+
+    def near(self, goal, yaw, note, say, give_up=None, guard=None,
+             unwedge=True):
+        """A goal close by: face it, drive straight to it, then turn to `yaw`.
+
+        `goal` has already been fitted and checked against the guard; `yaw` is
+        in radians, or None when the caller asked for no heading. See
+        `NEAR_GOAL_M` for what this replaces. A turn the rover cannot make where
+        it stands -- 23% of the places its body fits are too tight to turn all
+        the way round in (trap_sim.py) -- falls back to the one goal Nav2 would
+        have been given, so nothing that drove before is refused now. A stop is
+        not fallen back from.
+        """
+        moved, swung = [0.0], [0.0]
+
+        def tally(outcome):
+            moved[0] += float(outcome.get("travelled_m") or 0.0)
+            swung[0] += float(outcome.get("turned_deg") or 0.0)
+            outcome["travelled_m"] = round(moved[0], 3)
+            outcome["turned_deg"] = round(swung[0], 1)
+            if note:
+                outcome["detail"] = ("%s -- %s" % (outcome["detail"], note)
+                                     if outcome.get("detail") else note)
+            return outcome
+
+        here = self.pose()
+        if math.hypot(goal[0] - here[0], goal[1] - here[1]) <= THERE_M:
+            off = 0.0 if yaw is None else math.degrees(wrap(yaw - here[2]))
+            if abs(off) <= FINAL_TURN_DEG:
+                return tally({"reason": "arrived", "travelled_m": 0.0,
+                              "turned_deg": 0.0, "detail": ""})
+            return tally(self.turn(off, say, guard=guard))
+
+        for _ in range(FACE_TURNS):
+            here = self.pose()
+            off = wrap(math.atan2(goal[1] - here[1], goal[0] - here[0]) - here[2])
+            if abs(math.degrees(off)) <= FACE_WITHIN_DEG:
+                break
+            turned = self.turn(math.degrees(off), say, guard=guard)
+            if turned.get("reason") == "stopped":
+                return tally(turned)
+            swung[0] += float(turned.get("turned_deg") or 0.0)
+            if turned.get("reason") != "arrived":
+                # Cannot pivot here: the single goal, as it always was.
+                return tally(self.goto(
+                    goal, None if yaw is None else math.degrees(yaw), say,
+                    give_up=give_up, guard=guard, unwedge=unwedge, near=False))
+
+        # Straight there, arriving the way it is travelling, so the planner has
+        # no heading to loop round for.
+        drove = self.goto(goal, None, say, give_up=give_up, guard=guard,
+                          unwedge=unwedge, near=False)
+        if drove.get("reason") != "arrived" or yaw is None:
+            return tally(drove)
+        moved[0] += float(drove.get("travelled_m") or 0.0)
+        swung[0] += float(drove.get("turned_deg") or 0.0)
+        here = self.pose()
+        off = math.degrees(wrap(yaw - here[2]))
+        if abs(off) <= FINAL_TURN_DEG:
+            return tally(dict(drove, travelled_m=0.0, turned_deg=0.0))
+        turned = self.turn(off, say, guard=guard)
+        if turned.get("reason") == "arrived" and drove.get("detail"):
+            turned["detail"] = drove["detail"]
+        return tally(turned)
 
     def unwedged(self, refused, where, yaw_deg, say, give_up, guard):
         """Back off from where the planner will not plan, then ask again once.

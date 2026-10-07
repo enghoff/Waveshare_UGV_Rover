@@ -909,6 +909,141 @@ def test_a_drive_asked_from_beside_a_wall_backs_off_and_goes():
     check("...so the rover is where it was", tuple(rover.at), stuck)
 
 
+def test_a_near_goal_is_a_turn_a_line_and_a_turn():
+    """A goal close by is faced, driven to straight, and then turned to.
+
+    **Reproduced on the rover before it was changed.** In M3 session 7 on
+    2026-10-07 a drive to a viewpoint 0.4 m away, facing -70 degrees, swung
+    between 143 and 167 degrees for 72 s until it was stopped. Asked again from
+    the same spot, the live planner drew a 3.3-4.0 m loop from every start
+    heading between 130 and 173; the real controller, given it, preferred
+    turning on the spot by 45 points to 67; turned to face the goal, the same
+    goal planned as 0.48 m straight -- but only facing within about 30 degrees
+    of it, and only with a final heading within about 30 degrees of the way it
+    travelled. Nav2 is replaced here by exactly that rule.
+    """
+    section("a near goal is a turn, a straight line and a turn")
+    sys.path.insert(0, HERE)
+    _ros_messages()
+    try:
+        import threading
+        import types
+        import nav_moves
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+    wrap = nav_moves.wrap
+
+    class Floor(nav_moves.NavMoves):
+        """Open floor, and the planner/controller rule measured that day."""
+
+        def __init__(self, at, pivots=True):
+            self.at = [at[0], at[1], math.radians(at[2])]
+            self.pivots = pivots
+            self.sent = []
+            self.stop_seq = 3
+            self._lock = threading.Lock()
+            self.plan = None
+            self.args = types.SimpleNamespace(map_frame="map")
+
+        def pose(self):
+            return tuple(self.at)
+
+        def footprint(self):
+            return None
+
+        def get_clock(self):
+            stamp = types.SimpleNamespace(to_msg=lambda: None)
+            return types.SimpleNamespace(now=lambda: stamp)
+
+        def run_goal(self, kind, goal, limit_s, say, measure, motion="driving",
+                     budget=None, give_up=None, guard=None):
+            x, y, h = self.at
+            if kind == "spin":
+                self.sent.append(("spin", math.degrees(goal.target_yaw)))
+                if not self.pivots:
+                    return {"reason": "blocked", "travelled_m": 0.0,
+                            "turned_deg": 0.0, "detail": "no room to turn"}
+                self.at[2] = wrap(h + goal.target_yaw)
+                return {"reason": "arrived", "travelled_m": 0.0,
+                        "turned_deg": math.degrees(goal.target_yaw)}
+            to, turn = goal.pose.pose.position, goal.pose.pose.orientation
+            yaw = 2.0 * math.atan2(turn.z, turn.w)
+            self.sent.append(("goto", math.degrees(yaw), give_up is not None))
+            bearing = math.atan2(to.y - y, to.x - x)
+            if (abs(math.degrees(wrap(bearing - h))) > 30.0
+                    or abs(math.degrees(wrap(yaw - bearing))) > 30.0):
+                # The loop the controller will not drive: it swings on the spot,
+                # and only the give-up can end it.
+                why = ""
+                for second in range(0, 80, 5):
+                    why = give_up(float(second), {"recoveries": 0}) if give_up else ""
+                    if why:
+                        break
+                return {"reason": "blocked" if why else "timeout",
+                        "travelled_m": 0.1, "turned_deg": 0.0,
+                        "detail": why or "it swung on the spot until it ran out of time"}
+            self.at = [to.x, to.y, yaw]
+            return {"reason": "arrived",
+                    "travelled_m": math.hypot(to.x - x, to.y - y),
+                    "turned_deg": math.degrees(wrap(yaw - h))}
+
+    def steps(rover):
+        # To the nearest degree, which is all any of these claims is about.
+        return [(kind, int(math.floor(angle + 0.5)))
+                for kind, angle, *_ in rover.sent]
+
+    quiet = lambda *args, **kwargs: None                # noqa: E731
+    stuck = (-17.45, -14.65, 150.0)
+    goal = (-17.2, -15.055)
+
+    rover = Floor(stuck)
+    out = rover.goto(goal, -69.5, quiet, near=False)
+    check("session 7's goal sent as one goal swings on the spot, as it did",
+          out.get("reason") != "arrived", True)
+    check("...and is ended by the stall watch, not left to swing",
+          "turning on the spot" in (out.get("detail") or ""), True)
+
+    rover = Floor(stuck)
+    out = rover.goto(goal, -69.5, quiet)
+    check("as a near goal it arrives", out.get("reason"), "arrived")
+    check("...by facing it, then driving straight, the heading close enough",
+          steps(rover), [("spin", 152), ("goto", -58)])
+    check("...at the place asked for",
+          [round(v, 2) for v in rover.pose()[:2]], [-17.2, -15.05])
+    check("...and counts the turn as well as the drive",
+          (round(out["travelled_m"], 2), round(out["turned_deg"])), (0.48, 152))
+
+    rover = Floor(stuck)
+    out = rover.goto(goal, 30.0, quiet)
+    check("a heading well off the way it travelled is turned to afterwards",
+          steps(rover), [("spin", 152), ("goto", -58), ("spin", 88)])
+    check("...and it ends facing it",
+          round(math.degrees(rover.pose()[2])), 30)
+
+    rover = Floor((-17.45, -14.65, -50.0))
+    rover.goto(goal, None, quiet)
+    check("a near goal it already faces is one straight drive",
+          steps(rover), [("goto", -58)])
+
+    rover = Floor((-17.25, -15.0, 150.3))
+    out = rover.goto(goal, -69.5, quiet)
+    check("one it is already standing on is only its heading",
+          (steps(rover), out.get("reason")), ([("spin", 140)], "arrived"))
+
+    rover = Floor(stuck, pivots=False)
+    out = rover.goto(goal, -69.5, quiet)
+    check("where it cannot turn, it falls back to the one goal it always sent",
+          steps(rover), [("spin", 152), ("goto", -69)])
+
+    rover = Floor((-19.45, -14.65, 0.0))
+    rover.goto((-17.2, -14.65), 0.0, quiet)
+    check("a far goal is still one goal, with the heading asked for",
+          steps(rover), [("goto", 0)])
+    check("...and every goal now carries a give-up",
+          all(step[2] for step in rover.sent if step[0] == "goto"), True)
+
+
 TESTS = (
     test_goal_fits_before_it_is_sent,
     test_frontiers_are_found_on_a_real_map,
@@ -917,5 +1052,6 @@ TESTS = (
     test_a_rover_it_cannot_plan_from_is_not_a_finished_house,
     test_the_map_says_what_clearance_the_planner_keeps,
     test_a_drive_asked_from_beside_a_wall_backs_off_and_goes,
+    test_a_near_goal_is_a_turn_a_line_and_a_turn,
     test_exploring_finishes_and_covers_the_house,
 )

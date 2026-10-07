@@ -465,11 +465,12 @@ class Stall(object):
     2026-09-01: fifty seconds, six centimetres, forty-three replans, and not one
     recovery attempted.
 
-    **Why exploring gets to give up where `drive_to` does not.** A person who
-    asked for one particular place wants every recovery Nav2 has before being
-    told no. An explore has sixteen other frontiers and no opinion about which,
-    so a goal that has gone nowhere for half a minute is worth abandoning: it
-    costs one frontier and saves the budget.
+    **Every goal has it since 2026-10-07, not only exploring's.** It was kept
+    from `drive_to` on the grounds that a person who asked for one particular
+    place wants every recovery Nav2 has before being told no -- but this never
+    cuts a recovery short (below), and a drive to a place half a metre away
+    swung on the spot for 72 s in M3 session 7 with Nav2 attempting nothing.
+    For exploring it also costs only one frontier of sixteen.
 
     **A rover that Nav2 is actively recovering is left alone.** The ladder --
     clear the costmaps, spin, wait -- works against the thing it is for, which is
