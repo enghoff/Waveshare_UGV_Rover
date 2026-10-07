@@ -332,8 +332,18 @@ class Live:
     def inspect(self):
         self.reserve(12)
         status, _ = self.health()
-        self.reserve(12)
-        self.call('world_inspect', {'fresh':True,'keep_depth':True,'settle':False,'wait':True}, timeout=12)
+        # The rover's own background look can start the moment it stops, and a
+        # second look is refused "busy" until it ends: on 2026-10-07 that ended
+        # the trial at B with the view reached. Wait it out, a few times.
+        for attempt in range(4):
+            self.reserve(12)
+            try:
+                return self.call('world_inspect', {'fresh':True,'keep_depth':True,'settle':False,'wait':True}, timeout=12)
+            except RuntimeError as error:
+                if 'busy' not in str(error) or attempt == 3:
+                    raise
+                self.log('look_busy', attempt=attempt + 1, error=str(error))
+                time.sleep(3)
 
     def begin_return(self):
         self.return_started = True

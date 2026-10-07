@@ -62,6 +62,22 @@ class DirectTrial(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'missed'):
             b.face(55)
 
+    def test_a_look_waits_out_the_rovers_own(self):
+        b=Live(Path('.'),{},Path('.'),'unused'); b.log=lambda *a,**k:None
+        b.reserve=lambda *a,**k:None
+        b.health=lambda:({}, {})
+        answers=[RuntimeError("{'ok': False, 'status': 'busy', 'busy': True}"), {'ok':True,'status':'ok'}]
+        def call(*a,**k):
+            answer=answers.pop(0)
+            if isinstance(answer,Exception): raise answer
+            return answer
+        b.call=call
+        with patch('time.sleep'):
+            self.assertEqual(b.inspect()['status'],'ok')
+        b.call=lambda *a,**k:(_ for _ in ()).throw(RuntimeError('camera gone'))
+        with self.assertRaisesRegex(RuntimeError,'camera gone'):
+            b.inspect()
+
     def test_depth_look_reserves_the_observed_lock_wait(self):
         # Stationary readiness's actual depth look took 8.64 s: eight was too short.
         b=Live(Path('.'),{},Path('.'),'unused'); reservations=[];calls=[]
