@@ -739,7 +739,11 @@ That work belongs to the world state:
 [R-WS-18](../requirements/world-state.md#r-ws-18), in
 [its plan](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks).
 M4 spends no rover time until looks measurably reach their things
-([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md)).
+([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md)). The
+[identity trial's scoring](../progress/2026-10-07-identity-trial-scored.md) found
+why one did not: clear views of the dining painting were hidden by the map's
+reach, and with that lifted they were ambiguous among five records of the same
+painting. Duplicate records come before the visibility rule.
 
 Three things on autonomy's side need no rover and are worth doing first, because
 M4's measurement depends on them:

@@ -617,6 +617,14 @@ map queries. `score_recorded_subjects.py` reports pair retention, gains and
 cross-subject links; labels remain development judgments, including explicit
 post-score corrections where necessary.
 
+`explain_ambiguity.py --directory <recording> --output <new-directory>
+--observations <ids> [--new-visibility-only]` reruns the same calls and prints
+every resolver decision about the chosen observations, including the ambiguous
+ones the store never records. It tells a region nothing fitted (no decision)
+from one too much fitted (ambiguous, with every candidate weighed). The
+[identity-trial scoring](../../docs/progress/2026-10-07-identity-trial-scored.md)
+used it to find the painting's clear views waiting on five records of itself.
+
 `replay_measured_visibility.py` tests extending mapped reach to stored positive
 finite depth, without changing measurement bytes. `--known-only` limits this to
 existing-record matching; discovery and placement refitting keep original bounds.
