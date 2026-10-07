@@ -3,8 +3,8 @@
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
-the rover in supervised stop trials and in M0a's inspection runs. Eleven M3 sessions
-have run, about 75 minutes, nine of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
+the rover in supervised stop trials and in M0a's inspection runs. Thirteen M3 sessions
+have run, about 95 minutes, eleven of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
 showed R-AUT-13's ending, and on 2026-10-06 a repeated request, a hung executive
 and a lost connection were [tried on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md).
 M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
@@ -712,7 +712,8 @@ conditions are:
 - **a person moving through the area**, crossing the rover's path and standing
   where it wants to go, several times in a session. Session 10 had the owner in
   view once, which does not count; session 11 found the rover swinging when
-  blocked, now fixed, so it is owed again;
+  blocked, session 12 had nobody block it, and session 13 found a near goal
+  blind to a person until it had set off, now fixed, so it is owed again;
 - **furniture moved since the map was made**: something standing in a mapped
   gap, or a door open that the map has shut;
 - **the depth camera unavailable**, its service stopped for the run, which is
