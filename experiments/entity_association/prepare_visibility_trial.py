@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 
-from run_visibility_trial import Live, rpc, run
+from run_visibility_trial import Live, rpc, run, wheels_unpowered
 
 
 def main():
@@ -34,7 +34,7 @@ def main():
     if a.execute and a.interrupt_recorder: p.error('Interruption test is stationary only')
     # No STOP here: preparation must not interfere with somebody else's drive.
     status = rpc(8769, {'call':'nav_status','arguments':{}})
-    if status.get('driving') or status.get('exploring') or status.get('autonomy') or status.get('pwm') != [0,0]:
+    if status.get('driving') or status.get('exploring') or status.get('autonomy') or not wheels_unpowered(status.get('pwm')):
         raise RuntimeError('Rover is in use; preparation refused')
     world = Path.home()/'.ugv/world'
     marker = world/'record-calls.json'

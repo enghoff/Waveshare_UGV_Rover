@@ -39,6 +39,16 @@ class Settling(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.wait([self.record['later_stopped']]+self.record['moving'])
 
+    def test_a_rover_not_driven_since_boot_is_at_rest(self):
+        # 2026-10-07: after a reboot navigation had sent the board nothing, its
+        # motor reading was empty, and the preflight called the rover in use.
+        final = {**self.record['later_stopped'], 'pwm': None}
+        self.assertEqual(self.wait([final]*8), final)
+
+    def test_a_motor_command_still_held_is_not_rest(self):
+        with self.assertRaises(RuntimeError):
+            self.wait([{**self.record['later_stopped'], 'pwm': [40, 40]}]*40)
+
     def test_stale_feedback_cannot_verify_stop(self):
         with self.assertRaises(RuntimeError):
             self.wait([{**self.record['later_stopped'], 'transform_age_s':1}])

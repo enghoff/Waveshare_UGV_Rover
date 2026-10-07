@@ -21,6 +21,17 @@ from check_recorded_turn import check as turn_check
 import goal_fit
 
 
+def wheels_unpowered(pwm):
+    """Whether the base's last motor command leaves the wheels unpowered.
+
+    None means navigation has sent the board nothing since it started, which is
+    every fresh boot until the first move: the board's own heartbeat stops a base
+    that hears nothing, so that is as still as an explicit zero. Refusing it made
+    the stationary preflight call an idle rover "in use" on 2026-10-07.
+    """
+    return pwm is None or pwm == [0,0]
+
+
 def rpc(port, request, timeout=8):
     with socket.create_connection(('127.0.0.1', port), timeout=3) as sock:
         sock.settimeout(timeout)
@@ -99,7 +110,7 @@ class Live:
             raise RuntimeError('An external STOP changed control ownership')
         if (status.get('map_id') != self.card['map_id'] or status.get('driving') or
             status.get('exploring') or status.get('autonomy') or status.get('estop') or
-            status.get('pwm') != [0,0] or not all(status.get(k) for k in
+            not wheels_unpowered(status.get('pwm')) or not all(status.get(k) for k in
                 ('board_ok','lidar_live','nav2_ready','position_trusted')) or
             status.get('scan_age_s', 99) > 1 or status.get('transform_age_s',99) > 1):
             raise RuntimeError('Navigation/board/localization is not ready and stationary')
@@ -131,7 +142,7 @@ class Live:
             now = time.monotonic()
             quiet = (status.get('driving') is False and status.get('board_ok') is True
                      and status.get('speed_ms') == 0 and status.get('turn_dps') == 0
-                     and status.get('pwm') == [0,0]
+                     and wheels_unpowered(status.get('pwm'))
                      and isinstance(status.get('transform_age_s'), (int,float))
                      and 0 <= status['transform_age_s'] <= .2)
             if quiet:
