@@ -41,13 +41,18 @@ first = [r[1] for r in rows[:3] if r[1] is not None]
 last = [r[1] for r in rows[-3:] if r[1] is not None]
 trend = (sum(last) / len(last) - sum(first) / len(first)) / max(rows[-1][0] - rows[0][0], 1.0) * 60.0
 driving = any(r[3] for r in rows)
-moved_ago = rows[-1][4] if rows[-1][5] == "ended" else 0.0
-if driving or (rows[-1][5] not in (None, "ended")):
+# "idle" is navigation with no move since it started: after a reboot or a
+# restart, which read as driving here until 2026-10-07 (90% on the charger).
+phase = rows[-1][5]
+moved_ago = rows[-1][4] if phase == "ended" else (None if phase in (None, "idle") else 0.0)
+if driving or phase not in (None, "ended", "idle"):
     kind = "UNDER LOAD (driving): reads low, not the charge"
 elif trend > 0.03 and (moved_ago is None or moved_ago > RECOVERING_S):
     kind = "CHARGING (rising %.2f V/min with the wheels still): reads high" % trend
 elif moved_ago is not None and moved_ago < RECOVERING_S:
     kind = "RECOVERING (wheels stopped %.0f s ago, rising %.2f V/min): will read higher" % (moved_ago, trend)
 else:
-    kind = "AT REST (wheels still %.0f s, %+.2f V/min)" % (moved_ago or 0, trend)
+    kind = "AT REST (%s, %+.2f V/min)" % (
+        "wheels still %.0f s" % moved_ago if moved_ago is not None
+        else "no move since navigation started", trend)
 print("%s  %s%%  %.2f V  %s" % (time.strftime("%H:%M:%S"), p, v, kind))
