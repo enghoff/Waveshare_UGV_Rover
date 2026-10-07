@@ -3,16 +3,14 @@
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
-the rover in supervised stop trials and in M0a's inspection runs. Seven M3 sessions
-have run, about 52 minutes, five of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
+the rover in supervised stop trials and in M0a's inspection runs. Eight M3 sessions
+have run, about an hour, six of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
 showed R-AUT-13's ending, and on 2026-10-06 a repeated request, a hung executive
 and a lost connection were [tried on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md).
 M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
 the six conditions not yet driven, which replaced a count of twenty on 2026-10-07
-([the decision](../decisions/trials-are-sized-by-what-they-show.md)), and a
-charger-room session that shows the fix for
-[session 7's swinging on the spot](../progress/2026-10-07-why-the-rover-turns-back-and-forth-on-the-spot.md).
-M4 then waits on the world state before it needs the rover. Later phases remain proposed. This is the
+([the decision](../decisions/trials-are-sized-by-what-they-show.md)); the charger
+room's is met ([session 8](../progress/2026-10-07-m3-session-8.md)). M4 then waits on the world state before it needs the rover. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -584,8 +582,8 @@ refused by name.
 Most of M3 is still physical:
 
 - **A session in each condition not yet driven** (criterion 4 and the list
-  under it), with the owner present. Seven sessions have happened, the third to
-  seventh in the charger room
+  under it), with the owner present. Eight sessions have happened, the third to
+  eighth in the charger room
   ([1](../progress/2026-10-05-m3-session-1.md), 8.7 minutes;
   [2](../progress/2026-10-05-m3-session-2.md), 11 minutes, stopped at 5% battery;
   [3](../progress/2026-10-06-m3-session-3.md), 3.6 minutes, ended by going home;
@@ -594,11 +592,11 @@ Most of M3 is still physical:
   [6](../progress/2026-10-06-m3-session-6.md), 10.4 minutes, its way home refused
   by the new margin;
   [7](../progress/2026-10-07-m3-session-7.md), 8.6 minutes, no look failed on
-  the lock, stopped by a person after a near goal swung on the spot for 72 s);
-  M0a's runs were its own protocol and do not count towards them. The swing is
-  [fixed in navigation](../progress/2026-10-07-why-the-rover-turns-back-and-forth-on-the-spot.md)
-  and owed a charger-room session; the way home past the margin is still owed
-  a sighting. Open each
+  the lock, stopped by a person after a near goal swung on the spot for 72 s;
+  [8](../progress/2026-10-07-m3-session-8.md), about 9 minutes, no short goal
+  over 4.6 s with [the swing fixed](../progress/2026-10-07-why-the-rover-turns-back-and-forth-on-the-spot.md),
+  ended by going home past the margin);
+  M0a's runs were its own protocol and do not count towards them. Open each
   with no action limit. A fenced condition gets a safe area around the cleared
   room, drawn 0.6 m beyond where the run starts. A fenced run ends by going home
   ([R-AUT-13](../requirements/autonomy.md#r-aut-13), settled by session 3); an
@@ -685,8 +683,8 @@ come from conditions a session had not met before, not from repeats
 ([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md)). The
 conditions are:
 
-- **the charger room, fenced**, which sessions 3 to 7 drove, and which owes one
-  more with the fix for session 7's swing;
+- **the charger room, fenced**: met by sessions 3 to 8, the last with every
+  fix the others found;
 - **another room, fenced, starting away from the charger**: new geometry for
   choosing goals, fitting the body and finding the way home;
 - **the whole flat, unfenced, under the current code**: doorways, long routes,
@@ -1398,8 +1396,8 @@ the problem.
 
 M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
 
-1. **Finish M3 on the rover.** Drive the charger room once more with the swing
-   fixed, then one session in each condition not yet driven, until criterion 4's
+1. **Finish M3 on the rover.** One session in each condition not yet driven,
+   until criterion 4's
    stopping rule is met. Each session needs the owner, a charge and a cleared
    area, so each is chosen to try something not tried before.
 2. **Let looks reach their things.** This is the world state's work (R-WS-13,
