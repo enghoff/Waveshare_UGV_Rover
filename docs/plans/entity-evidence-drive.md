@@ -10,24 +10,22 @@ The independent recording has been [made](../progress/2026-10-07-identity-trial-
 and [scored](../progress/2026-10-07-identity-trial-scored.md). The candidate failed
 retention (12 of 13 connections against a 98% bar) and did not attach the
 painting's clear views. With the reach limit lifted, those views were ambiguous
-among five records of the one painting. Coverage was short too: clear views
-from one place only. What follows is what is still ahead.
+among records of the one painting, which has eight, several of them mixed.
+Coverage was short too: clear views from one place only. What follows is what is still ahead.
 
-## Next: the painting's records consolidated, offline
+## Next: the painting's records rebuilt, then this recording scored again
 
-Replay `visibility-independent-20261007-12` with the painting's duplicate
-records (`object:301`, `328`, `375`, `246` and `629`, all on the wall
-1.9-2.0 m up) consolidated into one in a copy of the before-store. Run the
-control and the candidate on that copy. The question is whether the clear B
-views then attach, and to the painting. This is a counterfactual diagnostic. It
-does not merge the real store, and its result does not justify merging old
-records. Which records are the painting is decided from their photographs
-before the replay, not from the replay's outcome, and the frozen labels are not
-changed.
-
-If the clear views attach there and nowhere wrong, the order of work is
-consolidation first (R-WS-17), then the visibility rule. If they still wait, use
-`explain_ambiguity.py` to say on what.
+The painting has eight records, and several also hold looks of other things.
+The world state's own merge refuses to join them for that reason, and an
+offline consolidation with `replay_consolidated.py` joined only three
+([2026-10-07](../progress/2026-10-07-identity-trial-scored.md)). Splitting mixed
+records (R-WS-18) and then joining records of one object (R-WS-17) is the
+world state's
+[one thing per object](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks).
+When a rebuilt store exists, replay this recording on it with the control and the
+visibility candidate. Score both against the frozen labels, which stay as they
+are. Which records are one object is decided from their photographs before any
+replay, never from its outcome, and nothing here merges the real store.
 
 ## Scoring any candidate on this or a later recording
 

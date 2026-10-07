@@ -623,7 +623,15 @@ every resolver decision about the chosen observations, including the ambiguous
 ones the store never records. It tells a region nothing fitted (no decision)
 from one too much fitted (ambiguous, with every candidate weighed). The
 [identity-trial scoring](../../docs/progress/2026-10-07-identity-trial-scored.md)
-used it to find the painting's clear views waiting on five records of itself.
+used it to find the painting's clear views waiting on records of itself.
+
+`replay_consolidated.py --directory <recording> --output <new-directory>
+--merge keep=gone[,gone...] [--new-visibility-only]` replays the same calls with
+chosen records joined first, by the world state's own merge on a copy of the
+store (`replay_call_recording.run`'s `prepare` hook; the control arm is never
+touched). Which records are one object is decided from their photographs
+beforehand. The merge refuses two records that share a photograph, so a
+refusal reports a mixed record. Diagnostic only: the real store is never merged.
 
 `replay_measured_visibility.py` tests extending mapped reach to stored positive
 finite depth, without changing measurement bytes. `--known-only` limits this to

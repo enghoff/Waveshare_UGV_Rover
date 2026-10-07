@@ -1,4 +1,4 @@
-# The identity trial, scored: the painting's clear views wait on five records of itself
+# The identity trial, scored: the painting's clear views wait on eight tangled records of itself
 
 **The visibility candidate fails on the independent recording, and the reason
 is not the one it was built for.** From viewpoint B the camera saw the dining
@@ -7,9 +7,9 @@ anything. On the rover, the map's reach stopped them: the lidar sees the dining
 chairs 1.65 m away and treats the wall behind as hidden, though the camera sees
 the painting above the chairs and measured it at 3.9 m. The candidate lifts
 that limit, and then the views are left waiting for a different reason. Seven
-placed things fit them equally well, five of them records of this one painting,
-and appearance cannot choose between copies of the same thing. So the resolver
-declines to guess. The candidate also loses the one painting connection the
+placed things fit them equally well, and every one of them is a record of this
+painting. Appearance cannot choose between copies of the same thing, so the
+resolver declines to guess. The candidate also loses the one painting connection the
 rover had made, which puts it below the plan's retention bar. It is not
 deployed. R-WS-13 stays open; R-WS-17 and R-WS-18 stay proposed.
 
@@ -67,8 +67,9 @@ chosen observations, including the ambiguous ones the store does not record.
   one test they fail is the map's reach.
 - **With the candidate, too much fits.** Seven placed things fit:
   `object:375`, `301`, `328`, `246` and `629`, all within 0.3 m of one another
-  on the wall 1.9-2.0 m up, plus `337` just below them and `397` in front.
-  Appearance gives 0.74 against 0.75-0.76.
+  on the wall 1.9-2.0 m up, plus `337` just below them and `397` in front. Their
+  photographs show all seven are the painting. Appearance gives 0.74 against
+  0.75-0.76.
   The C views go the same way once the wall records become visible to them,
   which is how their connection is lost.
 - **The record the C views had joined is misplaced.** `object:594` sits 1.2 m
@@ -76,16 +77,32 @@ chosen observations, including the ambiguous ones the store does not record.
   matching joined the C views to it and why the B views' measured range
   disagrees with it.
 
+## The records cannot simply be joined
+
+Photographs of each competing record, looked at before any consolidated replay,
+show the same painting: `object:301`, `328`, `375`, `246`, `629`, `337`, `397`
+and `594`. That is eight records for one painting. `replay_consolidated.py`
+(new) replays the recording with chosen records joined, using the world state's
+own merge on a copy of the store. The merge refuses to join two records that
+both hold a region of one photograph, since those must be two different things.
+
+Kept on `object:375`, it refused five of the seven joins. In look 13167,
+`375`'s region is the table and chairs below the painting, while `301`'s is the
+painting: `375` is mixed. Kept on `object:301`, it still refused four
+(`328`, `246`, `397` and `375`), each over a shared photograph. With the three it
+allowed (`629`, `594`, `337`), the clear B views still attach to nothing, and
+the C pair is still lost.
+
 ## What it means
 
-Reaching the painting needs two things, in order. First, records of one object
-must become one record (R-WS-17); while the painting has five, a correct new
-view is ambiguous by construction. Second, the reach limit must not hide what
-the camera measures above low furniture, which the candidate's rule addresses.
-Fixing the visibility rule alone makes this recording worse. The next step is
-offline: replay this recording with the painting's duplicate records
-consolidated and see whether the clear views attach. That is a counterfactual
-diagnostic, not a merge of the real store.
+The painting's evidence is spread over eight records, and several of them also
+hold looks of other things. A correct new view is ambiguous among them by
+construction. They cannot be joined while they are mixed, and a better
+visibility rule alone makes this recording worse. So the order is: split mixed
+records (R-WS-18), then join records of one object (R-WS-17), then the
+visibility rule. That work is the world state's
+[one thing per object](../plans/semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks),
+and M4 waits on it.
 
 Evidence: the trial's 14 frames and their retained depth, copied from the rover
 and hash-verified (`world/recordings/.../frames`, `frames.sha256`); the frozen

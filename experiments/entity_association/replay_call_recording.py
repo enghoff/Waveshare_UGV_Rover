@@ -21,7 +21,11 @@ def invariant_answer(contexts, arguments, sequence):
     return answers[0]
 
 
-def run(directory, output, withheld=(), map_invariant=False, candidate_ray_transform=None):
+def run(directory, output, withheld=(), map_invariant=False, candidate_ray_transform=None,
+        prepare=None):
+    """`prepare(store, reach)`, when given, changes a counterfactual arm's starting
+    store after it is checked against the recording -- `replay_consolidated.py`
+    merges records with it. The control arm is never prepared."""
     if output.exists():
         raise ValueError('choose a new output directory')
     manifest = json.loads((directory/'manifest.json').read_text())
@@ -37,6 +41,7 @@ def run(directory, output, withheld=(), map_invariant=False, candidate_ray_trans
     result = {'input_sha256':hashes, 'source_sha256':manifest['source_sha256'],
               'independent_acceptance':False, 'arms':{}}
     grid_functions={}
+    prepared={}
     def grid_function(key):
         if key not in grid_functions:
             if key:
@@ -56,6 +61,9 @@ def run(directory, output, withheld=(), map_invariant=False, candidate_ray_trans
                 store._create()
                 inserted = store.db.execute('SELECT COALESCE(MAX(id),0) FROM observations').fetchone()[0]
                 assert checkpoint(store)==events[0]['checkpoint']
+                if counterfactual and prepare is not None:
+                    first=next((e['map_sha256'] for e in events if e['kind']=='reach'),None)
+                    prepared[name]=prepare(store,grid_function(first))
                 checks, reach_calls, passes = 0, 0, []
                 index=1
                 while index<len(events):
@@ -147,13 +155,16 @@ def run(directory, output, withheld=(), map_invariant=False, candidate_ray_trans
         map_checks+=1
     result['archived_map_reach_checks']=map_checks
     result['all_archived_map_answers_exact']=True
-    if withheld or candidate_ray_transform is not None:
-        arm_name='abstain' if candidate_ray_transform is None else 'ray_candidate'
+    if withheld or candidate_ray_transform is not None or prepare is not None:
+        arm_name=('ray_candidate' if candidate_ray_transform is not None
+                  else 'consolidated' if prepare is not None else 'abstain')
         candidate=arm(arm_name,set(withheld));result['arms'][arm_name]=candidate
         result['candidate_map_handling']=('every candidate query invariant under all recorded pass grids'
                                          if map_invariant else 'single recorded grid per pass')
         result['withheld_ids']=list(withheld)
         result['owner_changes']=[i for i,e in control['owners'].items() if candidate['owners'].get(i)!=e]
+        if prepare is not None:
+            result['prepared']=prepared.get(arm_name)
     (output/'result.json').write_text(json.dumps(result,indent=2)+'\n')
     for file,sha in hashes.items():assert digest(directory/file)==sha
     print('Every live identity checkpoint and reach query reproduced:',len(control['resolver_passes']),'passes;',control['recorded_reach_calls'],'reach calls',flush=True)
