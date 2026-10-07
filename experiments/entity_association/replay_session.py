@@ -247,6 +247,57 @@ def _legs_transparent():
     return patch
 
 
+def moving(group) -> bool:
+    """Was this look taken while the rover moved? Any region carrying an origin
+    error, or a bearing error above the 1.5 degrees calibrated standing still.
+    Fixed 2026-10-07 before the variants below were scored."""
+    return any((row.get("origin_sigma_m") or 0.0) > 0.0
+               or (row.get("bearing_sigma_deg") or 0.0) > locate.BEARING_SIGMA_DEG
+               for row in group)
+
+
+@variant("still_only")
+def _still_only():
+    """Looks taken while moving are left out altogether: what identity would be
+    if the rover only took its pictures standing still."""
+    patch = _Nothing()
+    patch.keep_look = lambda group: not moving(group)
+    return patch
+
+
+@variant("moving_join_only")
+def _moving_join_only():
+    """Looks taken while moving may join a thing already placed, but never take
+    part in founding one: their bearings miss 2.5 times as far (2026-10-07), and a
+    founding is the one decision nothing later reviews."""
+    still: set = set()
+    originals = {"_place_one": resolve._place_one,
+                 "_place_from_range": resolve._place_from_range}
+
+    def only_still(function):
+        @functools.wraps(function)
+        def founding(store, available, session, entities, reach=None):
+            return function(store, [o for o in available if o["id"] in still],
+                            session, entities, reach)
+        return founding
+
+    class Patch:
+        def note(self, group):
+            if not moving(group):
+                still.update(row["id"] for row in group)
+
+        def __enter__(self):
+            for name, function in originals.items():
+                setattr(resolve, name, only_still(function))
+            return self
+
+        def __exit__(self, *exc):
+            for name, function in originals.items():
+                setattr(resolve, name, function)
+            return False
+    return Patch()
+
+
 def looks_in_order(database: Path, session: int) -> list[list[dict]]:
     """The session's observations grouped by the look that took them, ordered as
     the rover stored them (by identifier: 37 regions carry invalid clocks)."""
@@ -371,6 +422,9 @@ def run(database: Path, session: int, grid: Path | None, output: Path,
                                      or rng.random() >= drop_share] for g in groups)
                   if kept]
     context = VARIANTS[name]()
+    keep_look = getattr(context, "keep_look", None)
+    if keep_look is not None:
+        groups = [g for g in groups if keep_look(g)]
     builder = getattr(context, "reach_from", replay.reach_from)
     reach = cached_reach(builder(str(grid)) if grid else None)
     columns = ["id", *replay.COLUMNS]
@@ -403,6 +457,8 @@ def run(database: Path, session: int, grid: Path | None, output: Path,
             with context, founding_log(log, reach, history),                     (fast_appearance() if fast else _Nothing()):
                 for count, group in enumerate(groups, 1):
                     look_number[0] = count
+                    if hasattr(context, "note"):
+                        context.note(group)
                     with store._lock, store.db:
                         for row in group:
                             store.db.execute(

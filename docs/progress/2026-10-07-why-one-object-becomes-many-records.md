@@ -1,4 +1,4 @@
-# Why one object becomes many records, and two changes that did not fix it
+# Why one object becomes many records, and four changes that did not fix it
 
 **Duplicates of one object are founded where the object's bearings happen to
 cross, and those crossings scatter far more than the resolver assumes.** On the
@@ -9,9 +9,10 @@ every region of one picture, and it is 2.5 times worse in pictures taken while
 the rover moved. For things behind low furniture there is a second cause. The
 lidar sees the legs of the dining table and chairs, and a crossing is not
 allowed beyond the first leg. So the dining painting is placed over the chairs,
-somewhere different from each viewpoint. Two changes aimed at these causes were
-replayed over the whole session. Neither is better than the bench's own noise
-on balance. R-WS-17 and R-WS-18 stay proposed.
+somewhere different from each viewpoint. Four changes aimed at these causes
+were replayed over the whole session. None is better than the bench's own
+noise; leaving out pictures taken while moving comes closest. R-WS-17 and
+R-WS-18 stay proposed.
 
 ## The bench
 
@@ -75,12 +76,34 @@ different random 2% of unlabelled regions:
   looks against 9. But it splits more objects and doubles the wrong links,
   beyond the noise.
 
-Thresholds for both were fixed before scoring. Neither is deployed.
+Then two aimed at pictures taken while moving, which are 1,143 of the 2,094
+looks. Scored on labelled looks from pictures taken standing still only, so that
+every arm is judged on the same looks:
+
+| | split (10-03) | wrong looks (10-03) | wrong links | green painting: records, largest |
+|---|---|---|---|---|
+| baseline, three runs | 6, 6, 5 of 10 | 11.0%, 6.9%, 6.2% | 2, 0, 0 | 9/24%, 7/43%, 6/33% |
+| heading correction | 9 | 9.0% | 8 | 8/33% |
+| see past legs | 5 | 4.7% | 0 | 6/48% |
+| still pictures only | 4 | 4.7% | 0 | 8/38% |
+| moving pictures may join, not found | 7 | 7.8% | 16 | 5/33% |
+
+- **Still pictures only** (`still_only`): looks taken while moving are left out.
+  It is at the good end of the noise everywhere, and outside it nowhere. The
+  green painting is still eight records, so still pictures scatter too.
+- **Moving pictures may join, not found** (`moving_join_only`): fewer records
+  (175), but moving looks pile into existing ones. Wrong links rise to 16 on
+  still looks and to 87 on all looks.
+- **See past legs** looks no worse than the baseline on still looks. Its losses
+  on all looks came from moving pictures.
+
+Thresholds for every variant were fixed before scoring. None is deployed.
 
 ## What it means
 
 Gate-level changes to an online resolver that decides each look once trade one
 failure for another. That matches the earlier experiments listed in
 [the world state plan](../plans/semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks).
-The causes found here are real and measured. The bench is now able to tell a
-change from its own noise, so the next proposal can be judged in an afternoon.
+The causes found here are real and measured. With 10 to 16 labelled objects
+per set, the bench's noise is as large as most of the effects tried, so it can
+reject a change that does harm but cannot yet confirm a modest gain.

@@ -136,10 +136,23 @@ def score_set(owners: dict, objects: dict, other: list) -> dict:
             "cross_pairs": len(cross), "cross_linked": linked(cross)}
 
 
-def score(result: dict) -> dict:
+def still_ids(database: Path, session: int) -> set:
+    """Observations from looks taken standing still (`replay_session.moving`)."""
+    import replay_session
+    return {row["id"] for group in replay_session.looks_in_order(database, session)
+            if not replay_session.moving(group) for row in group}
+
+
+def score(result: dict, only: set | None = None) -> dict:
     owners = result["owners"]
     sets = label_sets()
+    if only is not None:
+        sets = {key: {"objects": {name: [i for i in ids if i in only]
+                                  for name, ids in s["objects"].items()},
+                      "other": [i for i in s["other"] if i in only]}
+                for key, s in sets.items()}
     report = {"variant": result.get("variant"), "things": result.get("things"),
+              "only_still_looks": only is not None,
               "sets": {k: score_set(owners, v["objects"], v["other"])
                        for k, v in sets.items()}}
     cross_time = {}
@@ -158,9 +171,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--result", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--only-still", type=Path, metavar="STORE",
+                   help="score only labelled looks taken standing still in this store")
     a = p.parse_args()
     assert not a.output.exists(), "choose a new output file"
-    report = score(json.loads(a.result.read_text()))
+    only = still_ids(a.only_still, 67) if a.only_still else None
+    report = score(json.loads(a.result.read_text()), only)
     a.output.write_text(json.dumps(report, indent=1) + "\n")
     for key, s in report["sets"].items():
         print("%-12s split %d/%d objects, %.2f records each, cohesion %.2f, "
