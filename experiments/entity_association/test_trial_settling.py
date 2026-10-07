@@ -53,6 +53,34 @@ class Settling(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.wait([{**self.record['later_stopped'], 'transform_age_s':1}])
 
+    def test_navigation_lagging_a_decisive_scan_is_judged_by_the_scan(self):
+        # 2026-10-07, the trial's first viewpoint: the measurement as recorded.
+        s = self.record['later_stopped']
+        self.backend.card = {'map_id':s['map_id']}
+        self.backend.wait_for_still = lambda:s
+        self.backend.log = lambda *a,**k:None
+        self.backend.call = lambda *a,**k:{'reading_age_s':0,'percent':70}
+        real = {'trusted':True,'score':.993,'guess_score':.487,'rival':.712,
+                'moved_m':.06,'turned_deg':12.0,'x_m':-19.036,'y_m':-14.986,
+                'heading_deg':59.1}
+        with patch('experiments.entity_association.run_visibility_trial.rpc', return_value=real):
+            status, _ = self.backend.health()
+        self.assertEqual(status['pose']['heading_deg'], 59.1)
+        self.assertEqual(status['pose_from'], 'scan')
+
+    def test_an_ambiguous_scan_still_refuses(self):
+        s = self.record['later_stopped']
+        self.backend.card = {'map_id':s['map_id']}
+        self.backend.wait_for_still = lambda:s
+        self.backend.log = lambda *a,**k:None
+        for close in ({'guess_score':.80}, {'rival':.90}, {'moved_m':.4}, {'trusted':False}):
+            measured = {'trusted':True,'score':.993,'guess_score':.487,'rival':.712,
+                        'moved_m':.06,'turned_deg':12.0,'x_m':-19.036,'y_m':-14.986,
+                        'heading_deg':59.1, **close}
+            with patch('experiments.entity_association.run_visibility_trial.rpc', return_value=measured):
+                with self.assertRaisesRegex(RuntimeError,'localization'):
+                    self.backend.health()
+
     def test_quiet_feedback_does_not_waive_heading_check(self):
         s = self.record['later_stopped']
         self.backend.card = {'map_id':s['map_id']}

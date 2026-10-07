@@ -21,6 +21,37 @@ from check_recorded_turn import check as turn_check
 import goal_fit
 
 
+def scan_decides(measurement):
+    """The scan's pose, when it disagrees with navigation and is plainly right.
+
+    After a large turn navigation's heading can be 10 degrees or more out, and
+    it stays out until the rover drives again, because the mapper folds no scan
+    in while the rover stands still. On 2026-10-07 the trial stopped at its
+    first viewpoint on exactly that: navigation said 47 degrees, the scan fitted
+    59 with 99% of it on a wall, against 49% at navigation's pose. A still look
+    already takes its bearings from the same fit (world_state/headingcheck.py),
+    so the fit is what the trial's view and its photographs are judged by.
+
+    Only where nothing is ambiguous: the fit is trusted and scores at least 0.90,
+    beats navigation's own pose by 0.30 or more, sits within 0.25 m of it, and
+    beats the best other place the scan could fit by 0.15. Otherwise None, and
+    the caller refuses as before.
+    """
+    try:
+        score = float(measurement['score'])
+        at_navigation = float(measurement['guess_score'])
+        rival = float(measurement.get('rival') or 0.0)
+        moved = abs(float(measurement['moved_m']))
+        pose = {'x_m': float(measurement['x_m']), 'y_m': float(measurement['y_m']),
+                'heading_deg': float(measurement['heading_deg'])}
+    except (KeyError, TypeError, ValueError):
+        return None
+    if (measurement.get('trusted') and score >= .90 and score - at_navigation >= .30
+            and score - rival >= .15 and moved <= .25):
+        return pose
+    return None
+
+
 def wheels_unpowered(pwm):
     """Whether the base's last motor command leaves the wheels unpowered.
 
@@ -118,7 +149,12 @@ class Live:
         self.log('measure', result=measurement)
         if (not measurement.get('trusted') or measurement.get('score',0) < .90 or
             abs(measurement.get('moved_m',99)) > .25 or abs(measurement.get('turned_deg',99)) > 10):
-            raise RuntimeError('Fresh stationary localization check failed')
+            fitted = scan_decides(measurement)
+            if fitted is None:
+                raise RuntimeError('Fresh stationary localization check failed')
+            # Navigation is lagging, not lost: judge the view from the scan.
+            self.log('navigation_lags_scan', navigation=status.get('pose'), scan=fitted)
+            status = dict(status, pose=fitted, pose_from='scan')
         charge = self.call('battery', timeout=3)
         if charge.get('reading_age_s',99) > 5:
             raise RuntimeError('Battery reading stale')
