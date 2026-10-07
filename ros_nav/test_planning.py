@@ -1077,6 +1077,78 @@ def test_a_near_goal_is_a_turn_a_line_and_a_turn():
     finally:
         nav_moves.time.sleep = saved_sleep
 
+    # Going round a person who stays put: a 0.2 m blob half way to a goal
+    # 0.7 m ahead, on an otherwise empty costmap, and a planner whose route
+    # goes round it. The rover turns and drives straight legs, never a curve.
+    import goal_fit
+    width = 60
+    cells = bytearray(width * width)
+    grid = goal_fit.CostGrid(width, width, 0.05, -1.5, -1.5, bytes(cells))
+    for col in range(width):
+        for row in range(width):
+            x, y = -1.5 + (col + 0.5) * 0.05, -1.5 + (row + 0.5) * 0.05
+            if 0.25 <= x <= 0.45 and -0.1 <= y <= 0.1:
+                cells[row * width + col] = goal_fit.LETHAL
+    grid = goal_fit.CostGrid(width, width, 0.05, -1.5, -1.5, bytes(cells))
+    body = goal_fit.polygon_from("[]", 0.200)
+    around = [(0.0, 0.0)] + [(0.0, 0.1 * i) for i in range(1, 6)] + [
+        (0.1 * i, 0.5) for i in range(1, 8)] + [(0.7, 0.5 - 0.1 * i) for i in range(1, 6)]
+
+    class Blocked(Floor):
+        def footprint(self):
+            return body
+
+        def costmap(self):
+            return grid
+
+        def route_to(self, gx, gy, yaw):
+            self.last_route = around
+            return (2.4, 270.0), 0
+
+        def run_goal(self, kind, goal, limit_s, say, measure, motion="driving",
+                     budget=None, give_up=None, guard=None):
+            if kind == "forward":
+                x, y, h = self.at
+                step = goal.target.x
+                self.sent.append(("forward", step * 100))
+                self.at[:2] = [x + step * math.cos(h), y + step * math.sin(h)]
+                return {"reason": "arrived", "travelled_m": step, "turned_deg": 0.0}
+            return Floor.run_goal(self, kind, goal, limit_s, say, measure,
+                                  motion=motion, budget=budget, give_up=give_up,
+                                  guard=guard)
+
+    legs = goal_fit.straight_legs(grid, body, (0.0, 0.0), around)
+    ends = [(0.0, 0.0)] + list(legs or [])
+    check("the legs round the blob are a few straight lines the body fits down, "
+          "ending at the goal",
+          (bool(legs) and len(legs) <= 4,
+           [round(v, 2) for v in (legs or [(None, None)])[-1]],
+           all(goal_fit.line_fits(grid, body, a, b) for a, b in zip(ends, ends[1:]))),
+          (True, [0.7, 0.0], True))
+    check("...cutting the corners the route went round",
+          len(legs or []) < 3 or sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                                     for a, b in zip(ends, ends[1:])) < 2.4, True)
+    check("...and a route straight through it is no legs at all",
+          goal_fit.straight_legs(grid, body, (0.0, 0.0), [(0.7, 0.0)]), None)
+
+    saved_sleep = nav_moves.time.sleep
+    nav_moves.time.sleep = lambda seconds: None
+    try:
+        rover = Blocked((0.0, 0.0, 0.0))
+        out = rover.goto((0.7, 0.0), 0.0, quiet)
+    finally:
+        nav_moves.time.sleep = saved_sleep
+    kinds = [kind for kind, _ in steps(rover)]
+    check("a near goal that stays blocked is gone round, in straight legs",
+          (out.get("reason"), "goto" in kinds, kinds.count("forward"),
+           all(a != b for a, b in zip(kinds, kinds[1:]))),
+          ("arrived", False, len(legs), True))
+    check("...ending where it was asked to, facing the way asked",
+          ([round(v, 2) for v in rover.pose()[:2]], round(math.degrees(rover.pose()[2]))),
+          ([0.7, 0.0], 0))
+    check("...and saying so",
+          "went round something in the way" in (out.get("detail") or ""), True)
+
     rover = Floor((-19.45, -14.65, 0.0))
     rover.goto((-17.2, -14.65), 0.0, quiet)
     check("a far goal is still one goal, with the heading asked for",

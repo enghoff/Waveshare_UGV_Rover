@@ -116,6 +116,10 @@ class NavExplore:
         # cheapest frontier on the map for ever.
         if path is None or len(path.poses) < 2:
             return None, code
+        # The points as well as the price, for a near goal that has to be
+        # driven round something as straight legs (`nav_moves.round_by_legs`).
+        self.last_route = [(pose.pose.position.x, pose.pose.position.y)
+                           for pose in path.poses]
         return route_cost.from_path(path), code
 
     def back_off(self, say, guard=None):

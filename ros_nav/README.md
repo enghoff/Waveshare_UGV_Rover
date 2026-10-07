@@ -149,8 +149,11 @@ controller, so close to the goal, turns back and forth instead of driving it
 to the one goal. A goal with no heading, which is what a map click sends, is
 one goal as before. Facing a near goal, the rover asks the planner for the
 route first: if something not on the map is in the straight way -- a person,
-say -- it holds still and asks again every 2 s, drives once the way clears, and
-after 10 s hands the goal back as blocked instead of driving round it.
+say -- it holds still and asks again every 2 s, and drives once the way clears.
+After 6 s it goes round: the planner's route is cut into at most four straight
+legs the body fits down, each driven as a turn and a straight drive that stops
+for anything in its way. With no such legs the goal is handed back as blocked.
+It never swings on the spot over a curve it will not follow.
 
 No goal turns on the spot for ever. A drive that has not got 0.5 m further on
 in 25 s while Nav2 attempts no recovery is ended and says so. Nav2's own

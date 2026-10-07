@@ -153,6 +153,53 @@ def fits(grid, footprint, x, y, yaw):
     return True
 
 
+def line_fits(grid, footprint, a, b):
+    """Can the body drive straight from `a` to `b`, facing along the line?
+
+    Sampled at the grid's own resolution, end to end, so nothing a cell wide is
+    stepped over."""
+    length = math.hypot(b[0] - a[0], b[1] - a[1])
+    yaw = math.atan2(b[1] - a[1], b[0] - a[0])
+    steps = max(1, int(math.ceil(length / grid.resolution)))
+    for step in range(steps + 1):
+        share = float(step) / steps
+        if not fits(grid, footprint, a[0] + (b[0] - a[0]) * share,
+                    a[1] + (b[1] - a[1]) * share, yaw):
+            return False
+    return True
+
+
+def straight_legs(grid, footprint, start, route, max_legs=4):
+    """The fewest straight lines, along a planner's route, the body fits down.
+
+    Each leg runs from where the last ended to the furthest point of `route` a
+    straight drive reaches without the body touching anything the costmap
+    holds. Returns the legs' end points, the last being the route's end, or
+    None when a point cannot be reached straight or it takes more than
+    `max_legs`: a route that needs more is not one to drive by turning on the
+    spot between straight lines.
+
+    This is how the rover goes round something near a goal: a turn, a straight
+    line, a turn, as the rover drives naturally, instead of the curve the
+    controller will not follow so close to where it is going (2026-10-07).
+    """
+    points = list(route)
+    if not points:
+        return None
+    legs, here, reached = [], tuple(start), -1
+    while reached < len(points) - 1:
+        onward = None
+        for index in range(len(points) - 1, reached, -1):
+            if line_fits(grid, footprint, here, points[index]):
+                onward = index
+                break
+        if onward is None or len(legs) >= max_legs:
+            return None
+        here, reached = tuple(points[onward]), onward
+        legs.append(here)
+    return legs
+
+
 def candidates(grid, x, y, reach_m):
     """Cells within `reach_m` of a point, nearest first.
 

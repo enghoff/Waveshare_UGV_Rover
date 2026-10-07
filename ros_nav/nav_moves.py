@@ -84,10 +84,16 @@ DETOUR_SLACK_M = 0.5
 
 #: How long a blocked near goal waits, still, for the way to clear, and how
 #: often it asks the planner again. A person stepping aside takes a few
-#: seconds; a chair does not move. After this the goal is handed back as
-#: blocked rather than driven round.
-BLOCKED_WAIT_S = 10.0
+#: seconds; a chair does not move. After this the rover goes round in straight
+#: legs (`round_by_legs`), or hands the goal back as blocked if it cannot.
+BLOCKED_WAIT_S = 6.0
 BLOCKED_ASK_S = 2.0
+
+#: Going round something in the way of a near goal: at most this many straight
+#: legs, and a route at most this much longer than the straight line. Past
+#: either, the goal is handed back as blocked.
+ROUND_LEGS = 4
+ROUND_EXTRA_M = 3.0
 
 
 class NavMoves:
@@ -699,9 +705,23 @@ class NavMoves:
                     give_up=give_up, guard=guard, unwedge=unwedge, near=False))
 
         blocked = self.wait_for_the_way(goal, say, guard)
-        if blocked:
+        if blocked and not blocked.startswith("something is in the way"):
             return tally({"reason": "blocked", "travelled_m": 0.0,
                           "turned_deg": 0.0, "detail": blocked})
+        if blocked:
+            went = self.round_by_legs(goal, say, guard, blocked)
+            if went.get("reason") != "arrived" or yaw is None:
+                return tally(went)
+            moved[0] += float(went.get("travelled_m") or 0.0)
+            swung[0] += float(went.get("turned_deg") or 0.0)
+            here = self.pose()
+            off = math.degrees(wrap(yaw - here[2]))
+            if abs(off) <= FINAL_TURN_DEG:
+                return tally(dict(went, travelled_m=0.0, turned_deg=0.0))
+            turned = self.turn(off, say, guard=guard)
+            if turned.get("reason") == "arrived":
+                turned["detail"] = went.get("detail") or ""
+            return tally(turned)
 
         # Straight there, arriving the way it is travelling, so the planner has
         # no heading to loop round for.
@@ -752,6 +772,60 @@ class NavMoves:
                 say("waiting", "something is in the way; waiting for it to move")
             time.sleep(BLOCKED_ASK_S)
             waited += BLOCKED_ASK_S
+
+    def round_by_legs(self, goal, say, guard, why):
+        """Go round what is in the way, as straight legs with turns between.
+
+        The route is the planner's last answer from `wait_for_the_way`, cut by
+        `goal_fit.straight_legs` into the fewest lines the body fits down on the
+        costmap as it now is. Each leg is a turn to face its end and a straight
+        drive that stops at anything in its way (`drive`), checked against the
+        guard first. Where there is no such set of legs, the goal is handed back
+        as blocked with `why`.
+        """
+        here = self.pose()
+        route = getattr(self, "last_route", None)
+        body = self.footprint()
+        grid = self.costmap() if body else None
+        straight = math.hypot(goal[0] - here[0], goal[1] - here[1])
+        length = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                     for a, b in zip(route or [], (route or [])[1:]))
+        legs = (goal_fit.straight_legs(grid, body, here[:2], route, ROUND_LEGS)
+                if route and grid is not None and length <= straight + ROUND_EXTRA_M
+                else None)
+        if not legs:
+            return {"reason": "blocked", "travelled_m": 0.0, "turned_deg": 0.0,
+                    "detail": why + ", and there is no way round it in %d straight "
+                                    "legs" % ROUND_LEGS}
+        say("choosing", "going round what is in the way, in %d straight leg%s"
+                        % (len(legs), "" if len(legs) == 1 else "s"))
+        moved, swung = 0.0, 0.0
+        for end in legs:
+            here = self.pose()
+            refused = autonomy_guard.refusal(guard, self.stop_seq, pose=here[:2],
+                                             goal=end)
+            if refused:
+                return {"reason": "blocked", "travelled_m": round(moved, 3),
+                        "turned_deg": round(swung, 1), "detail": refused}
+            off = math.degrees(wrap(math.atan2(end[1] - here[1], end[0] - here[0])
+                                    - here[2]))
+            if abs(off) > 1.0:
+                turned = self.turn(off, say, guard=guard)
+                swung += float(turned.get("turned_deg") or 0.0)
+                if turned.get("reason") != "arrived":
+                    turned.update(travelled_m=round(moved, 3), turned_deg=round(swung, 1))
+                    return turned
+            here = self.pose()
+            leg = self.drive(math.hypot(end[0] - here[0], end[1] - here[1]),
+                             DEFAULT_SPEED_MS, say, guard=guard)
+            moved += float(leg.get("travelled_m") or 0.0)
+            if leg.get("reason") != "arrived":
+                leg.update(travelled_m=round(moved, 3), turned_deg=round(swung, 1))
+                return leg
+        return {"reason": "arrived", "travelled_m": round(moved, 3),
+                "turned_deg": round(swung, 1),
+                "detail": "went round something in the way, in %d straight leg%s"
+                          % (len(legs), "" if len(legs) == 1 else "s")}
 
     def unwedged(self, refused, where, yaw_deg, say, give_up, guard):
         """Back off from where the planner will not plan, then ask again once.
