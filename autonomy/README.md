@@ -469,6 +469,7 @@ else.
 | [`goals.py`](goals.py) | what could usefully be done next, and what each would cost |
 | [`hypotheses.py`](hypotheses.py) | which placed things to check are really there, and from where (M0a) |
 | [`scoring.py`](scoring.py) | what each is worth, what refuses it, and which one wins |
+| [`places.py`](places.py) | places a run may cross but must not choose to drive to, per map (`places.json`): the rug under the dining table |
 | [`cooling.py`](cooling.py) | what is not worth looking at again just now, and when that lapses |
 | [`decide.py`](decide.py) | one deliberation, recorded; `python3 decide.py` says what it would do |
 | [`executive.py`](executive.py) | the loop that carries one out, under a permit the daemon can take back |

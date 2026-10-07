@@ -1,0 +1,14 @@
+{
+  "7da19bef3888": [
+    {
+      "name": "the rug under the dining table",
+      "why": "the tracks catch on it and it cannot be seen by the lidar (owner, 2026-10-07; M3 session 12 stuck on it)",
+      "added": "2026-10-07",
+      "min_x_m": -19.6,
+      "max_x_m": -17.2,
+      "min_y_m": -13.6,
+      "max_y_m": -11.8,
+      "drawn_from": "a 6 x 8 ft rug centred on the table, whose legs and chairs ring (-18.4, -12.7) on the map"
+    }
+  ]
+}

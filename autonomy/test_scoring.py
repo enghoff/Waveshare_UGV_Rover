@@ -217,6 +217,29 @@ def test_a_safe_area_refuses_what_is_outside_it() -> None:
           [one["veto"] for one in boxed], ["outside the safe area"])
 
 
+def test_a_marked_place_is_not_chosen_as_a_drive_target() -> None:
+    """The rug under the dining table, 2026-10-07: the rover may cross it but a
+    run must not pick a place on it to drive to."""
+    import places
+    here = _situation(entities=[_a_thing_worth_looking_at()])
+    candidate = goals.improve_geometry(here)[0]
+    goal = candidate.constraints["goal"]
+    rug = [{"name": "the rug", "why": "the tracks catch on it",
+            "min_x_m": goal["x_m"] - 0.5, "max_x_m": goal["x_m"] + 0.5,
+            "min_y_m": goal["y_m"] - 0.5, "max_y_m": goal["y_m"] + 0.5}]
+    refused = scoring.vetoes(candidate, here, areas=rug)
+    check("a goal on the rug is refused", [one["veto"] for one in refused],
+          ["not a place to stop"])
+    check("...saying where and why", "the rug" in refused[0]["why"]
+          and "catch" in refused[0]["why"], True)
+    elsewhere = [{**rug[0], "min_x_m": goal["x_m"] + 5.0,
+                  "max_x_m": goal["x_m"] + 6.0}]
+    check("...and one off it is not", scoring.vetoes(candidate, here, areas=elsewhere), [])
+    check("the areas on file belong to one map and no other",
+          (bool(places.areas_for("7da19bef3888")), places.areas_for("another-map")),
+          (True, []))
+
+
 def test_two_equal_candidates_break_the_same_way_twice() -> None:
     here = _situation(entities=[_a_thing_worth_looking_at(),
                                 a_thing("object:9", 2.2, 1.0,
@@ -278,6 +301,7 @@ TESTS = (
     test_changing_its_mind_costs_something_and_sticking_does_not,
     test_a_thing_that_has_been_put_aside_is_refused_with_its_reason,
     test_a_safe_area_refuses_what_is_outside_it,
+    test_a_marked_place_is_not_chosen_as_a_drive_target,
     test_two_equal_candidates_break_the_same_way_twice,
     test_the_weights_can_be_changed_without_changing_the_code,
     test_the_decision_carries_the_whole_configuration_not_a_name_for_it,

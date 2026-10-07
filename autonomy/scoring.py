@@ -51,6 +51,7 @@ from typing import Any
 import cooling
 import goals as goals_mod
 import hypotheses
+import places
 from situation import Situation
 
 # The daemon's own permission rules, so that a candidate this component refuses
@@ -260,7 +261,8 @@ def gate(situation: Situation, weights: Weights = DEFAULT, *,
 
 
 def vetoes(candidate: goals_mod.Candidate, situation: Situation,
-           weights: Weights = DEFAULT) -> list[dict[str, str]]:
+           weights: Weights = DEFAULT,
+           areas: list[dict[str, Any]] | None = None) -> list[dict[str, str]]:
     """Everything about one candidate that refuses it outright.
 
     Ordered as written rather than by severity, because a candidate refused for
@@ -296,6 +298,11 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
                                       _geofence(situation, weights))
     if outside:
         out.append({"veto": "outside the safe area", "why": outside})
+    marked = places.refusal(
+        facts.get("goal") if facts.get("needs_movement", True) else None,
+        places.areas_for(situation.nav.get("map_id")) if areas is None else areas)
+    if marked:
+        out.append({"veto": "not a place to stop", "why": marked})
     cool = cooling.cooling(situation.cooled, candidate.target, now=situation.at)
     if cool:
         out.append({"veto": "cooling off", "why": str(cool.get("why") or
