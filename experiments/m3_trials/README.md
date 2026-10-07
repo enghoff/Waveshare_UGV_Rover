@@ -16,6 +16,7 @@ it opens or a person's call, with the owner present and the rover untethered.
 | `start_run.py "purpose" [area]` | opens a session run and starts the executive: fenced to the charger room by default, `flat` for no fence, or `min_x,max_x,min_y,max_y` for another room |
 | `watch_run.py [floor] [minutes]` | follows a run every 5 s until it ends, or the battery reads the floor (default 10%, the owner's standing floor) or less three times standing still |
 | `session_alerts.py` | a live alert stream for a session (run it under a monitor): a drive 20 s without moving 0.3 m, the run ending, the battery at 10% over 12 s standing, and a summary every two minutes |
+| `battery_now.py [seconds]` | the charge now and what kind of reading it is -- under load, recovering from a drive, rising on the charger or at rest -- from the median of a window of readings; run it before stating a charge |
 | `trace_moves.py` | matches every move navigation logged during each session to the episode that dispatched it (R-SAFE-9) |
 
 `m3_trials.py` drives one leg between two fixed points 4.4 m apart in the
