@@ -96,9 +96,17 @@ def main():
     finally:
         if marker_owned and marker.exists() and json.loads(marker.read_text()).get('session') == a.session:
             marker.unlink()
-            try:
-                result['world_close'] = rpc(8769,{'call':'world_inspect','arguments':{'settle':False,'wait':True}},timeout=12)
-            except Exception as error: result['world_close_error'] = str(error)
+            # A look still running answers "busy"; on 2026-10-07 that left the
+            # recording without its closing snapshot. Wait it out, briefly.
+            for attempt in range(4):
+                try:
+                    result['world_close'] = rpc(8769,{'call':'world_inspect','arguments':{'settle':False,'wait':True}},timeout=12)
+                    result.pop('world_close_error', None)
+                    break
+                except Exception as error:
+                    result['world_close_error'] = str(error)
+                    if 'busy' not in str(error): break
+                    time.sleep(3)
         if recorder is not None:
             if a.interrupt_recorder:
                 recorder.send_signal(signal.SIGINT)

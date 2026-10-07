@@ -68,6 +68,20 @@ class Settling(unittest.TestCase):
         self.assertEqual(status['pose']['heading_deg'], 59.1)
         self.assertEqual(status['pose_from'], 'scan')
 
+    def test_a_decisive_scan_inside_the_limit_still_sets_the_pose(self):
+        # 2026-10-07, C: 10.0 deg apart, inside the old limit, and the view was
+        # judged from navigation's 39.6 rather than the scan's 49.6.
+        s = self.record['later_stopped']
+        self.backend.card = {'map_id':s['map_id']}
+        self.backend.wait_for_still = lambda:s
+        self.backend.log = lambda *a,**k:None
+        self.backend.call = lambda *a,**k:{'reading_age_s':0,'percent':70}
+        real = {'trusted':True,'score':.978,'guess_score':.586,'rival':.694,
+                'moved_m':.10,'turned_deg':10.0,'x_m':-20.0,'y_m':-14.2,'heading_deg':49.6}
+        with patch('experiments.entity_association.run_visibility_trial.rpc', return_value=real):
+            status, _ = self.backend.health()
+        self.assertEqual((status['pose']['heading_deg'], status['pose_from']), (49.6, 'scan'))
+
     def test_an_ambiguous_scan_still_refuses(self):
         s = self.record['later_stopped']
         self.backend.card = {'map_id':s['map_id']}

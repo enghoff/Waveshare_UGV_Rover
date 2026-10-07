@@ -52,6 +52,15 @@ def scan_decides(measurement):
     return None
 
 
+#: How far off the middle of the picture the target may be for a view to count
+#: as facing it. The depth camera sees about 34 degrees either side; the card
+#: was planned with the painting 27.7 degrees off at B. The trial used to ask
+#: for the heading within 5 degrees instead, which the gyro's 9-10% over-count
+#: on a turn cannot meet: on 2026-10-07 it refused C facing 49.6 by the scan
+#: against 55 asked, with the painting 17.5 degrees off centre.
+VIEW_HALF_DEG = 30.0
+
+
 def wheels_unpowered(pwm):
     """Whether the base's last motor command leaves the wheels unpowered.
 
@@ -147,12 +156,14 @@ class Live:
             raise RuntimeError('Navigation/board/localization is not ready and stationary')
         measurement = rpc(8773, {'op':'measure'}, timeout=3)
         self.log('measure', result=measurement)
+        fitted = scan_decides(measurement)
         if (not measurement.get('trusted') or measurement.get('score',0) < .90 or
             abs(measurement.get('moved_m',99)) > .25 or abs(measurement.get('turned_deg',99)) > 10):
-            fitted = scan_decides(measurement)
             if fitted is None:
                 raise RuntimeError('Fresh stationary localization check failed')
-            # Navigation is lagging, not lost: judge the view from the scan.
+        if fitted is not None and abs(measurement.get('turned_deg', 0)) > 1:
+            # Navigation is lagging, not lost: judge the view from the scan,
+            # which is what the look takes its bearings from.
             self.log('navigation_lags_scan', navigation=status.get('pose'), scan=fitted)
             status = dict(status, pose=fitted, pose_from='scan')
         charge = self.call('battery', timeout=3)
@@ -275,8 +286,18 @@ class Live:
 
     def face(self, heading, returning=False):
         status, _ = self.health(returning)
-        angle = (heading-status['pose']['heading_deg']+180)%360-180
-        if abs(angle) <= 5:
+        pose = status['pose']
+        angle = (heading-pose['heading_deg']+180)%360-180
+        target = self.card.get('target_xy')
+        if target and pose.get('x_m') is not None and not returning:
+            # A view faces its target when the target is in the picture.
+            off = (bearing([pose['x_m'], pose['y_m']], target)
+                   - pose['heading_deg'] + 180) % 360 - 180
+            self.log('view', heading=pose['heading_deg'], target_off_deg=round(off, 1),
+                     asked=heading, pose_from=status.get('pose_from', 'navigation'))
+            if abs(off) <= VIEW_HALF_DEG:
+                return
+        elif abs(angle) <= 5:
             return
         if self.card.get('direct_return', False):
             raise RuntimeError('Direct arrival missed the observation heading; no extra trial turn')

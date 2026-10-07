@@ -50,6 +50,18 @@ class DirectTrial(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'missed'):
             b.face(55)
 
+    def test_a_view_counts_when_its_target_is_in_the_picture(self):
+        # 2026-10-07, C: the scan put the rover at 49.6 deg against 55 asked,
+        # with the painting 17.5 deg off centre. The old 5-deg rule refused it.
+        card={'direct_return':True,'target_xy':[-18.513,-10.676]}
+        b=Live(Path('.'),card,Path('.'),'unused'); b.log=lambda *a,**k:None
+        b.motion=lambda *a,**k:self.fail('must not turn')
+        b.health=lambda *a,**k:({'pose':{'x_m':-20.0,'y_m':-14.2,'heading_deg':49.6},'pose_from':'scan'}, {})
+        b.face(55)
+        b.health=lambda *a,**k:({'pose':{'x_m':-20.0,'y_m':-14.2,'heading_deg':20.0}}, {})
+        with self.assertRaisesRegex(RuntimeError,'missed'):
+            b.face(55)
+
     def test_depth_look_reserves_the_observed_lock_wait(self):
         # Stationary readiness's actual depth look took 8.64 s: eight was too short.
         b=Live(Path('.'),{},Path('.'),'unused'); reservations=[];calls=[]
