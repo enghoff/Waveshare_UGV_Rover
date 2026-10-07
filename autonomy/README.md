@@ -486,12 +486,11 @@ else.
 Named because a plan that quietly absorbs a description of the thing it built
 leaves two accounts of the running system with one of them maintained.
 
-- **No autonomy session has run.** The executive is built, every way it can go
-  wrong is checked against a fake rover holding the real permission rules, and it
-  has driven the rover under supervision, but only through M0a's inspections. M3
-  asks for twenty supervised sessions in a pre-cleared room and none of them has
-  happened. Until they do, what is proven on the rover is the stops and the
-  inspections, not the loop as a whole.
+- **The loop has run in one room and over the flat, not yet in every condition
+  M3 asks for.** Six supervised sessions have driven it, the last four in the
+  charger room. M3 wants one in each of seven conditions, among them another
+  room, a person in the way, moved furniture and the depth camera gone.
+  [The plan](../docs/plans/autonomous-curiosity.md) lists them.
 - **The executive is not a service either.** A person opens a run and starts it;
   nothing starts it at boot, and a run cannot outlive the person who opened it by
   more than its budget.

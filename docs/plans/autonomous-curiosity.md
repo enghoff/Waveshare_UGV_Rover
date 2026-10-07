@@ -3,12 +3,15 @@
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
-the rover in supervised stop trials and in M0a's inspection runs. Six of M3's twenty
-supervised sessions have run, about 43 minutes; [the third](../progress/2026-10-06-m3-session-3.md)
+the rover in supervised stop trials and in M0a's inspection runs. Six M3 sessions
+have run, about 43 minutes, four of them in the charger room; [the third](../progress/2026-10-06-m3-session-3.md)
 showed R-AUT-13's ending, and on 2026-10-06 a repeated request, a hung executive
 and a lost connection were [tried on the rover](../progress/2026-10-06-repeat-hang-and-drop-on-the-rover.md).
-M3's criteria 6, 7, 9 and 10 are met; what remains is the session count and
-criterion 12. Later phases remain proposed. This is the
+M3's criteria 6, 7, 9 and 10 are met. What remains is a session in each of the
+six conditions not yet driven, which replaced a count of twenty on 2026-10-07
+([the decision](../decisions/trials-are-sized-by-what-they-show.md)), and a
+repeat of the takeover trial for criterion 12. M4 then waits on the world state
+before it needs the rover. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -54,9 +57,9 @@ environment:
   boundary.
 
 Useful autonomy through M5 must also pass the multi-day benchmark below. Full
-procedural learning additionally requires M6-M8; reflection and predictive models
-are extensions whose value must be measured, not prerequisites for recording or
-the first useful inspection loop.
+procedural learning additionally requires M6 and M7. A practice curriculum (M8),
+reflection and predictive models are extensions whose value must be measured, not
+prerequisites for recording or the first useful inspection loop.
 
 The target is not online self-modification of arbitrary code or continual neural
 fine-tuning on the physical rover.
@@ -104,8 +107,18 @@ counts before acceptance. Report successes, unresolved outcomes, precondition
 refusals, failures and aborts separately, with the full attempt count. Do not drop
 failed inspections after seeing their outcomes or count exhausted viewpoints as a
 resolved question. Report uncertainty in estimated rates and group correlated
-observations by object/run; 20 trials or 50 decisions are minimum checks, not a
-general reliability guarantee.
+observations by object/run.
+
+### Size a trial set by what it has to show
+
+A count is chosen from the question the trials answer, and the milestone says
+which question that is ([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md)).
+A rate needs enough trials for its interval to separate the threshold from what
+it rules out: 18 successes in 20 show, at 95% confidence, only that the true rate
+is above about 70%. A search for faults needs conditions that differ, because a
+trial that repeats a condition already passed rarely finds what the first missed.
+A trial set stops once its outcome is settled either way. A fix is seen working
+in the next trial that reaches it. A round number is not a reason for a count.
 
 ### Replay has a coverage boundary
 
@@ -397,8 +410,9 @@ Every criterion is met, across three entries of that date: the record and its
 names, [the clear that emptied the world under it](../progress/2026-09-08-the-clear-that-proved-it.md),
 and [the driven run](../progress/2026-09-08-the-driven-run.md) that supplied the
 navigation half of criterion 4. What the milestone does *not* give is listed
-under "what is still ahead" below, and the first item is the one that matters:
-nothing decides anything yet.
+under "what is still ahead" below. Since M3, the executive records its own
+decisions, so the first gap the list once named, that nothing decided anything,
+is closed.
 
 ### The component, which exists
 
@@ -420,12 +434,6 @@ as of the same date. What remains open is written into
 
 ### What is still ahead
 
-- **Nothing decides anything.** The recorder watches and writes down; the
-  executive that would choose a goal is Phase 2, and until it exists every
-  episode is an occasion of the rover acting rather than of it deciding. The
-  record has been proved against real events -- 59 moves and 426 looks across
-  three fillings of the world state -- and never against a decision, because
-  there are none to record.
 - **The recorder is not a service.** It is run by hand for as long as somebody
   wants a recording. Nothing starts it at boot, so a rover left alone records
   nothing, and retention is not run on a schedule either.
@@ -484,9 +492,6 @@ rooms with the expected outcome written beside each.
 
 ### What is still ahead
 
-- **Nothing acts on any of it.** The executive, the daemon-enforced movement
-  permission and the stop latch are M3, and none of them exists. Every
-  deliberation closes `abandoned` for the same reason: there is no authority.
 - **Four goal types are missing**, and they are the semantic ones:
   `inspect_uncertain_entity` (explicit gaps and claims from M4),
   `revisit_stale_entity`, `investigate_change` and `search_for_missing_entity`
@@ -501,9 +506,11 @@ rooms with the expected outcome written beside each.
 - **The purpose term is 1.0 everywhere**, because the owner has not declared
   one. It is configuration and not code; until it is set, the rover weighs
   exploring and inspecting equally and says so.
-- **Nothing measures whether a chosen goal would have paid off.** Predicted gain
-  against realised gain is what M4's evaluator needs and what any learned
-  ranking later rests on, and it cannot be measured until something acts.
+- **Nothing records whether a chosen goal paid off.** It has been measured once,
+  by hand, for geometry goals: 19 of 171 improved their thing
+  ([2026-10-06](../progress/2026-10-06-looks-seldom-reach-their-thing.md)).
+  Predicted gain against realised gain, for each decision, is what M4's
+  evaluator needs and what any learned ranking later rests on.
 
 ### Milestone M2: the rover can explain what it would investigate next
 
@@ -575,8 +582,9 @@ refused by name.
 
 Most of M3 is still physical:
 
-- **The twenty supervised sessions**, totalling at least two hours of autonomy
-  time in a pre-cleared area, with the owner present. Six have happened
+- **A session in each condition not yet driven** (criterion 4 and the list
+  under it), with the owner present. Six sessions have happened, the third to
+  sixth in the charger room
   ([1](../progress/2026-10-05-m3-session-1.md), 8.7 minutes;
   [2](../progress/2026-10-05-m3-session-2.md), 11 minutes, stopped at 5% battery;
   [3](../progress/2026-10-06-m3-session-3.md), 3.6 minutes, ended by going home;
@@ -584,10 +592,11 @@ Most of M3 is still physical:
   both stopped on the battery, 44 drives and none failed;
   [6](../progress/2026-10-06-m3-session-6.md), 10.4 minutes, its way home refused
   by the new margin);
-  M0a's runs were its own protocol and do not count towards them. Nothing below
-  criterion 3 can be answered without them. Open each with no action limit and
-  a safe area fenced to the cleared room, drawn 0.6 m beyond where the run
-  starts. A fenced run ends by going home
+  M0a's runs were its own protocol and do not count towards them. Session 6's
+  two faults, the way home refused by the margin and looks failing on the world
+  state's lock, are fixed and owed a sighting in the next session. Open each
+  with no action limit. A fenced condition gets a safe area around the cleared
+  room, drawn 0.6 m beyond where the run starts. A fenced run ends by going home
   ([R-AUT-13](../requirements/autonomy.md#r-aut-13), settled by session 3); an
   unfenced one has the whole flat and ends on the battery, since runs carry no
   battery floor. Start each on a full charge and judge the battery at rest: a
@@ -615,8 +624,8 @@ Most of M3 is still physical:
   [fixed](../progress/2026-10-06-a-person-who-takes-over-gets-their-move.md) and
   owed a repeat on the rover, which needs nobody at the console. Voice is
   [deferred](../decisions/m3-defers-the-voice-trial.md). A map change and a pose
-  jump ending a run are tested offline only; neither can be produced on the
-  rover without throwing its map away.
+  jump ending a run stand on the offline tests, because neither can be produced
+  on the rover without throwing its map away.
 - **The hardware limits P0 found.** The depth camera drops off USB, which cost five
   checks in M0a's runs, and a charge gives about 20 to 25 minutes of this driving.
   Both bound how long a session can usefully run.
@@ -640,8 +649,11 @@ Pass when all are true:
    already fully validated and model-independent;
 3. manual stop during each executive state results in an abort and the stop latch
    prevents automatic restart;
-4. 20 supervised hardware autonomy sessions complete in the pre-cleared area,
-   totalling at least 120 minutes of autonomy time;
+4. a supervised hardware session has run in each condition listed below, no
+   fault a session found is left unfixed, and the last three sessions turned up
+   nothing new. A session that finds a fault is followed by its fix and by that
+   condition again. Each session reports its autonomy time, and there is no
+   total;
 5. no session produces an unexpected physical contact or movement outside its
    configured boundary;
 6. every movement is attributable to one episode/goal ID;
@@ -658,15 +670,65 @@ Pass when all are true:
 12. concurrent manual requests follow the declared priority, and map changes
     or loss of valid pose during execution revoke the affected movement.
     (voice requests deferred by [the decision of 2026-10-07](../decisions/m3-defers-the-voice-trial.md))
+    The map and pose half stands on the offline tests. What it tests is the
+    daemon's response to navigation's own signal, and producing either on the
+    rover means throwing its map away. A natural occurrence in a session is
+    recorded.
 
-The 20-session count is deliberately about repeated opportunities for timing,
-interrupt and recovery faults rather than distance travelled.
+The sessions are a search for timing, interrupt and recovery faults. Those have
+come from conditions a session had not met before, not from repeats
+([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md)). The
+conditions are:
+
+- **the charger room, fenced**, which sessions 3 to 6 drove;
+- **another room, fenced, starting away from the charger**: new geometry for
+  choosing goals, fitting the body and finding the way home;
+- **the whole flat, unfenced, under the current code**: doorways, long routes,
+  and a run ending on the battery. Sessions 1 and 2 drove it before the body-fit
+  walk and the 0.6 m margin existed;
+- **straight after a full power-up**: the cold start in which the gyro fault
+  appeared, with the map's restore, the gyro's bias and the depth camera all
+  fresh;
+- **a person moving through the area**, crossing the rover's path and standing
+  where it wants to go;
+- **furniture moved since the map was made**: something standing in a mapped
+  gap, or a door open that the map has shut;
+- **the depth camera unavailable**, its service stopped for the run, which is
+  how a USB drop leaves a run: looks that cannot range.
 
 ## Phase 4 -- semantic claims, knowledge gaps and active perception
 
 ### Purpose
 
 Make the rover move **to learn something specific**, not only to expand the map.
+
+### What it waits on
+
+M4 cannot pass while a look's evidence rarely reaches the thing it was aimed
+at. Of 171 geometry goals on record, 19 improved their thing
+([2026-10-06](../progress/2026-10-06-looks-seldom-reach-their-thing.md)). However
+well a viewpoint is chosen, it cannot improve knowledge that its evidence never
+joins, so trials of the viewpoint planner would measure the world state instead.
+That work belongs to the world state:
+[R-WS-13](../requirements/world-state.md#r-ws-13),
+[R-WS-17](../requirements/world-state.md#r-ws-17) and
+[R-WS-18](../requirements/world-state.md#r-ws-18), in
+[its plan](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks).
+M4 spends no rover time until looks measurably reach their things
+([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md)).
+
+Three things on autonomy's side need no rover and are worth doing first, because
+M4's measurement depends on them:
+
+- **Recording a look that found nothing.** M4 counts a no-evidence attempt as
+  zero gain, and today such a look leaves no episode (Phase 1, *what is still
+  ahead*).
+- **Recording each decision's realised gain beside its predicted gain**, which
+  criterion 5 needs and which has only been measured once, by hand.
+- **Proposing things seen once and never placed.** These are a third of the
+  observations, and "which things have only been seen once" is one of the
+  questions the [design](autonomous-curiosity-design.md) asks the rover to
+  answer.
 
 ### Semantic claim layer
 
@@ -713,9 +775,12 @@ discovery or a new neural policy.
 
 ### Acceptance dataset
 
-Build a physically annotated set of at least 30 entities/questions across multiple
-viewpoints. Keep a development subset separate from an acceptance subset if prompts
-or thresholds are tuned.
+Build a physically annotated set of entities and questions across multiple
+viewpoints, large enough for criterion 3's comparison to resolve its predeclared
+minimum improvement. Start from the targets already taped and measured
+(`captures/2026-10-03-targets/TARGETS.txt`) rather than a new set. Keep a
+development subset separate from an acceptance subset if prompts or thresholds are
+tuned.
 
 ### Milestone M4: additional viewpoints measurably improve knowledge
 
@@ -726,8 +791,9 @@ Pass when all are true:
 3. active viewpoint selection beats a defined baseline (same-pose re-look or nearest
    reachable viewpoint) on the held-out acceptance set for the chosen metric --
    attribute correctness, association resolution or calibrated uncertainty;
-4. a predeclared set of at least 20 applicable hardware active-inspection attempts
-   is completed, reporting useful viewpoints, unresolved outcomes and failures;
+4. a predeclared set of applicable hardware active-inspection attempts, sized for
+   criterion 5's median to be told apart from zero, is completed, reporting useful
+   viewpoints, unresolved outcomes and failures;
 5. median realised information gain across that full attempt set is positive;
    no-evidence attempts count as zero, incorrect changes are penalised, and cases
    where predicted gain was wrong remain in the report;
@@ -794,9 +860,11 @@ in the world-state plan.
 
 ### Multi-day usefulness benchmark
 
-Before claiming useful lifelong memory, compare autonomy through M5 with both
-frontier-only exploration and fixed-schedule revisits over at least three separate
-days. Use matched initial knowledge, scripted scene changes and unchanged controls,
+Before claiming useful lifelong memory, compare autonomy through M5 with
+fixed-schedule revisits over at least three separate days. Frontier-only
+exploration is not a baseline: once the flat is mapped it has nowhere to go, so
+beating it would show nothing
+([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md)). Use matched initial knowledge, scripted scene changes and unchanged controls,
 equal time/travel budgets, and independent annotations. Counterbalance comparison
 order or reset matched scenes so one policy does not inherit another's observations.
 Keep acceptance objects/runs separate from tuning data.
@@ -809,9 +877,9 @@ inspection cost and interventions across all attempts.
 
 Pass when retained evidence remains resolvable after those interruptions, stale
 coordinates cannot drive movement, and autonomy meets the predeclared improvement
-over both baselines without increasing false confident claims or weakening safety
+over the baseline without increasing false confident claims or weakening safety
 limits. Failure leaves the individual M5 results intact but the programme's
-multi-day usefulness claim unproven. Repeat the relevant comparison with M7/M8
+multi-day usefulness claim unproven. Repeat the relevant comparison with M7
 learning enabled against frozen skills/parameters to show the benefit of learning.
 
 ## Phase 6 -- restricted procedural skill library
@@ -874,9 +942,12 @@ Pass when all are true:
    parameter types and movement bounds outside policy;
 2. a deliberately malicious model-like payload attempting code/file/shell access is
    rejected as data, not executed;
-3. the hand-authored reference skill satisfies its independent success predicate
-   in at least 18/20 predeclared applicable supervised trials; stopping with an
-   unresolved question is reported separately, not counted as success;
+3. replayed against recorded daemon outcomes, the hand-authored reference skill
+   makes the same calls within the same limits as the executive's own multi-view
+   inspection from M4, and in a few supervised runs on the rover it executes and
+   stops through the ordinary path. How often it answers its question is M4's
+   measurement, not this milestone's
+   ([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md));
 4. failure cases correctly classify precondition failure, navigation failure,
    perception failure and timeout rather than reporting generic success;
 5. skill execution remains interruptible through the ordinary stop path;
@@ -947,6 +1018,14 @@ skill so it demonstrates new procedural knowledge rather than rediscovery of the
 example.
 
 ## Phase 8 -- self-generated curriculum and competence progress
+
+This phase is optional since 2026-10-07
+([the decision](../decisions/trials-are-sized-by-what-they-show.md)). Practising
+for competence is not among the things the
+[design](autonomous-curiosity-design.md) asks the rover to become good at, and
+there is nothing to practise until a learned skill exists. It is entered only once
+M7 has produced a skill whose success varies with context, neither saturated nor
+consistently impossible.
 
 ### Purpose
 
@@ -1202,7 +1281,7 @@ The mock rover should eventually support deliberate:
 - skill timeout;
 - manual stop during action;
 - executive crash/hang, lost connection and expired movement permission;
-- restart, manual/voice contention, duplicate requests and map changes during action;
+- restart, manual contention, duplicate requests and map changes during action;
 - map clear, entity merge, evidence deletion and local-ID reuse during later replay.
 
 A system that only learns from successes will create optimistic skills and brittle
@@ -1297,39 +1376,34 @@ the problem.
 | M0a (passed 2026-10-02) | bounded verification of uncertain hypotheses | shared geometry/capture gates + replay refusals + useful outcomes in >=20 attempts across >=3 fresh supervised runs |
 | M0b (retired 2026-10-01) | actions relying on persistent identity | no single gate: each such action's case is decided under R-WS-13 before an autonomous run may take it |
 | M1 | episodic memory | durable reconstruction across resets/merges, no authority |
-| M2 | curiosity shadow mode | fixed scenarios + one-hour no-action rover shadow |
-| M3 | bounded autonomous loop | 20 supervised sessions / >=120 min, measured stops, permission expiry and failure tests |
-| M4 | active perception | held-out multi-view gain + >=20 hardware inspections |
+| M2 | curiosity shadow mode | fixed scenarios + a no-action rover shadow run |
+| M3 | bounded autonomous loop | a supervised session in each listed condition, measured stops, permission expiry and failure tests |
+| M4 | active perception | waits on looks reaching their things; held-out multi-view gain + hardware inspections sized for it |
 | M5 | temporal curiosity | scripted changed/unchanged scene benchmark |
-| M1-M5 usefulness | memory improves useful answers over days | >=3 days, two equal-budget baselines, restarts/reset, all attempts counted |
-| M6 | restricted skill substrate | malicious/invalid rejection + 18/20 reference-skill trials |
+| M1-M5 usefulness | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted |
+| M6 | restricted skill substrate | malicious/invalid rejection + reference skill equal to the executive in replay and stopping on the rover |
 | M7 | autonomous skill acquisition | proposed -> replayed -> physically verified -> reused skill |
-| M8 | self-generated curriculum | competence-progress beats random baseline |
+| M8 (optional) | self-generated curriculum | competence-progress beats random baseline |
 | M9 | model reflection | grounded fixed benchmark; outage-safe architecture |
 | M10 | empirical world model | held-out prediction and planning improvement |
 | M11 | optional neural policy | offline win + shadow gate before bounded hardware trial |
 
-## First implementation slice
+## What comes next
 
-P0 is already underway. Continue it on its existing track; the next independent
-implementation slice is M1 -> M2, without movement authority:
+M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
 
-1. use the current P0 baseline and follow-up recordings as versioned inputs, clearly
-   marked with their unresolved calibration/association limitations;
-2. define durable evidence references and retention, then add append-only episodic
-   storage and deterministic replay; coordinate shared world-state changes with P0;
-3. define the candidate-goal record and hard-veto interface;
-4. implement geometric-frontier and geometric-uncertainty generators in shadow mode;
-   semantic and temporal generators follow their M4/M5 evidence dependencies;
-5. add score decomposition and a fixed scenario harness;
-6. run the shadow executive on real rover state without action authority;
-7. inspect the resulting choices; M3 needs M1/M2 and daemon-enforced control tests,
-   followed by supervised physical stop/failure trials. Implement and replay
-   R-AUT-12 before the narrowly scoped M0a supervised acceptance trials; semantic
-   inspection beyond those trials needs M0a, and an identity-dependent action
-   needs its own case decided. Starting read-only work waives neither.
+1. **Finish M3 on the rover.** Repeat the takeover trial for criterion 12, then
+   drive one session in each condition not yet driven, until criterion 4's
+   stopping rule is met. Each session needs the owner, a charge and a cleared
+   area, so each is chosen to try something not tried before.
+2. **Let looks reach their things.** This is the world state's work (R-WS-13,
+   R-WS-17, R-WS-18), and M4 waits on it. Autonomy spends no rover time on
+   viewpoint trials until it is done.
+3. **Meanwhile, the offline half of M4**: recording looks that found nothing,
+   recording realised gain beside predicted gain, and proposing things seen
+   once and never placed (*What it waits on*, under Phase 4).
 
-At the end of that slice the project will already answer a useful empirical
-question: **given what the rover actually knows today, does an explicit curiosity
-objective choose sensible things to investigate?** If the answer is no, it can be
-fixed in replay without having moved the robot under an unproven executive.
+The question the programme now turns on is: **given what the rover actually
+knows, does choosing where to look make it know more?** M3 shows that it can
+choose and act safely. Until looks reach their things, the answer is no,
+whatever is chosen.
