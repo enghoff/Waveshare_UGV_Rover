@@ -13,7 +13,7 @@ it opens or a person's call, with the owner present and the rover untethered.
 | `m3_trials.py hang` | the stand-in is frozen mid-leg; the permit must stop the rover, and waking it must not bring the run back (R-SAFE-12) |
 | `m3_trials.py console` | the owner presses the console's stop at speed; timed from the daemon's own record of the press |
 | `m3_trials.py takeover` | a person's drive is sent mid-leg the way the console sends one; the run must end and the drive be carried out (criterion 12) |
-| `start_run.py "purpose"` | opens a fenced session run in the charger room and starts the executive |
+| `start_run.py "purpose" [area]` | opens a session run and starts the executive: fenced to the charger room by default, `flat` for no fence, or `min_x,max_x,min_y,max_y` for another room |
 | `watch_run.py` | follows a run every 5 s until it ends, or the battery reads 25% or less three times standing still |
 | `trace_moves.py` | matches every move navigation logged during each session to the episode that dispatched it (R-SAFE-9) |
 
@@ -25,3 +25,8 @@ charger room. It opens its own run with a safe area, and writes every sample to
 The fixed points and the safe area are the charger room's on map `7da19bef3888`.
 A new map needs them chosen again: a straight leg the body fits along, and a box
 0.6 m beyond where a run starts.
+
+M3 wants a session in each of the conditions listed in the plan, not a count of
+them ([the decision](../../docs/decisions/trials-are-sized-by-what-they-show.md)).
+For another room, take the rover there with a person's `drive_to` before opening
+the run, and fence it from where it stands.
