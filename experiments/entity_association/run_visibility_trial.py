@@ -284,7 +284,7 @@ class Live:
         finally:
             guard.cancel()
 
-    def face(self, heading, returning=False):
+    def face(self, heading, returning=False, centred=False):
         status, _ = self.health(returning)
         pose = status['pose']
         angle = (heading-pose['heading_deg']+180)%360-180
@@ -297,6 +297,19 @@ class Live:
                      asked=heading, pose_from=status.get('pose_from', 'navigation'))
             if abs(off) <= VIEW_HALF_DEG:
                 return
+            if centred:
+                raise RuntimeError('The target is still out of the picture after one centring turn')
+            # One turn to put the target in the middle of the picture. B was
+            # planned with the painting 27.7 deg off at the asked heading, and on
+            # 2026-10-07 the rover arrived 10 deg short of it, inside Nav2's own
+            # tolerance, with the painting 44 deg off. The pose is judged by the
+            # scan where it is decisive, which is what made a trial turn unsafe
+            # before (the heading it left behind went unchecked).
+            grid = self.helper('capture_route_costmaps.py', returning=returning)
+            if not turn_check(grid, now=time.time())['ok']:
+                raise RuntimeError('No fresh turn clearance')
+            self.motion('turn_in_place', {'angle_deg':off}, returning)
+            return self.face(heading, returning, centred=True)
         elif abs(angle) <= 5:
             return
         if self.card.get('direct_return', False):

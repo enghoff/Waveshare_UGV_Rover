@@ -58,9 +58,23 @@ class DirectTrial(unittest.TestCase):
         b.motion=lambda *a,**k:self.fail('must not turn')
         b.health=lambda *a,**k:({'pose':{'x_m':-20.0,'y_m':-14.2,'heading_deg':49.6},'pose_from':'scan'}, {})
         b.face(55)
-        b.health=lambda *a,**k:({'pose':{'x_m':-20.0,'y_m':-14.2,'heading_deg':20.0}}, {})
-        with self.assertRaisesRegex(RuntimeError,'missed'):
+        # Out of the picture: one centring turn, then judged again.
+        poses=iter([{'x_m':-20.0,'y_m':-14.2,'heading_deg':20.0},
+                    {'x_m':-20.0,'y_m':-14.2,'heading_deg':66.0}])
+        b.health=lambda *a,**k:({'pose':next(poses)}, {})
+        turns=[]
+        b.helper=lambda *a,**k:{}
+        b.motion=lambda name,args,ret:turns.append((name,round(args['angle_deg'])))
+        with patch('experiments.entity_association.run_visibility_trial.turn_check',return_value={'ok':True}):
             b.face(55)
+        self.assertEqual(turns,[('turn_in_place',47)])
+        # Still out after it: refused, and no second turn.
+        b.health=lambda *a,**k:({'pose':{'x_m':-20.0,'y_m':-14.2,'heading_deg':20.0}}, {})
+        turns.clear()
+        with patch('experiments.entity_association.run_visibility_trial.turn_check',return_value={'ok':True}):
+            with self.assertRaisesRegex(RuntimeError,'still out of the picture'):
+                b.face(55)
+        self.assertEqual(len(turns),1)
 
     def test_a_look_waits_out_the_rovers_own(self):
         b=Live(Path('.'),{},Path('.'),'unused'); b.log=lambda *a,**k:None
