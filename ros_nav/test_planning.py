@@ -1022,8 +1022,13 @@ def test_a_near_goal_is_a_turn_a_line_and_a_turn():
           round(math.degrees(rover.pose()[2])), 30)
 
     rover = Floor((-17.45, -14.65, -50.0))
-    rover.goto(goal, None, quiet)
+    rover.goto(goal, -60.0, quiet)
     check("a near goal it already faces is one straight drive",
+          steps(rover), [("goto", -58)])
+
+    rover = Floor(stuck)
+    rover.goto(goal, None, quiet)
+    check("a click with no heading is one goal, left to Nav2 as before",
           steps(rover), [("goto", -58)])
 
     rover = Floor((-17.25, -15.0, 150.3))

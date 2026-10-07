@@ -37,9 +37,12 @@ from nav_limits import (
     wrap,
 )
 
-#: **A goal nearer than this is driven as a turn, a straight line and a turn**,
-#: because the lattice planner will not turn on the spot when a loop is cheaper,
-#: and close to a goal the controller will not drive the loop. Measured on the
+#: **A goal nearer than this that must arrive facing a given way is driven as
+#: a turn, a straight line and a turn**, because the lattice planner will not
+#: turn on the spot when a loop is cheaper, and close to a goal the controller
+#: will not drive the loop. Only a goal with a heading: a console click carries
+#: none and has not been seen to swing, so it is left to Nav2 as it always was;
+#: an autonomous look carries the bearing to its thing. Measured on the
 #: rover on 2026-10-07 from where M3 session 7 rocked for 72 s: a goal 0.5 m
 #: away facing -70 deg planned as a 3.3 to 4.0 m loop from every start heading
 #: between 130 and 173 deg, and the real controller, given that loop, preferred
@@ -506,8 +509,9 @@ class NavMoves:
         `goal_fit` names), under the same guard as the drive, and asks once more.
         A second refusal is handed back rather than shuffled on.
 
-        **A goal nearer than `NEAR_GOAL_M` is a turn, a straight line and a
-        turn** (`near`), and `near=False` is how that sends its straight line.
+        **A goal nearer than `NEAR_GOAL_M` with a heading is a turn, a
+        straight line and a turn** (`near`), and `near=False` is how that sends
+        its straight line. One without a heading is one goal, as it always was.
 
         **No goal turns on the spot for ever.** One with no `give_up` of its own
         gets `frontier.Stall`: 25 s without getting 0.5 m further on, with Nav2
@@ -539,7 +543,7 @@ class NavMoves:
                     "turned_deg": 0.0, "detail": blocked}
 
         straight = math.hypot(gx - start[0], gy - start[1])
-        if near and straight < NEAR_GOAL_M:
+        if near and yaw_deg is not None and straight < NEAR_GOAL_M:
             return self.near(
                 (gx, gy), None if yaw_deg is None else yaw, note, say,
                 give_up=give_up, guard=guard, unwedge=unwedge)

@@ -43,12 +43,14 @@ on the grounds that a person who chose a place is owed every recovery.
 
 In `ros_nav/nav_moves.py`:
 
-- **A goal under 1.5 m is a turn, a straight line and a turn.** The rover turns
-  to face it, checking once more and correcting, because turns are counted by a
-  gyro measured 7-9% out. It then drives to it with the heading set to the way it
-  is travelling. If the heading asked for is more than 15 degrees off, it turns
-  to it after arriving. Where it cannot turn, it sends the one goal it always
-  sent.
+- **A goal under 1.5 m with a heading is a turn, a straight line and a turn.**
+  Narrowed the same day at the owner's question: a console click carries no
+  heading and had not been seen to swing, so it is left to Nav2 as before. The
+  rover turns to face the goal, checking once more and correcting, because turns
+  are counted by a gyro measured 7-9% out. It then drives to it with the heading
+  set to the way it is travelling. If the heading asked for is more than 15
+  degrees off, it turns to it after arriving. Where it cannot turn, it sends the
+  one goal it always sent.
 - **Every goal carries `frontier.Stall`.** 25 s without getting 0.5 m further on,
   with Nav2 attempting nothing, ends the drive and says why. Recoveries are left
   alone, as for exploring.

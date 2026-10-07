@@ -139,12 +139,15 @@ An autonomous drive does this under its own guard, so a stop or the safe area en
 it before anything moves. A second refusal is handed back. The back-off's driving
 is reported as part of the drive.
 
-A goal less than 1.5 m away is driven as a turn to face it, a straight drive
-and, when the heading asked for is more than 15 degrees off, a turn to that
-heading. Handed to Nav2 as one goal, the lattice planner draws a several-metre
-loop rather than a turn on the spot, and the controller, so close to the goal,
-turns back and forth instead of driving it (2026-10-07, measured on the rover).
-Where the rover cannot turn, it falls back to the one goal.
+A goal less than 1.5 m away that must arrive facing a given way -- an
+autonomous look, or the console's "go to" for a thing -- is driven as a turn to
+face it, a straight drive and, when the heading asked for is more than 15
+degrees off, a turn to that heading. Handed to Nav2 as one goal, the lattice
+planner draws a several-metre loop rather than a turn on the spot, and the
+controller, so close to the goal, turns back and forth instead of driving it
+(2026-10-07, measured on the rover). Where the rover cannot turn, it falls back
+to the one goal. A goal with no heading, which is what a map click sends, is
+one goal as before.
 
 No goal turns on the spot for ever. A drive that has not got 0.5 m further on
 in 25 s while Nav2 attempts no recovery is ended and says so. Nav2's own
