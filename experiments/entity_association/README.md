@@ -633,6 +633,22 @@ touched). Which records are one object is decided from their photographs
 beforehand. The merge refuses two records that share a photograph, so a
 refusal reports a mixed record. Diagnostic only: the real store is never merged.
 
+`replay_session.py --database <store.db> --session 67 --grid <map.json>
+--output <new-directory> [--variant name] [--limit-looks N]` replays a whole map
+session through today's resolver, keeping observation identifiers so labels
+written against the rover's store still apply. Every attachment, placement and
+founding is logged, a founding with every thing already placed within reach of
+it and the gate that kept its looks off each. It reproduces the rover only
+approximately (one archived grid, today's code), so it is a bench for comparing
+resolver variants under identical conditions. Variants are registered in the
+file. The cosine similarity runs in numpy there, which leaves 779 of 779
+owners unchanged over 150 looks; `--exact-appearance` restores the resolver's
+own arithmetic. `score_session.py --result <replay>/result.json --output <file>`
+scores a replay against the three frozen label sets (10-03, 10-05, the 10-07
+trial): split objects (R-WS-17), wrong looks (R-WS-18), looks still waiting,
+and, for four objects certainly the same across days, how many records hold
+their looks.
+
 `replay_measured_visibility.py` tests extending mapped reach to stored positive
 finite depth, without changing measurement bytes. `--known-only` limits this to
 existing-record matching; discovery and placement refitting keep original bounds.
