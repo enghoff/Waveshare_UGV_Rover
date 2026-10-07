@@ -199,6 +199,34 @@ def test_a_geometry_look_records_and_leaves_settling_to_the_rover():
     session.close()
 
 
+def test_a_look_refused_while_the_rovers_own_runs_is_asked_again():
+    """M3 session 11, 2026-10-07: the rover's own look ran past the 9 s the
+    daemon waits for it, and the run's look was refused and counted as a
+    failed goal. It is now asked again, as a new action, a few seconds on."""
+    session = Session()
+    _arriving(session)
+    original = session.rover._ask
+    refusals = [1]
+
+    def busy_once(name, arguments):
+        if (name == "autonomy_act" and arguments.get("action") == "world_inspect"
+                and refusals[0]):
+            refusals[0] -= 1
+            return {"ok": False, "refused": "refused",
+                    "error": "an inspection has been running for 11 s; this one "
+                             "was not started"}
+        return original(name, arguments)
+
+    session.rover._ask = busy_once
+    got = session.executive.once()
+    looks = [c for c in session.calls(got["episode"]) if c["call"] == "world_inspect"]
+    check("the goal succeeds although the rover was busy with its own look",
+          got.get("outcome"), "succeeded")
+    check("...the refused look and the one asked again are both recorded",
+          [bool(c.get("ok")) for c in looks], [False, True])
+    session.close()
+
+
 def test_every_movement_names_the_episode_and_the_action_that_asked_for_it():
     session = Session()
     _arriving(session)
@@ -669,6 +697,7 @@ TESTS = (
     test_one_turn_drives_looks_and_writes_down_what_changed,
     test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it,
     test_a_geometry_look_records_and_leaves_settling_to_the_rover,
+    test_a_look_refused_while_the_rovers_own_runs_is_asked_again,
     test_every_movement_names_the_episode_and_the_action_that_asked_for_it,
     test_a_run_with_nothing_left_worth_doing_goes_back_and_ends,
     test_a_run_already_where_it_started_ends_without_driving,

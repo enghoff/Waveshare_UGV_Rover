@@ -128,6 +128,14 @@ ACTION_TIMEOUT_S = 240.0
 #: just before it -- nothing renews it while this one call is out.
 LOOK_CALL_TIMEOUT_S = 13.0
 
+#: A look refused because the rover's own was still running is asked again,
+#: this many times, this far apart. The daemon already waits up to 9 s for it;
+#: on 2026-10-07 (M3 session 11) one ran past 11 s and the run's look was
+#: refused and counted as a failed goal. Each retry is a new dispatch with its
+#: own action id, recorded like any other; a look moves nothing.
+LOOK_BUSY_RETRIES = 2
+LOOK_BUSY_WAIT_S = 3.0
+
 #: How long to stand still after a turn of the loop that chose nothing. The
 #: rover is parked, its map is not changing and neither is the answer, so this is
 #: about not filling the record with identical refusals rather than about
@@ -442,7 +450,8 @@ class Executive:
         return steps
 
     def do(self, episode: str, step: dict[str, Any],
-           candidate: dict[str, Any]) -> dict[str, Any]:
+           candidate: dict[str, Any], busy_retries: int = LOOK_BUSY_RETRIES
+           ) -> dict[str, Any]:
         """Dispatch one step, wait for it if it is not over, and record it.
 
         The call event carries the answer as well as the question, which is what
@@ -480,6 +489,10 @@ class Executive:
                 result={"action_id": action_id},
                 error=str(answer.get("error") or "refused"),
                 duration_s=round(self.now() - began, 2)))
+            if (step["action"] == "world_inspect" and busy_retries > 0
+                    and "has been running" in str(answer.get("error") or "")):
+                self.sleep(LOOK_BUSY_WAIT_S)
+                return self.do(episode, step, candidate, busy_retries - 1)
             raise Aborted(f"{step['action']} was refused: "
                           f"{answer.get('error')}",
                           str(answer.get("refused") or "refused"))

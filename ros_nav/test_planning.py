@@ -956,6 +956,16 @@ def test_a_near_goal_is_a_turn_a_line_and_a_turn():
             stamp = types.SimpleNamespace(to_msg=lambda: None)
             return types.SimpleNamespace(now=lambda: stamp)
 
+        blocked_asks = 0
+
+        def route_to(self, gx, gy, yaw):
+            # Someone standing in the way for the first `blocked_asks` asks.
+            straight = math.hypot(gx - self.at[0], gy - self.at[1])
+            if self.blocked_asks:
+                self.blocked_asks -= 1
+                return (straight + 3.0, 180.0), 0
+            return (straight, 0.0), 0
+
         def run_goal(self, kind, goal, limit_s, say, measure, motion="driving",
                      budget=None, give_up=None, guard=None):
             x, y, h = self.at
@@ -1040,6 +1050,32 @@ def test_a_near_goal_is_a_turn_a_line_and_a_turn():
     out = rover.goto(goal, -69.5, quiet)
     check("where it cannot turn, it falls back to the one goal it always sent",
           steps(rover), [("spin", 152), ("goto", -69)])
+
+    # Somebody stands in the way after it has turned to face the goal.
+    saved_sleep = nav_moves.time.sleep
+    nav_moves.time.sleep = lambda seconds: None
+    try:
+        rover = Floor(stuck)
+        rover.blocked_asks = 2
+        out = rover.goto(goal, -69.5, quiet)
+        check("a near goal whose way is blocked waits, then drives once it clears",
+              (steps(rover), out.get("reason")),
+              ([("spin", 152), ("goto", -58)], "arrived"))
+        rover = Floor(stuck)
+        rover.blocked_asks = 99
+        out = rover.goto(goal, -69.5, quiet)
+        check("...and one that stays blocked is handed back, not driven round",
+              (steps(rover), out.get("reason")), ([("spin", 152)], "blocked"))
+        check("...saying something is in the way",
+              "something is in the way" in (out.get("detail") or ""), True)
+        rover = Floor(stuck)
+        rover.blocked_asks = 99
+        rover.route_to = lambda *a: (None, None)
+        rover.goto(goal, -69.5, quiet)
+        check("...and a planner that does not answer leaves it to Nav2 as before",
+              steps(rover), [("spin", 152), ("goto", -58)])
+    finally:
+        nav_moves.time.sleep = saved_sleep
 
     rover = Floor((-19.45, -14.65, 0.0))
     rover.goto((-17.2, -14.65), 0.0, quiet)

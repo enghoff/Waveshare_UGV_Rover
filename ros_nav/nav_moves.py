@@ -73,6 +73,22 @@ FINAL_TURN_DEG = 15.0
 #: concerned (xy_goal_tolerance), so a near goal is only its heading.
 THERE_M = 0.22
 
+#: **A near goal whose straight line is blocked is waited for, not driven
+#: round.** Facing it, the planner is asked for the route; longer than the
+#: straight line by more than this, something is in the way -- on 2026-10-07 the
+#: owner, standing 0.5 m in front -- and the route round it is the kind of loop
+#: the controller swings on the spot over (3.6 m for a goal 0.7 m away; the
+#: owner called the swinging erratic and unnecessary). The same slack the
+#: identity trial's path check allows.
+DETOUR_SLACK_M = 0.5
+
+#: How long a blocked near goal waits, still, for the way to clear, and how
+#: often it asks the planner again. A person stepping aside takes a few
+#: seconds; a chair does not move. After this the goal is handed back as
+#: blocked rather than driven round.
+BLOCKED_WAIT_S = 10.0
+BLOCKED_ASK_S = 2.0
+
 
 class NavMoves:
     """The half of `NavBridge` that asks Nav2 to move the rover."""
@@ -682,6 +698,11 @@ class NavMoves:
                     goal, None if yaw is None else math.degrees(yaw), say,
                     give_up=give_up, guard=guard, unwedge=unwedge, near=False))
 
+        blocked = self.wait_for_the_way(goal, say, guard)
+        if blocked:
+            return tally({"reason": "blocked", "travelled_m": 0.0,
+                          "turned_deg": 0.0, "detail": blocked})
+
         # Straight there, arriving the way it is travelling, so the planner has
         # no heading to loop round for.
         drove = self.goto(goal, None, say, give_up=give_up, guard=guard,
@@ -698,6 +719,39 @@ class NavMoves:
         if turned.get("reason") == "arrived" and drove.get("detail"):
             turned["detail"] = drove["detail"]
         return tally(turned)
+
+    def wait_for_the_way(self, goal, say, guard=None):
+        """Hold still while the straight way to a near goal is blocked.
+
+        Returns "" once the planner's route is within `DETOUR_SLACK_M` of the
+        straight line -- or when the planner does not answer, which leaves the
+        goal to Nav2 as before -- and a sentence when the way stayed blocked for
+        `BLOCKED_WAIT_S` or a stop came while waiting. Nothing moves in here.
+        """
+        seq = self.stop_seq
+        waited = 0.0
+        while True:
+            here = self.pose()
+            if here is None:
+                return ""
+            straight = math.hypot(goal[0] - here[0], goal[1] - here[1])
+            route, _ = self.route_to(goal[0], goal[1],
+                                     math.atan2(goal[1] - here[1], goal[0] - here[0]))
+            if route is None or route[0] <= straight + DETOUR_SLACK_M:
+                return ""
+            if self.stop_seq != seq:
+                return "a stop was asked for while the way was blocked"
+            stopped = autonomy_guard.refusal(guard, self.stop_seq, pose=here)
+            if stopped:
+                return stopped
+            if waited >= BLOCKED_WAIT_S:
+                return ("something is in the way: the only route was %.1f m for a "
+                        "goal %.1f m away, and it did not clear in %.0f s"
+                        % (route[0], straight, waited))
+            if waited == 0.0:
+                say("waiting", "something is in the way; waiting for it to move")
+            time.sleep(BLOCKED_ASK_S)
+            waited += BLOCKED_ASK_S
 
     def unwedged(self, refused, where, yaw_deg, say, give_up, guard):
         """Back off from where the planner will not plan, then ask again once.

@@ -147,7 +147,10 @@ planner draws a several-metre loop rather than a turn on the spot, and the
 controller, so close to the goal, turns back and forth instead of driving it
 (2026-10-07, measured on the rover). Where the rover cannot turn, it falls back
 to the one goal. A goal with no heading, which is what a map click sends, is
-one goal as before.
+one goal as before. Facing a near goal, the rover asks the planner for the
+route first: if something not on the map is in the straight way -- a person,
+say -- it holds still and asks again every 2 s, drives once the way clears, and
+after 10 s hands the goal back as blocked instead of driving round it.
 
 No goal turns on the spot for ever. A drive that has not got 0.5 m further on
 in 25 s while Nav2 attempts no recovery is ended and says so. Nav2's own
