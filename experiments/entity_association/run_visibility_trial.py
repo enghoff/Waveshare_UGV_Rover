@@ -319,6 +319,23 @@ class Live:
             raise RuntimeError('No fresh turn clearance')
         self.motion('turn_in_place', {'angle_deg':angle}, returning)
 
+    def turn_to(self, heading, returning=False):
+        """Face along a leg before driving it, so the planner draws it straight.
+
+        Not `face`, which asks whether the target is in the picture. Within 20
+        degrees the leg plans straight anyway (measured on the rover on
+        2026-10-07: within about 30 it did, at 45 it looped)."""
+        status, _ = self.health(returning)
+        angle = (heading-status['pose']['heading_deg']+180)%360-180
+        self.log('turn_to', heading=heading, angle=round(angle, 1),
+                 pose_from=status.get('pose_from', 'navigation'))
+        if abs(angle) <= 20:
+            return
+        grid = self.helper('capture_route_costmaps.py', returning=returning)
+        if not turn_check(grid, now=time.time())['ok']:
+            raise RuntimeError('No fresh turn clearance')
+        self.motion('turn_in_place', {'angle_deg':angle}, returning)
+
     def travel(self, xy, returning=False):
         status, _ = self.health(returning)
         start = [status['pose']['x_m'],status['pose']['y_m']]
@@ -329,9 +346,10 @@ class Live:
             if not returning:
                 heading = next(p['view_heading_deg'] for p in self.card['points'] if p['xy']==xy)
         else:
-            self.face(heading, returning)
+            self.turn_to(heading, returning)
             status, _ = self.health(returning)
             start = [status['pose']['x_m'],status['pose']['y_m']]
+            heading = bearing(start, xy)
         plan = self.helper('plan_visibility_route.py',['--goal',*xy,heading], returning)
         grid = self.helper('capture_route_costmaps.py', returning=returning)
         path_check(plan, grid, start,xy)
