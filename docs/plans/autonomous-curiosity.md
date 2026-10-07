@@ -600,7 +600,9 @@ Most of M3 is still physical:
   ([R-AUT-13](../requirements/autonomy.md#r-aut-13), settled by session 3); an
   unfenced one has the whole flat and ends on the battery, since runs carry no
   battery floor. Start each on a full charge and judge the battery at rest: a
-  reading while driving sags by up to 30 points.
+  reading while driving sags by up to 30 points. A supervised session may run
+  down to 10% at rest, the owner's standing floor since 2026-10-07, and is then
+  stopped and driven back to the charger.
 - **Looks that improve nothing.** Of 171 geometry goals on record, 10 improved
   their thing when measured and 9 more within a minute
   ([the measurement](../progress/2026-10-06-looks-seldom-reach-their-thing.md)).

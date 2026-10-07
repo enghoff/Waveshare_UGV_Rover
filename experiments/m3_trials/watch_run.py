@@ -1,7 +1,12 @@
-import json, socket, time
-# Polls the run every 5 s. Exits when the run ends, when the battery reads 25%
-# or less three times standing still (the supervisor then stops it and drives it
-# back), or after about 17 minutes.
+import json, socket, sys, time
+# Polls the run every 5 s. Exits when the run ends, when the battery reads the
+# floor or less three times standing still (the supervisor then stops it and
+# drives it back), or after the time given.
+#   watch_run.py [floor_percent=10] [minutes=17]
+# 10% at rest is the owner's standing floor for supervised drives (2026-10-07);
+# below it the rover is stopped and driven back to the charger.
+FLOOR = int(sys.argv[1]) if len(sys.argv) > 1 else 10
+SECONDS = 60 * float(sys.argv[2]) if len(sys.argv) > 2 else 1000
 s = socket.create_connection(("127.0.0.1", 8769), 10)
 f = s.makefile("rwb")
 def call(c, a=None):
@@ -10,7 +15,7 @@ def call(c, a=None):
 t0 = time.time()
 seen_run = False
 low = 0
-while time.time() - t0 < 1000:
+while time.time() - t0 < SECONDS:
     st = call("autonomy_status")
     nav = call("nav_status")
     pct = call("battery").get("percent")
@@ -27,7 +32,7 @@ while time.time() - t0 < 1000:
         break
     # Judged only standing still: a reading while driving sags by up to 30 points.
     if not nav.get("driving"):
-        low = low + 1 if (pct is not None and pct <= 25) else 0
+        low = low + 1 if (pct is not None and pct <= FLOOR) else 0
     if low >= 3:
         print("BATTERY LOW", pct, flush=True)
         break

@@ -14,7 +14,7 @@ it opens or a person's call, with the owner present and the rover untethered.
 | `m3_trials.py console` | the owner presses the console's stop at speed; timed from the daemon's own record of the press |
 | `m3_trials.py takeover` | a person's drive is sent mid-leg the way the console sends one; the run must end and the drive be carried out (criterion 12) |
 | `start_run.py "purpose" [area]` | opens a session run and starts the executive: fenced to the charger room by default, `flat` for no fence, or `min_x,max_x,min_y,max_y` for another room |
-| `watch_run.py` | follows a run every 5 s until it ends, or the battery reads 25% or less three times standing still |
+| `watch_run.py [floor] [minutes]` | follows a run every 5 s until it ends, or the battery reads the floor (default 10%, the owner's standing floor) or less three times standing still |
 | `trace_moves.py` | matches every move navigation logged during each session to the episode that dispatched it (R-SAFE-9) |
 
 `m3_trials.py` drives one leg between two fixed points 4.4 m apart in the
