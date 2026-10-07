@@ -149,8 +149,8 @@ controller, so close to the goal, turns back and forth instead of driving it
 to the one goal. A goal with no heading, which is what a map click sends, is
 one goal as before. Facing a near goal, the rover asks the planner for the
 route first: if something not on the map is in the straight way -- a person,
-say -- it holds still and asks again every 2 s, and drives once the way clears.
-After 6 s it goes round: the planner's route is cut into at most four straight
+say -- it holds still and asks again every second, and drives once the way
+clears. After 3 s it goes round: the planner's route is cut into at most four straight
 legs the body fits down, each driven as a turn and a straight drive that stops
 for anything in its way. With no such legs the goal is handed back as blocked.
 It never swings on the spot over a curve it will not follow.

@@ -86,8 +86,8 @@ DETOUR_SLACK_M = 0.5
 #: often it asks the planner again. A person stepping aside takes a few
 #: seconds; a chair does not move. After this the rover goes round in straight
 #: legs (`round_by_legs`), or hands the goal back as blocked if it cannot.
-BLOCKED_WAIT_S = 6.0
-BLOCKED_ASK_S = 2.0
+BLOCKED_WAIT_S = 3.0      # the owner's choice, 2026-10-07 (was 10, then 6)
+BLOCKED_ASK_S = 1.0
 
 #: Going round something in the way of a near goal: at most this many straight
 #: legs, and a route at most this much longer than the straight line. Past
