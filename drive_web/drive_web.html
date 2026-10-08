@@ -83,15 +83,59 @@
     </div>
   </section>
 
-  <section id="statusCard">
-    <h2>nav_status</h2>
-    <div id="statusRows"></div>
-    <div id="pose" class="mono">-</div>
-    <div class="row" style="margin-top:8px">
-      <button id="resetLidar">reset the lidar</button>
+  <!-- The microphone, the face detector, the lamps and the battery are one card:
+       four short controls that each need three lines, and four separate cards to
+       hold them was mostly borders. -->
+  <section id="boardCard">
+    <h2>talk to it</h2>
+    <div class="row">
+      <button id="micButton">start talking</button>
+      <span id="voiceState" class="mono">off</span>
     </div>
-    <p class="hint" id="lidarNote"></p>
-    <p class="hint" id="statusError"></p>
+    <p id="voiceHeard" class="hint"></p>
+    <p id="voiceSaid" class="hint"></p>
+    <p id="voiceError"></p>
+    <p id="voiceNote"></p>
+
+    <h2 style="margin-top:14px">face tracking</h2>
+    <div class="row">
+      <button data-track="start_tracking">start</button>
+      <button data-track="stop_tracking">stop</button>
+      <span id="tracking" class="mono">-</span>
+    </div>
+    <h2 style="margin-top:14px">headlights</h2>
+    <div class="row">
+      <button data-light="on">on</button>
+      <button data-light="off">off</button>
+      <span id="lights" class="mono">-</span>
+    </div>
+    <!-- The lamp is the depth camera, beside the battery because that is the
+         question it answers: what this rover is spending. Nobody works that
+         switch any more -- the wheels do, in rover_daemon/rover_depth.py -- so
+         what is left on screen is which way it went. Hidden until the rover says
+         it has a depth camera and has said what it is doing. -->
+    <h2 style="margin-top:14px">battery<span id="depthLamp" class="lamp" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9.2 4.3 8.2 6.4H4.2a1.7 1.7 0 0 0-1.7 1.7v9.6a1.7 1.7 0
+                 0 0 1.7 1.7h15.6a1.7 1.7 0 0 0 1.7-1.7V8.1a1.7 1.7 0 0
+                 0-1.7-1.7h-4l-1-2.1z"/>
+        <circle cx="12" cy="12.8" r="3.7"/>
+      </svg></span></h2>
+    <div id="battery" class="reading">-</div>
+    <p id="batteryNote" class="hint"></p>
+  </section>
+
+  <section id="networkCard">
+    <h2>network</h2>
+    <div id="wifi" class="reading">-</div>
+    <p id="wifiWhere" class="hint"></p>
+    <div class="scroller" style="max-height:30vh;margin-top:6px">
+      <table><tbody id="wifiList"></tbody></table>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="wifiScan">look for networks</button>
+    </div>
+    <p id="wifiNote" class="hint"></p>
   </section>
 </div>
 
@@ -152,59 +196,15 @@
     </div>
   </section>
 
-  <!-- The microphone, the face detector, the lamps and the battery are one card:
-       four short controls that each need three lines, and four separate cards to
-       hold them was mostly borders. -->
-  <section id="boardCard">
-    <h2>talk to it</h2>
-    <div class="row">
-      <button id="micButton">start talking</button>
-      <span id="voiceState" class="mono">off</span>
-    </div>
-    <p id="voiceHeard" class="hint"></p>
-    <p id="voiceSaid" class="hint"></p>
-    <p id="voiceError"></p>
-    <p id="voiceNote"></p>
-
-    <h2 style="margin-top:14px">face tracking</h2>
-    <div class="row">
-      <button data-track="start_tracking">start</button>
-      <button data-track="stop_tracking">stop</button>
-      <span id="tracking" class="mono">-</span>
-    </div>
-    <h2 style="margin-top:14px">headlights</h2>
-    <div class="row">
-      <button data-light="on">on</button>
-      <button data-light="off">off</button>
-      <span id="lights" class="mono">-</span>
-    </div>
-    <!-- The lamp is the depth camera, beside the battery because that is the
-         question it answers: what this rover is spending. Nobody works that
-         switch any more -- the wheels do, in rover_daemon/rover_depth.py -- so
-         what is left on screen is which way it went. Hidden until the rover says
-         it has a depth camera and has said what it is doing. -->
-    <h2 style="margin-top:14px">battery<span id="depthLamp" class="lamp" hidden>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M9.2 4.3 8.2 6.4H4.2a1.7 1.7 0 0 0-1.7 1.7v9.6a1.7 1.7 0
-                 0 0 1.7 1.7h15.6a1.7 1.7 0 0 0 1.7-1.7V8.1a1.7 1.7 0 0
-                 0-1.7-1.7h-4l-1-2.1z"/>
-        <circle cx="12" cy="12.8" r="3.7"/>
-      </svg></span></h2>
-    <div id="battery" class="reading">-</div>
-    <p id="batteryNote" class="hint"></p>
-  </section>
-
-  <section id="networkCard">
-    <h2>network</h2>
-    <div id="wifi" class="reading">-</div>
-    <p id="wifiWhere" class="hint"></p>
-    <div class="scroller" style="max-height:30vh;margin-top:6px">
-      <table><tbody id="wifiList"></tbody></table>
-    </div>
+  <section id="statusCard">
+    <h2>nav_status</h2>
+    <div id="statusRows"></div>
+    <div id="pose" class="mono">-</div>
     <div class="row" style="margin-top:8px">
-      <button id="wifiScan">look for networks</button>
+      <button id="resetLidar">reset the lidar</button>
     </div>
-    <p id="wifiNote" class="hint"></p>
+    <p class="hint" id="lidarNote"></p>
+    <p class="hint" id="statusError"></p>
   </section>
 </div>
 </main>

@@ -49,6 +49,10 @@ Manual controls send bounded actions through the daemon on TCP 8769. The console
 does not open the driver-board UART or talk directly to ROS. It displays the
 daemon's navigation, battery, link, camera and movement state.
 
+On a three-column screen, driving, voice, face tracking, headlights, battery and
+network controls sit on the left; the map is in the centre; camera, depth and
+navigation status sit on the right. The same stacks wrap on narrower screens.
+
 Under the gimbal camera's picture is the OAK's depth map. It travels as
 millimetres -- zlib-compressed by the daemon, about 34 kB, served at
 `/depth.zlib` and inflated in the browser -- so the page colours it itself
