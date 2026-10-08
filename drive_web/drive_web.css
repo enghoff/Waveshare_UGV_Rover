@@ -400,7 +400,7 @@
   .pad-left { grid-row: 4; grid-column: 1 / 5; align-self: end; }
   .pad-right { grid-row: 4; grid-column: 6 / 10; text-align: right; align-self: end; }
   .pad-forward { grid-row: 1; grid-column: 6 / 10; margin-left: 12px; }
-  .pad-reverse { grid-row: 9; grid-column: 6 / 10; margin-left: 12px; }
+  .pad-reverse { grid-row: 8; grid-column: 6 / 10; margin-left: 12px; }
   .rover-top { grid-row: 5; grid-column: 5; }
   .rover-top svg { display: block; width: 28px; margin: auto; }
   .drive-axis { fill: none; stroke: var(--line); stroke-dasharray: 3 4; }

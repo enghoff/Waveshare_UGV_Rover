@@ -191,6 +191,9 @@ class EscapeDriveOnHeadingAction
 
 class EscapeBackUpAction : public EscapeDriveOnHeading<nav2_msgs::action::BackUp>
 {
+public:
+  ResultStatus onRun(
+    const std::shared_ptr<const nav2_msgs::action::BackUp::Goal> command) override;
 };
 
 }  // namespace ugv_behaviors

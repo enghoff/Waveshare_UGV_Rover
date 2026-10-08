@@ -396,6 +396,17 @@ ResultStatus EscapeDriveOnHeading<ActionT>::onCycleUpdate()
   return ResultStatus{Status::RUNNING, ActionT::Result::NONE};
 }
 
+ResultStatus EscapeBackUpAction::onRun(
+  const std::shared_ptr<const nav2_msgs::action::BackUp::Goal> command)
+{
+  // The action type does not supply BackUp's direction: its onRun override does.
+  // Keep Nav2's normalization while retaining our collision escape checks.
+  auto reverse = std::make_shared<nav2_msgs::action::BackUp::Goal>(*command);
+  reverse->target.x = -std::fabs(command->target.x);
+  reverse->speed = -std::fabs(command->speed);
+  return EscapeDriveOnHeading<nav2_msgs::action::BackUp>::onRun(reverse);
+}
+
 template class EscapeDriveOnHeading<nav2_msgs::action::DriveOnHeading>;
 template class EscapeDriveOnHeading<nav2_msgs::action::BackUp>;
 

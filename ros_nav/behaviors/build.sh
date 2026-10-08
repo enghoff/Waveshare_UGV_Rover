@@ -60,6 +60,7 @@ if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$current" ] &&
    [ -f "$PREFIX/lib/libugv_behaviors.so" ]; then
     echo "== sources unchanged since the last build; nothing to do"
     echo "== built:   $PREFIX/lib/libugv_behaviors.so"
+    ctest --test-dir "$BUILD" --output-on-failure
     exit 0
 fi
 
@@ -77,6 +78,8 @@ cmake --build "$BUILD" --parallel "$(nproc)" >> "$BUILD.log" 2>&1 || {
 
 cmake --install "$BUILD" >> "$BUILD.log" 2>&1 || {
     echo "== install failed:"; tail -25 "$BUILD.log"; exit 1; }
+
+ctest --test-dir "$BUILD" --output-on-failure
 
 # What was actually produced, printed rather than assumed. The failure this
 # catches is a build that succeeded against headers the running behaviour server

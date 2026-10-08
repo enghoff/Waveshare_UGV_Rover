@@ -154,6 +154,22 @@ build that matters is not the one that compiled but the one the behaviour server
 can load: an undefined symbol appears only at plugin-load time, in the launch
 log, long after the deploy said it was fine.
 
+## Reverse direction
+
+On 2026-10-08 a console reverse moved forward. The log showed `backup` running,
+and an isolated native test of the actual plugin reproduced the fault: a positive
+0.1 m backup goal initialized a positive 0.2 m/s speed, while the installed Nav2
+`BackUp` initialized -0.2 m/s. The escape class had inherited `DriveOnHeading`'s
+goal initialization instead of `BackUp`'s sign conversion.
+
+`src/test_direction.cpp` compares goal initialization against the installed Nav2
+backup handler at 0.1, 0.25 and 0.5 m with positive and negative inputs, checks
+that sideways backup is rejected and forward remains positive. It creates no
+action server, velocity publisher or motor connection. `build.sh` runs it through
+CTest before a deploy can restart navigation, including when the source hash is
+unchanged. Collision checks remain in the shared escape template (R-SAFE-3).
+Physical reverse validation is pending a separate movement handover.
+
 ## What is proved and what is not
 
 **The turn is proved on the hardware.** The 180° turn that started this now

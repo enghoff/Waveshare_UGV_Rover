@@ -53,6 +53,22 @@ ament_target_dependencies(ugv_behaviors
 find_library(NAV2_SPIN_BEHAVIOR_LIB nav2_spin_behavior
   HINTS ${nav2_behaviors_DIR}/../../../lib $ENV{CONDA_PREFIX}/lib REQUIRED)
 target_link_libraries(ugv_behaviors ${NAV2_SPIN_BEHAVIOR_LIB})
+# RoboStack exports tracing dependencies as bare library names. The system
+# compiler needs the conda library directory to resolve them on a clean build.
+get_filename_component(NAV2_LIBRARY_DIR "${NAV2_SPIN_BEHAVIOR_LIB}" DIRECTORY)
+target_link_directories(ugv_behaviors PUBLIC "${NAV2_LIBRARY_DIR}")
+
+# Goal setup only: no action server or velocity publisher, so these checks never
+# command the rover. Run against the installed Nav2 semantics, not a sign model.
+enable_testing()
+add_executable(test_direction src/test_direction.cpp)
+ament_target_dependencies(test_direction
+  nav2_behaviors nav2_core nav2_costmap_2d nav2_msgs nav2_util
+  geometry_msgs pluginlib rclcpp rclcpp_lifecycle tf2 tf2_ros)
+find_library(NAV2_BACK_UP_BEHAVIOR_LIB nav2_back_up_behavior
+  HINTS ${nav2_behaviors_DIR}/../../../lib $ENV{CONDA_PREFIX}/lib REQUIRED)
+target_link_libraries(test_direction ugv_behaviors ${NAV2_BACK_UP_BEHAVIOR_LIB})
+add_test(NAME behavior_direction COMMAND test_direction)
 
 pluginlib_export_plugin_description_file(nav2_core ugv_behaviors.xml)
 

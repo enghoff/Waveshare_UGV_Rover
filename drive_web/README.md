@@ -56,8 +56,10 @@ navigation status sit on the right. The same stacks wrap on narrower screens.
 The drive pad surrounds a top view of the rover. Turns run horizontally, from
 15 degrees nearest the centre to 45, 90 and 180 degrees farther out; left is on
 the left and right on the right. Forward distances run upward and reverse
-distances downward, from 0.1 m nearest the centre to 0.25, 0.5 and 1 m farther
-out. Each button sends that one bounded movement at automatic speed. Arrow keys
+distances downward. Forward increases from 0.1 m nearest the centre to 0.25,
+0.5 and 1 m farther out; reverse stops at 0.5 m, the navigation backend's blind
+reverse limit. Longer negative drives turn around first and are absent from
+the reverse pad. Each button sends that one bounded movement at automatic speed. Arrow keys
 drive 0.5 m forward/backward or turn 90 degrees; space and Escape stop, and
 plus/minus zoom the map. Motion controls wait for a connected, idle rover.
 

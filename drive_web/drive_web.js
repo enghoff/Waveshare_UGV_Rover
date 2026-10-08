@@ -787,6 +787,8 @@ async function start() {
   }
   for (const [index, distance] of [0.1, 0.25, 0.5, 1].entries()) {
     for (const sign of [1, -1]) {
+      // Longer negative drives turn around first; they are not reverse moves.
+      if (sign < 0 && distance > 0.5) continue;
       const button = document.createElement("button");
       button.dataset.move = "drive";
       button.className = "drive-step";
