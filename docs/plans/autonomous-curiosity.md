@@ -702,7 +702,9 @@ conditions are:
 - **the charger room, fenced**: met by sessions 3 to 8, the last with every
   fix the others found;
 - **another room, fenced, starting away from the charger**: new geometry for
-  choosing goals, fitting the body and finding the way home;
+  choosing goals, fitting the body and finding the way home. Partly met by
+  [M4 session 2](../progress/2026-10-08-m4-session-2.md): a one-minute run in
+  the bedroom, driven home by hand;
 - **the whole flat, unfenced, under the current code**: doorways, long routes,
   and a run ending on the battery. Met by
   [M4 session 1](../progress/2026-10-08-m4-session-1.md): 9.5 minutes and about
