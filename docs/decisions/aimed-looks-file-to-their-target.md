@@ -1,8 +1,7 @@
 # A look aimed at a thing files the region at the aim to that thing
 
-Status: proposed 2026-10-08, for the owner's decision. Built and tested. The
-executive names no target while `executive.NAME_THE_TARGET` is off, which it
-stays until this is agreed.
+Status: agreed by the owner on 2026-10-08 ("yes"), for supervised runs, M3
+sessions and the first M4 trials. `executive.NAME_THE_TARGET` is the switch.
 
 This is the case [the 2026-10-01 decision](identity-is-judged-action-by-action.md)
 asks for before an action relies on identity. The action is the geometry goal's

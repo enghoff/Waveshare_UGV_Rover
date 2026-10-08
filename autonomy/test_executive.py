@@ -165,21 +165,21 @@ def test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it():
           drive["params"].get("heading_deg") is not None, True)
     check("...and the look is aimed at the thing",
           look["params"].get("aim_at"), {"x_m": 1.2, "y_m": -0.4})
-    check("...and does not name it while that case is undecided (2026-10-08)",
-          "target" in look["params"], False)
+    check("...and names it, so its region is filed to it (agreed 2026-10-08)",
+          str(look["params"].get("target") or "").startswith("object:"), True)
     session.close()
     import executive as executive_mod
-    executive_mod.NAME_THE_TARGET = True
+    executive_mod.NAME_THE_TARGET = False
     try:
         session = Session()
         _arriving(session)
         got = session.executive.once()
         _drive, look = session.calls(got["episode"])
-        check("...and names it once it is agreed, so its region is filed to it",
-              str(look["params"].get("target") or "").startswith("object:"), True)
+        check("...and names nothing with the case switched off",
+              "target" in look["params"], False)
         session.close()
     finally:
-        executive_mod.NAME_THE_TARGET = False
+        executive_mod.NAME_THE_TARGET = True
 
 
 def test_a_geometry_look_records_and_leaves_settling_to_the_rover():

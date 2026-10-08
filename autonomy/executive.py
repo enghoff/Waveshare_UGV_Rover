@@ -175,9 +175,9 @@ RUN_GATES = frozenset({"stopped", "autonomy not enabled",
 
 #: Whether a geometry goal's look names the thing it is aimed at, so that the
 #: world state files the region at the aim to it (world_state/aimed.py). An
-#: action that relies on identity, so off until its case is agreed:
-#: docs/decisions/aimed-looks-file-to-their-target.md.
-NAME_THE_TARGET = False
+#: action that relies on identity, agreed by the owner for supervised runs on
+#: 2026-10-08: docs/decisions/aimed-looks-file-to-their-target.md.
+NAME_THE_TARGET = True
 
 class Aborted(Exception):
     """Raised inside a turn to end it. Carries the reason the episode closes
