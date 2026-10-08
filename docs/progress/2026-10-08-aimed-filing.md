@@ -6,9 +6,11 @@ which other records the region fitted.** Put through the recorded aimed looks, i
 filed 24 regions where the resolver had filed 5, 19 of them taken from another
 record, and 16 targets' claims fell. Against the tape one painting went from
 0.47 m off to 0.06 m. The painting behind the dining chairs is the exception: 3
-of its 6 filings claimed less than they were off. Built and tested, not deployed.
-It waits on [the case](../decisions/aimed-looks-file-to-their-target.md) being
-agreed under R-WS-13.
+of its 6 filings claimed less than they were off. Deployed at 46df458 with
+target naming off: nothing files by aim until
+[the case](../decisions/aimed-looks-file-to-their-target.md) is agreed under
+R-WS-13. What is live now is reading a placement by its claim, and cooling a
+target's suspected same-object records with it.
 
 ## What was built
 
@@ -69,8 +71,22 @@ Seven filings were for targets the owner taped on 2026-10-03:
 Without the 0.20 m floor, one claim fell to 0.04 m. The floor is the median miss
 of single ranges on the taped paintings.
 
+## On the rover
+
+Deployed with `deploy.py` at 46df458, world_state, rover_daemon and autonomy
+together; each self-test passed on the Orin and the daemon came back. Checked
+there:
+
+- all 421 things listed carry `same_object_suspects`;
+- the store has its `aimed_looks` table;
+- `executive.NAME_THE_TARGET` is off.
+
+On a throwaway copy of the rover's store, the rule filed a region from each of
+the five newest looks. One ranged filing took its thing's claim from 0.27 to
+0.20 m, and four named a suspected same-object record.
+
 ## Next
 
-The owner decides the case. If it is agreed, deploy world_state, rover_daemon
-and autonomy together, and take the first M4 look on the rover with every aimed
-filing reported beside its photograph.
+The owner decides the case. If it is agreed, `NAME_THE_TARGET` is turned on and
+deployed, and the first M4 look is taken on the rover with every aimed filing
+reported beside its photograph.
