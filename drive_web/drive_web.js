@@ -686,9 +686,9 @@ function wire() {
     if (e.key === "Enter") post({do: "connect", address: $("address").value});
   };
 
-  // The preset turns bind their own angle in start(); only these two read a box.
-  $("driveCard").querySelector('[data-move="drive"]').onclick = () => drive();
-  $("driveCard").querySelector('[data-move="turn"]').onclick = () => turn();
+  for (const button of $("driveCard").querySelectorAll('[data-move="drive"]')) {
+    button.onclick = () => drive(Number(button.dataset.direction));
+  }
   // No arguments and no keyboard shortcut, both deliberately. This is the one
   // control that hands the rover ten minutes of its own work, and it should take
   // a deliberate click rather than a key pressed next to the arrows.
@@ -733,14 +733,19 @@ function wire() {
     const row = (event.clientY - box.top - (box.height - img.naturalHeight * scale) / 2)
                 / scale;
     if (col < 0 || row < 0 || col >= img.naturalWidth || row >= img.naturalHeight) return;
-    post({do: "tap", col: col, row: row, speed_ms: number("speed")});
+    post({do: "tap", col: col, row: row});
   };
 }
 
-const drive = () => post({do: "drive", distance_m: number("distance"),
-                          speed_ms: number("speed")});
-const turn = (angle) => post({do: "turn",
-                              angle_deg: angle === undefined ? number("angle") : angle});
+const drive = (direction = 1) => {
+  if (!state || !state.link.can_drive || state.busy !== null || state.exploring) return;
+  if (!$("distance").reportValidity()) return;
+  return post({do: "drive", distance_m: direction * Number(number("distance"))});
+};
+const turn = (angle) => {
+  if (!state || !state.link.can_drive || state.busy !== null || state.exploring) return;
+  return post({do: "turn", angle_deg: angle});
+};
 
 function keys() {
   addEventListener("keydown", (event) => {
@@ -756,11 +761,11 @@ function keys() {
       return;
     }
     if (event.target.tagName === "INPUT") return;
-    const angle = Number(number("angle")) || 90;
     const moves = {
       ArrowUp: () => drive(),
-      ArrowLeft: () => turn(angle),
-      ArrowRight: () => turn(-angle),
+      ArrowDown: () => drive(-1),
+      ArrowLeft: () => turn(90),
+      ArrowRight: () => turn(-90),
       // Plus zooms in, the way it does everywhere else, which means asking for a
       // smaller extent -- a step down the ladder, not up it.
       "+": () => post({do: "map", zoom: -1}),
@@ -773,16 +778,18 @@ function keys() {
 
 async function start() {
   setup = await (await fetch("/setup")).json();
-  const pad = $("turnPad");
+
   // Positive is left in this whole repository, and left is the left column, so a
   // button's place on screen matches the way the rover is about to go.
   for (const magnitude of setup.presets_deg) {
     for (const sign of [1, -1]) {
       const button = document.createElement("button");
       button.dataset.move = "preset";
-      button.textContent = `${magnitude} ${sign > 0 ? "left" : "right"}`;
+      button.disabled = true;
+      button.textContent = `${sign > 0 ? "\u21b6" : "\u21b7"} ${magnitude}\u00b0`;
+      button.setAttribute("aria-label", `turn ${magnitude} degrees ${sign > 0 ? "left" : "right"}`);
       button.onclick = () => turn(sign * magnitude);
-      pad.append(button);
+      $(sign > 0 ? "turnLeft" : "turnRight").append(button);
     }
   }
   const legend = $("legend");

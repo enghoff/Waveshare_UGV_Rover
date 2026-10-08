@@ -385,8 +385,28 @@
   .row label { color: var(--dim); min-width: 62px; }
   .row input.num { width: 74px; text-align: right; }
 
-  .turns-pad { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .turns-pad button { padding: 8px 4px; }
+  .drive-pad {
+    display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+    grid-template-areas: ". forward ." "left rover right" ". reverse .";
+    align-items: center; gap: 8px;
+  }
+  .drive-pad button { min-height: 40px; padding: 8px 4px; }
+  .drive-forward { grid-area: forward; }
+  .drive-reverse { grid-area: reverse; }
+  .drive-forward, .drive-reverse {
+    justify-self: center; min-width: 94px; color: var(--accent);
+  }
+  .drive-forward span, .drive-reverse span { display: block; font-size: 20px; line-height: 1; }
+  .turn-wing { display: grid; gap: 6px; }
+  .turn-left { grid-area: left; }
+  .turn-right { grid-area: right; }
+  .rover-top { grid-area: rover; }
+  .rover-top svg { display: block; width: 100%; }
+  .drive-axis { fill: none; stroke: var(--line); stroke-dasharray: 3 4; }
+  .rover-wheel { fill: var(--dim); }
+  .rover-body { fill: var(--sunken); stroke: var(--accent); stroke-width: 2; }
+  .rover-heading { fill: var(--accent); }
+  .drive-distance { justify-content: center; margin-top: 14px; }
 
   /* --- nav_status ------------------------------------------------------- */
   #statusRows { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; }
@@ -521,11 +541,6 @@
   #notice.quiet { color: var(--dim); }
   #notice.note { color: var(--note); }
 
-  kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px;
-        border: 1px solid var(--line); border-bottom-width: 2px;
-        border-radius: 4px; padding: 0 5px; margin-right: 4px; }
-  .keys { font-size: 12px; color: var(--dim); }
-  .keys div { margin-top: 3px; }
 
   /* Compact raw observation metadata in the world popup. */
   details { margin-top: 6px; font-size: 12px; color: var(--dim); }

@@ -57,29 +57,31 @@
 <div class="stack side">
   <section id="driveCard">
     <h2>drive</h2>
-    <div class="turns-pad" id="turnPad"></div>
-    <div class="row" style="margin-top:8px">
-      <label for="angle">turn</label>
-      <input class="num mono" type="text" id="angle" value="90">
-      <span class="hint" style="margin:0">deg</span>
-      <button data-move="turn">go</button>
+    <div class="drive-pad" role="group" aria-label="drive and turn">
+      <button class="drive-forward" data-move="drive" data-direction="1" disabled>
+        <span aria-hidden="true">&#8593;</span> forward
+      </button>
+      <div class="turn-wing turn-left" id="turnLeft" role="group" aria-label="turn left"></div>
+      <div class="rover-top" aria-hidden="true">
+        <svg viewBox="0 0 80 112">
+          <path class="drive-axis" d="M40 0v112M0 56h80"/>
+          <rect class="rover-wheel" x="12" y="29" width="12" height="22" rx="3"/>
+          <rect class="rover-wheel" x="56" y="29" width="12" height="22" rx="3"/>
+          <rect class="rover-wheel" x="12" y="62" width="12" height="22" rx="3"/>
+          <rect class="rover-wheel" x="56" y="62" width="12" height="22" rx="3"/>
+          <rect class="rover-body" x="23" y="24" width="34" height="64" rx="9"/>
+          <path class="rover-heading" d="m40 35-9 13h18z"/>
+        </svg>
+      </div>
+      <div class="turn-wing turn-right" id="turnRight" role="group" aria-label="turn right"></div>
+      <button class="drive-reverse" data-move="drive" data-direction="-1" disabled>
+        <span aria-hidden="true">&#8595;</span> reverse
+      </button>
     </div>
-    <div class="row">
+    <div class="row drive-distance">
       <label for="distance">distance</label>
-      <input class="num mono" type="text" id="distance" value="0.5">
+      <input class="num mono" type="number" id="distance" value="0.5" min="0.01" step="any" required>
       <span class="hint" style="margin:0">m</span>
-      <button data-move="drive">go</button>
-    </div>
-    <div class="row">
-      <label for="speed">speed</label>
-      <input class="num mono" type="text" id="speed" placeholder="auto">
-      <span class="hint" style="margin:0">m/s</span>
-    </div>
-    <div class="keys" style="margin-top:8px">
-      <div><kbd>space</kbd>stop</div>
-      <div><kbd>&uarr;</kbd>drive</div>
-      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd>turn</div>
-      <div><kbd>+</kbd><kbd>&minus;</kbd>zoom</div>
     </div>
   </section>
 
