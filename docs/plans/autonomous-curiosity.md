@@ -721,7 +721,10 @@ conditions are:
   [M4 session 2](../progress/2026-10-08-m4-session-2.md) the owner stepped into
   a near goal's way once (confirmed by the owner): it waited 3 s and went round
   in three straight legs, 11 s in all. Standing in its way for more than 5 s is
-  still owed;
+  still owed. In [M4 session 4](../progress/2026-10-08-m4-session-4.md) the
+  owner blocked a 1.8 m goal, beyond the near goals' 1.5 m, and it turned on the
+  spot for 27 s; longer goals now watch their route the same way, which is owed
+  a session too;
 - **furniture moved since the map was made**: something standing in a mapped
   gap, or a door open that the map has shut;
 - **the depth camera unavailable**, its service stopped for the run, which is
