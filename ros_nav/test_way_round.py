@@ -267,7 +267,207 @@ def test_a_person_stepping_in_front_of_a_near_goal_is_waited_for():
         nav_moves.time.sleep = saved_sleep
 
 
+def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
+    """M4 session 4, 2026-10-08, as the rover had it.
+
+    A geometry goal 1.8 m away, from (-18.32, -13.79) to (-18.57, -15.59) --
+    further than `NEAR_GOAL_M`, so one Nav2 goal with nothing watching the live
+    scan. The owner stood in the way. The planner, whose map has no person on
+    it, sent the same path every second for 27 s, and the controller turned on
+    the spot until they moved.
+    """
+    section("a person in the way of a goal further than a near one")
+    sys.path.insert(0, HERE)
+    from test_planning import _ros_messages
+    _ros_messages()
+    try:
+        import threading
+        import types
+        import goal_fit
+        import nav_moves
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+    wrap = nav_moves.wrap
+    start = (-18.32, -13.79)
+    goal = (-18.57, -15.59)
+    bearing = math.degrees(math.atan2(goal[1] - start[1], goal[0] - start[0]))
+    owner = (start[0] + (goal[0] - start[0]) * 0.5, start[1] + (goal[1] - start[1]) * 0.5)
+    correction = (0.4, -0.2, math.radians(17.0))
+
+    class Room(nav_moves.NavMoves):
+        """The near-goal room above, for a longer goal: the planner's route is
+        the straight line to whatever it was asked for, and the controller
+        swings on the spot while the owner is on it."""
+
+        def __init__(self, steps_in_s=1, stays_s=99.0, owner_at=owner):
+            self.at = [start[0], start[1], math.radians(bearing)]
+            self.sent, self.said = [], []
+            self.stop_seq = 3
+            self._lock = threading.Lock()
+            self.plan = None
+            self.args = types.SimpleNamespace(map_frame="map")
+            self.owner = owner_at
+            self.owner_there = steps_in_s == 0
+            self.stepped_in = self.owner_there
+            self.steps_in_s, self.stays_s = steps_in_s, stays_s
+            self.waited_s = 0.0
+            self.swung_s = 0
+            self.stopped_after_s = None
+            self.nearest = 9.0
+            self.heading_to = goal
+
+        def pose(self):
+            return tuple(self.at)
+
+        def footprint(self):
+            return BODY
+
+        def costmap(self):
+            return None
+
+        def correction(self):
+            return correction
+
+        def get_clock(self):
+            stamp = types.SimpleNamespace(to_msg=lambda: None)
+            return types.SimpleNamespace(now=lambda: stamp)
+
+        def live_costmap(self):
+            here = _to_odom(correction, self.at)
+            people = [_to_odom(correction, self.owner)] if self.owner_there else []
+            return _grid(goal_fit, here, people), correction
+
+        def route_to(self, gx, gy, yaw):
+            self.last_route = [tuple(self.at[:2]), (gx, gy)]
+            return (math.hypot(gx - self.at[0], gy - self.at[1]), 0.0), 0
+
+        def route_points(self):
+            # What Nav2 would be following: the straight line, its map has
+            # nobody on it.
+            return [tuple(self.at[:2]), self.heading_to]
+
+        def sleep(self, seconds):
+            self.waited_s += seconds
+            if self.waited_s >= self.stays_s:
+                self.owner_there = False
+
+        def on_the_line(self, to):
+            # What the controller refuses: the next 0.6 m of its way, which is
+            # about as far as its rollouts reach.
+            if not self.owner_there:
+                return False
+            grid, _ = self.live_costmap()
+            left = math.hypot(to[0] - self.at[0], to[1] - self.at[1]) or 1e-9
+            share = min(1.0, 0.6 / left)
+            near = (self.at[0] + (to[0] - self.at[0]) * share,
+                    self.at[1] + (to[1] - self.at[1]) * share)
+            return not goal_fit.line_fits(
+                grid, BODY, _to_odom(correction, self.at), _to_odom(correction, near),
+                worst=goal_fit.LETHAL, skip_m=0.1)
+
+        def run_goal(self, kind, goal_msg, limit_s, say, measure, motion="driving",
+                     budget=None, give_up=None, guard=None):
+            x, y, h = self.at
+            if kind == "spin":
+                self.sent.append(("spin", round(math.degrees(goal_msg.target_yaw))))
+                self.at[2] = wrap(h + goal_msg.target_yaw)
+                return {"reason": "arrived", "travelled_m": 0.0,
+                        "turned_deg": math.degrees(goal_msg.target_yaw)}
+            if kind == "forward":
+                step = goal_msg.target.x
+                self.sent.append(("forward", round(step, 2)))
+                end = (x + step * math.cos(h), y + step * math.sin(h))
+                if self.owner_there:
+                    self.nearest = min(self.nearest, _clearance((x, y), end, self.owner))
+                self.at[:2] = list(end)
+                return {"reason": "arrived", "travelled_m": step, "turned_deg": 0.0}
+            to = goal_msg.pose.pose.position
+            self.heading_to = (to.x, to.y)
+            self.sent.append(("goto",))
+            travelled = 0.0
+            for second in range(0, 80):
+                why = give_up(float(second), {"recoveries": 0}) if give_up else ""
+                if why:
+                    if self.stopped_after_s is None and self.stepped_in:
+                        self.stopped_after_s = second - self.steps_in_s
+                    return {"reason": "blocked", "travelled_m": travelled,
+                            "turned_deg": 0.0, "detail": why}
+                if second == self.steps_in_s and not self.stepped_in:
+                    self.owner_there = self.stepped_in = True
+                if self.on_the_line((to.x, to.y)):
+                    self.swung_s += 1
+                    continue                # back and forth on the spot
+                left = math.hypot(to.x - self.at[0], to.y - self.at[1])
+                hop = min(0.2, left)
+                heading = math.atan2(to.y - self.at[1], to.x - self.at[0])
+                self.at = [self.at[0] + hop * math.cos(heading),
+                           self.at[1] + hop * math.sin(heading), heading]
+                travelled += hop
+                if left - hop < 0.05:
+                    return {"reason": "arrived", "travelled_m": travelled,
+                            "turned_deg": 0.0}
+            return {"reason": "timeout", "travelled_m": travelled, "turned_deg": 0.0,
+                    "detail": "it swung on the spot until it ran out of time"}
+
+    def say(phase, why="", **fields):
+        rover.said.append((phase, why))
+
+    saved_sleep = nav_moves.time.sleep
+    try:
+        rover = Room()
+        nav_moves.time.sleep = rover.sleep
+        out = rover.goto(goal, bearing, say)
+        check("stepped in front of a 1.8 m goal, it stops within two seconds "
+              "rather than turning on the spot",
+              (rover.stopped_after_s is not None and rover.stopped_after_s <= 2,
+               rover.swung_s <= 2), (True, True))
+        check("...waits for them",
+              any(phase == "waiting" for phase, _ in rover.said), True)
+        check("...goes round them, 0.25 m or more away, and arrives -- within the "
+              "near goals' own 0.22 m of the goal",
+              (out.get("reason"), rover.nearest >= 0.25,
+               math.hypot(rover.at[0] - goal[0], rover.at[1] - goal[1])
+               <= nav_moves.THERE_M + 0.01),
+              ("arrived", True, True))
+
+        rover = Room(stays_s=2.0)
+        nav_moves.time.sleep = rover.sleep
+        out = rover.goto(goal, bearing, say)
+        check("one who steps away again is waited for, then driven on to",
+              (out.get("reason"),
+               math.hypot(rover.at[0] - goal[0], rover.at[1] - goal[1])
+               <= nav_moves.THERE_M + 0.01,
+               rover.swung_s <= 2), ("arrived", True, True))
+
+        rover = Room(owner_at=goal)
+        nav_moves.time.sleep = rover.sleep
+        out = rover.goto(goal, bearing, say)
+        check("someone standing on the goal itself: given up as blocked, not "
+              "turned at", (out.get("reason"), rover.swung_s <= 2), ("blocked", True))
+
+        rover = Room(steps_in_s=99)
+        nav_moves.time.sleep = rover.sleep
+        out = rover.goto(goal, bearing, say)
+        check("with nobody there it is one Nav2 goal, as before",
+              (out.get("reason"), rover.sent), ("arrived", [("goto",)]))
+
+        # A doorway's frame the route passes close by: on the live scan and on
+        # the planner's map alike. Nav2 meant to pass it; it is not stopped for.
+        rover = Room(steps_in_s=0)
+        frame = rover.owner
+        rover.costmap = lambda: _grid(goal_fit, frame, [frame])
+        check("something the planner's map has as well is a wall, not something "
+              "in the way", rover.seen_on_the_route(), "")
+        rover.costmap = lambda: _grid(goal_fit, frame, [])
+        check("...while something only the live scan has is",
+              rover.seen_on_the_route().startswith(nav_moves.IN_THE_WAY), True)
+    finally:
+        nav_moves.time.sleep = saved_sleep
+
+
 TESTS = (
     test_a_way_round_a_person_is_found_on_the_live_scan,
     test_a_person_stepping_in_front_of_a_near_goal_is_waited_for,
+    test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round,
 )

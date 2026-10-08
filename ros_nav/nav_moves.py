@@ -120,6 +120,43 @@ NEAR_TRIES = 3
 #: how the caller tells it from any other refusal.
 IN_THE_WAY = "something is in the way"
 
+#: **A longer goal watches the route ahead on the live scan too.** In M4
+#: session 4 (2026-10-08) the owner stood in the way of a 1.8 m goal, further
+#: than `NEAR_GOAL_M`, so it was one Nav2 goal and nothing looked at the live
+#: scan: the planner sent the same path through them every second for 27 s and
+#: the controller turned on the spot until they moved. So every second the next
+#: `ROUTE_LOOK_M` of the route Nav2 is following is checked as a near goal's
+#: straight line is; if the scan has something on it, the goal is stopped and
+#: the rover goes to a point `PAST_IT_M` further along the route as a near goal
+#: -- which waits for the way, then goes round in straight legs -- and then on
+#: to the goal, at most `NEAR_TRIES` times.
+ROUTE_LOOK_M = 1.0
+PAST_IT_M = 1.4
+
+
+def route_ahead(route, here, metres):
+    """The route from the point on it nearest `here` on for `metres`, as a list
+    of (x, y) starting at `here`; [] when there is no route."""
+    if not route or here is None:
+        return []
+    nearest = min(range(len(route)),
+                  key=lambda i: math.hypot(route[i][0] - here[0], route[i][1] - here[1]))
+    out = [(float(here[0]), float(here[1]))]
+    left = float(metres)
+    for point in route[nearest + 1:] if nearest + 1 < len(route) else route[nearest:]:
+        last = out[-1]
+        step = math.hypot(point[0] - last[0], point[1] - last[1])
+        if step <= 1e-9:
+            continue
+        if step >= left:
+            share = left / step
+            out.append((last[0] + (point[0] - last[0]) * share,
+                        last[1] + (point[1] - last[1]) * share))
+            return out
+        out.append((float(point[0]), float(point[1])))
+        left -= step
+    return out
+
 
 def to_odom(correction, point):
     """A point in the map frame, in the odom frame. `correction` is `map ->
@@ -579,6 +616,101 @@ class NavMoves:
 
         return watch
 
+    def route_points(self):
+        """The route Nav2 is following, as (x, y) in the map frame, or []."""
+        with self._lock:
+            plan = self.plan
+        try:
+            return [(float(one.pose.position.x), float(one.pose.position.y))
+                    for one in plan.poses]
+        except AttributeError:
+            return []
+
+    def seen_on_the_route(self, live=None):
+        """A sentence when the live scan has something on the next
+        `ROUTE_LOOK_M` of the route, or "" -- also when there is no route, live
+        costmap, pose or body to ask, which leaves the goal to Nav2."""
+        here = self.pose()
+        ahead = route_ahead(self.route_points(), here, ROUTE_LOOK_M) if here else []
+        if len(ahead) < 2:
+            return ""
+        live = live or self.live_costmap()
+        body = self.footprint() if live is not None else None
+        if live is None or body is None:
+            return ""
+        grid, correction = live
+        mapped = [None]
+        for i, (a, b) in enumerate(zip(ahead, ahead[1:])):
+            skip = LIVE_SKIP_M if i == 0 else 0.0
+            if goal_fit.line_fits(grid, body, to_odom(correction, a),
+                                  to_odom(correction, b), worst=goal_fit.LETHAL,
+                                  skip_m=skip):
+                continue
+            # **Only what the map does not have.** A route through a doorway
+            # can pass close enough to its frame that the body's sweep touches
+            # the scan's hits on it, and that is a wall the planner meant to
+            # pass, not something stepping into the way. So the same stretch is
+            # asked of the planner's own costmap, once, and a stretch that is
+            # blocked there too is left to Nav2.
+            if mapped[0] is None:
+                mapped[0] = self.costmap() or False
+            if mapped[0] and not goal_fit.line_fits(mapped[0], body, a, b,
+                                                    worst=goal_fit.LETHAL,
+                                                    skip_m=skip):
+                continue
+            return ("%s: the scan has something on the route within %.1f m"
+                    % (IN_THE_WAY, ROUTE_LOOK_M))
+        return ""
+
+    def route_watch(self, give_up):
+        """`give_up` with the route ahead looked at on the live scan every
+        `LIVE_LOOK_S`, which ends the goal with an `IN_THE_WAY` sentence."""
+        looked = [None]
+
+        def watch(now, feedback):
+            if looked[0] is None or now - looked[0] >= LIVE_LOOK_S:
+                looked[0] = now
+                seen = self.seen_on_the_route()
+                if seen:
+                    return seen
+            return give_up(now, feedback) if give_up else ""
+
+        return watch
+
+    def past_it(self, where, yaw_deg, say, give_up, guard, unwedge, stopped, tries):
+        """A longer goal stopped for something on its route: on to a point
+        `PAST_IT_M` along the route as a near goal, which waits for the way
+        and goes round, then on to the goal. Handed back as blocked when there
+        is no way round, or after `NEAR_TRIES` stops."""
+        here = self.pose()
+        route = self.route_points()
+        if tries + 1 >= NEAR_TRIES or here is None:
+            return stopped
+        ahead = route_ahead(route or [tuple(here[:2]), tuple(where)], here, PAST_IT_M)
+        point = ahead[-1] if len(ahead) >= 2 else tuple(where)
+        went = self.near(point, None, "", say, give_up=None, guard=guard,
+                         unwedge=unwedge)
+        moved = float(stopped.get("travelled_m") or 0.0) + float(
+            went.get("travelled_m") or 0.0)
+        swung = float(stopped.get("turned_deg") or 0.0) + float(
+            went.get("turned_deg") or 0.0)
+        if went.get("reason") != "arrived":
+            went.update(travelled_m=round(moved, 3), turned_deg=round(swung, 1))
+            return went
+        if math.hypot(point[0] - where[0], point[1] - where[1]) <= THERE_M and (
+                yaw_deg is None):
+            went.update(travelled_m=round(moved, 3), turned_deg=round(swung, 1))
+            return went
+        rest = self.goto(where, yaw_deg, say, give_up=give_up, guard=guard,
+                         unwedge=unwedge, tries=tries + 1)
+        rest["travelled_m"] = round(moved + float(rest.get("travelled_m") or 0.0), 3)
+        rest["turned_deg"] = round(swung + float(rest.get("turned_deg") or 0.0), 1)
+        if rest.get("reason") == "arrived":
+            said = went.get("detail") or "waited for something in the way"
+            rest["detail"] = ("%s -- %s" % (said, rest["detail"])
+                              if rest.get("detail") else said)
+        return rest
+
     def fit_goal(self, gx, gy, yaw):
         """Move a goal to the nearest place the rover's body will actually go.
 
@@ -616,7 +748,7 @@ class NavMoves:
                 "fits" % round(placed["moved_m"] * 100))
 
     def goto(self, where, yaw_deg, say, give_up=None, guard=None, unwedge=True,
-             near=True):
+             near=True, tries=0):
         """Somewhere on the map, with a planner and a costmap between.
 
         `where` is already in map coordinates -- the daemon converts an offset into
@@ -678,12 +810,18 @@ class NavMoves:
                 (gx, gy), None if yaw_deg is None else yaw, note, say,
                 give_up=give_up, guard=guard, unwedge=unwedge)
 
+        caller_give_up = give_up
         if give_up is None:
             watch = frontier.Stall()
 
             def give_up(now, feedback):
                 return watch.update(now, self.pose(),
                                     int(feedback.get("recoveries") or 0))
+
+        if near:
+            # Not for a near goal's own straight line (`near=False`), which has
+            # `near_watch` already.
+            give_up = self.route_watch(give_up)
 
         previous_give_up = give_up
         if guard is not None:
@@ -745,6 +883,10 @@ class NavMoves:
 
         outcome = self.run_goal("goto", goal, limit, say, measure, budget=budget,
                                 give_up=give_up, **({"guard": guard} if guard is not None else {}))
+        if (near and outcome.get("reason") == "blocked"
+                and str(outcome.get("detail") or "").startswith(IN_THE_WAY)):
+            return self.past_it(where, yaw_deg, say, caller_give_up, guard,
+                                unwedge, outcome, tries)
         if (unwedge and outcome.get("code") == START_OCCUPIED
                 and float(outcome.get("travelled_m") or 0.0) < UNWEDGE_MOVED_M):
             return self.unwedged(outcome, where, yaw_deg, say, previous_give_up,
