@@ -717,7 +717,11 @@ conditions are:
   where it wants to go, several times in a session. Session 10 had the owner in
   view once, which does not count; session 11 found the rover swinging when
   blocked, session 12 had nobody block it, and session 13 found a near goal
-  blind to a person until it had set off, now fixed, so it is owed again;
+  blind to a person until it had set off, now fixed. In
+  [M4 session 2](../progress/2026-10-08-m4-session-2.md) the owner stepped into
+  a near goal's way once (confirmed by the owner): it waited 3 s and went round
+  in three straight legs, 11 s in all. Standing in its way for more than 5 s is
+  still owed;
 - **furniture moved since the map was made**: something standing in a mapped
   gap, or a door open that the map has shut;
 - **the depth camera unavailable**, its service stopped for the run, which is
