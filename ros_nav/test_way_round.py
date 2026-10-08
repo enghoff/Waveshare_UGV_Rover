@@ -294,14 +294,23 @@ def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
     bearing = math.degrees(math.atan2(goal[1] - start[1], goal[0] - start[0]))
     owner = (start[0] + (goal[0] - start[0]) * 0.5, start[1] + (goal[1] - start[1]) * 0.5)
     correction = (0.4, -0.2, math.radians(17.0))
+    #: Where Nav2's straight drive stops for the owner: the body's furthest
+    #: corner, 0.244 m from the centre, and a few centimetres of a person's
+    #: scan returning wider than their middle.
+    DRIVE_STOPS_M = 0.32
+    #: How far the rover runs on at 0.41 m/s once a goal is stopped.
+    STOP_SLIDE_M = 0.2
 
     class Room(nav_moves.NavMoves):
         """The near-goal room above, for a longer goal: the planner's route is
-        the straight line to whatever it was asked for, and the controller
-        swings on the spot while the owner is on it."""
+        the straight line to whatever it was asked for, the controller swings
+        on the spot while the owner is on its next stretch, and a straight
+        drive stops short of brushing them."""
 
-        def __init__(self, steps_in_s=1, stays_s=99.0, owner_at=owner):
-            self.at = [start[0], start[1], math.radians(bearing)]
+        def __init__(self, steps_in_s=1, stays_s=99.0, owner_at=owner,
+                     begin=start, speed_ms=0.2):
+            self.at = [begin[0], begin[1], math.radians(bearing)]
+            self.speed_ms = speed_ms
             self.sent, self.said = [], []
             self.stop_seq = 3
             self._lock = threading.Lock()
@@ -378,6 +387,21 @@ def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
                 step = goal_msg.target.x
                 self.sent.append(("forward", round(step, 2)))
                 end = (x + step * math.cos(h), y + step * math.sin(h))
+                if self.owner_there and _clearance((x, y), end, self.owner) < DRIVE_STOPS_M:
+                    # Nav2's drive checks its own way and stops short of
+                    # anything the body would touch, which on the rover on
+                    # 2026-10-08 left it stopped beside the owner: move to the
+                    # last point that keeps the clearance and stop there.
+                    went = 0.0
+                    while went + 0.02 <= step and _clearance(
+                            (x, y), (x + (went + 0.02) * math.cos(h),
+                                     y + (went + 0.02) * math.sin(h)),
+                            self.owner) >= DRIVE_STOPS_M:
+                        went += 0.02
+                    self.at[:2] = [x + went * math.cos(h), y + went * math.sin(h)]
+                    self.nearest = min(self.nearest, DRIVE_STOPS_M)
+                    return {"reason": "blocked", "travelled_m": went, "turned_deg": 0.0,
+                            "detail": "there is something in the way"}
                 if self.owner_there:
                     self.nearest = min(self.nearest, _clearance((x, y), end, self.owner))
                 self.at[:2] = list(end)
@@ -391,6 +415,15 @@ def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
                 if why:
                     if self.stopped_after_s is None and self.stepped_in:
                         self.stopped_after_s = second - self.steps_in_s
+                    # Stopping takes a moment at speed: on the rover that
+                    # evening it went on 0.2 m after the stop was asked for.
+                    slide = min(STOP_SLIDE_M * self.speed_ms / 0.41,
+                                math.hypot(to.x - self.at[0], to.y - self.at[1]))
+                    if self.owner_there and not self.on_the_line((to.x, to.y)):
+                        heading = math.atan2(to.y - self.at[1], to.x - self.at[0])
+                        self.at = [self.at[0] + slide * math.cos(heading),
+                                   self.at[1] + slide * math.sin(heading), heading]
+                        travelled += slide
                     return {"reason": "blocked", "travelled_m": travelled,
                             "turned_deg": 0.0, "detail": why}
                 if second == self.steps_in_s and not self.stepped_in:
@@ -399,7 +432,7 @@ def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
                     self.swung_s += 1
                     continue                # back and forth on the spot
                 left = math.hypot(to.x - self.at[0], to.y - self.at[1])
-                hop = min(0.2, left)
+                hop = min(self.speed_ms, left)
                 heading = math.atan2(to.y - self.at[1], to.x - self.at[0])
                 self.at = [self.at[0] + hop * math.cos(heading),
                            self.at[1] + hop * math.sin(heading), heading]
@@ -430,6 +463,32 @@ def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
                math.hypot(rover.at[0] - goal[0], rover.at[1] - goal[1])
                <= nav_moves.THERE_M + 0.01),
               ("arrived", True, True))
+
+        rover = Room(steps_in_s=0)
+        nav_moves.time.sleep = rover.sleep
+        out = rover.goto(goal, bearing, say)
+        check("standing there before it sets off: it goes round without "
+              "ending up stopped beside them",
+              (out.get("reason"), rover.swung_s <= 2), ("arrived", True))
+
+        # The blocking trial of that evening, as the owner marked it: the
+        # trials' 4.4 m leg up the charger room, the owner standing still
+        # 0.25 m to the right of its line about 1.6 m up. **This room passes
+        # where the rover did not**: on the rover the last leg of the way round
+        # drifted 9 degrees towards the owner and Nav2's drive stopped it
+        # (docs/progress/2026-10-08-blocking-trials.md). Straight legs here go
+        # exactly where they are pointed, so this checks the plan, not its
+        # driving.
+        leg_start, leg_end = (-17.11, -15.86), (-17.05, -11.60)
+        rover = Room(steps_in_s=0, owner_at=(-16.85, -14.24), begin=leg_start,
+                     speed_ms=0.41)
+        rover.at[2] = math.atan2(leg_end[1] - leg_start[1], leg_end[0] - leg_start[0])
+        nav_moves.time.sleep = rover.sleep
+        out = rover.goto(leg_end, None, say)
+        check("the evening's trial: it goes round the owner and on up the leg",
+              (out.get("reason"), rover.swung_s <= 2,
+               math.hypot(rover.at[0] - leg_end[0], rover.at[1] - leg_end[1])
+               <= nav_moves.THERE_M + 0.01), ("arrived", True, True))
 
         rover = Room(stays_s=2.0)
         nav_moves.time.sleep = rover.sleep
