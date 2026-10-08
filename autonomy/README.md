@@ -513,8 +513,8 @@ leaves two accounts of the running system with one of them maintained.
   nothing and decides nothing, and retention is not run on a schedule either.
 - **Four of the six goal types do not exist.** Inspecting a semantic gap,
   revisiting something stale, investigating a change and searching for something
-  missing all need the temporal and claim semantics of M4 and M5. What is here
-  is the geometric half.
+  missing all need attribute claims, which M4 left for later, and M5's temporal
+  semantics. What is here is the geometric half.
 - **A thing seen once and never placed is never proposed.** One bearing is a
   direction and not a position, so there is nowhere to plan a viewpoint around;
   what such a thing needs is for the rover to be somewhere else, which is what

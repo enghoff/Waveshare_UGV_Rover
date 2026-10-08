@@ -11,7 +11,7 @@ M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
 the five conditions not yet driven, which replaced a count of twenty on 2026-10-07
 ([the decision](../decisions/trials-are-sized-by-what-they-show.md)); the charger
 room's is met ([session 8](../progress/2026-10-07-m3-session-8.md)), and so is the
-depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 then waits on the world state before it needs the rover. Later phases remain proposed. This is the
+depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -493,7 +493,8 @@ rooms with the expected outcome written beside each.
 ### What is still ahead
 
 - **Four goal types are missing**, and they are the semantic ones:
-  `inspect_uncertain_entity` (explicit gaps and claims from M4),
+  `inspect_uncertain_entity` (gaps about what a thing is, which wait for
+  attribute claims: *Attribute claims, later*, under Phase 4),
   `revisit_stale_entity`, `investigate_change` and `search_for_missing_entity`
   (the last three need M5 temporal and visibility semantics). Each needs shadow
   acceptance of its own, and the fixed acceptance set must be extended before
@@ -506,11 +507,12 @@ rooms with the expected outcome written beside each.
 - **The purpose term is 1.0 everywhere**, because the owner has not declared
   one. It is configuration and not code; until it is set, the rover weighs
   exploring and inspecting equally and says so.
-- **Nothing records whether a chosen goal paid off.** It has been measured once,
-  by hand, for geometry goals: 19 of 171 improved their thing
-  ([2026-10-06](../progress/2026-10-06-looks-seldom-reach-their-thing.md)).
-  Predicted gain against realised gain, for each decision, is what M4's
-  evaluator needs and what any learned ranking later rests on.
+- **Whether a chosen goal paid off is recorded only by the rover's own
+  account.** Since 2026-10-08 a geometry goal records the gain it predicted and
+  its target's stated uncertainty before and after. Whether it came closer to
+  where the thing really is needs the tape, and is M4's scoring script
+  (*What is ahead before the acceptance attempts*, under Phase 4). It is also
+  what any learned ranking later rests on.
 
 ### Milestone M2: the rover can explain what it would investigate next
 
@@ -745,132 +747,143 @@ conditions are:
 ### Purpose
 
 Make the rover move **to learn something specific**, not only to expand the map.
+Since [2026-10-09](../decisions/m4-measures-where-things-are.md) the knowledge M4
+measures is where a thing is and how sure the rover may be of that, which is what
+its depth camera, region finder and appearance vectors can measure. What a thing
+is, its colour and whether it moves wait for a model that describes things
+(*Attribute claims, later*, below).
 
-### What it waits on
+### Where it stands
 
-M4 cannot pass while a look's evidence rarely reaches the thing it was aimed
-at. Of 171 geometry goals on record, 19 improved their thing
-([2026-10-06](../progress/2026-10-06-looks-seldom-reach-their-thing.md)). However
-well a viewpoint is chosen, it cannot improve knowledge that its evidence never
-joins, so trials of the viewpoint planner would measure the world state instead.
-That work belongs to the world state:
-[R-WS-13](../requirements/world-state.md#r-ws-13),
-[R-WS-17](../requirements/world-state.md#r-ws-17) and
-[R-WS-18](../requirements/world-state.md#r-ws-18), in
-[its plan](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks).
-M4 spends no rover time until looks measurably reach their things
-([2026-10-07](../decisions/trials-are-sized-by-what-they-show.md)). The
-[identity trial's scoring](../progress/2026-10-07-identity-trial-scored.md) found
-why one did not: clear views of the dining painting were hidden by the map's
-reach, and with that lifted they were ambiguous among the painting's eight
-records, several of them mixed. Splitting and joining records comes before the
-visibility rule.
+The loop M4 tests is built and has run in four supervised sessions on
+2026-10-08. An aimed look files the region at its aim to the record it was sent
+to improve ([R-WS-13](../requirements/world-state.md#r-ws-13), the case agreed
+for supervised runs), and that region's depth sets the record's position and
+claim. Goals choose viewpoints from which the depth camera can see the thing,
+and tilt level for low things. A record that a look in depth view found empty
+is set aside for two hours, with its group-mates. The executive records the gain
+it predicts before it travels and the placement it measured after. How each of
+these works is in [autonomy/README.md](../../autonomy/README.md) and
+[world_state/README.md](../../world_state/README.md).
 
-Filing by aim ([R-WS-13](../requirements/world-state.md#r-ws-13), agreed for
-supervised runs) now gives an aimed look's region to its target when the
-target is in the picture: in
-[M4 session 1](../progress/2026-10-08-m4-session-1.md) 7 of 39 aimed looks
-filed, each the right kind of thing, and 4 goals improved their thing. The other
-32 looked at records that are not recognisably in front of the camera at all --
-no region in any of them looked 0.70 like the target
-([2026-10-08](../progress/2026-10-08-why-aimed-looks-miss.md)). What limits M4
-now is which records are chosen as targets, and records placed where nothing
-stands.
-Choosing targets better helps only so far: records at least 0.3 m across, or
-often ranged, file about twice as often, but still only about one look in
-three ([2026-10-08](../progress/2026-10-08-what-predicts-a-filing.md)), and
-looking again at a record that came up empty filed 1 time in 15 that day.
-Criterion 5 needs more than half of attempts to improve their thing, so on this
-store it waits on the store: one record per object, placed where the object is.
+On 2026-10-08 about one aimed look in six with its thing in the depth camera's
+view improved that thing (14 of 80), and none of 31 at things more than 40
+degrees up did ([2026-10-08](../progress/2026-10-08-depth-sees-the-thing.md)).
+Most looks that filed nothing were aimed at records not where their thing is
+([2026-10-08](../progress/2026-10-08-why-aimed-looks-miss.md)): one object split
+across several records, records placed where nothing stands. That rate belongs to
+the world state ([R-WS-13](../requirements/world-state.md#r-ws-13),
+[R-WS-17](../requirements/world-state.md#r-ws-17),
+[R-WS-18](../requirements/world-state.md#r-ws-18),
+[its plan](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks)).
+M4 reports it and no longer waits for it.
 
-Three things on autonomy's side need no rover and are worth doing first, because
-M4's measurement depends on them:
+### What is ahead before the acceptance attempts
 
-- **Recording a look that found nothing.** M4 counts a no-evidence attempt as
-  zero gain, and today such a look leaves no episode (Phase 1, *what is still
-  ahead*).
-- **Recording each decision's realised gain beside its predicted gain**, which
-  criterion 5 needs and which has only been measured once, by hand.
-- **Proposing things seen once and never placed.** These are a third of the
-  observations, and "which things have only been seen once" is one of the
-  questions the [design](autonomous-curiosity-design.md) asks the rover to
-  answer.
+1. **A new taped set.** The six things taped on 2026-10-03
+   (`captures/2026-10-03-targets/TARGETS.txt`) fixed the depth placement rule
+   ([2026-10-08](../progress/2026-10-08-depth-placement.md)), so they are
+   development evidence now. Acceptance needs about a dozen new things in at
+   least two rooms, picked from the rooms as they are, each one the rover can
+   range from somewhere it can stand. The owner gives tape readings. Which of the
+   store's records belong to each thing is labelled from their pictures before
+   any acceptance attempt, and both stay frozen through the comparison.
+2. **Scoring one attempt on its own.** A script files one attempt's looks into a
+   copy of the store as it stood just before the attempt, and scores the target's
+   placement against the tape before and after. Every attempt and its re-look
+   then start from the same knowledge, whatever else the run did.
+3. **The re-look.** Before driving to the viewpoint it chose, the executive aims
+   at the target from where it stands and takes one look, recorded in the same
+   decision. It costs seconds, not a drive.
+4. **Development attempts** on the six old targets, to measure how often chosen
+   viewpoints and re-looks each improve placement, and to set the size of the
+   acceptance set from those rates (criterion 4). On 2026-10-08's rates, with a
+   re-look that seldom improves anything, that is about 40 pairs; if re-looks
+   improve their target half as often as chosen viewpoints, it is well over a
+   hundred, and the comparison is to be revisited before the rover spends them.
 
-### Semantic claim layer
-
-Add typed claims/hypotheses over entities without changing immutable observations.
-Initial predicates should be small and testable, for example:
-
-- coarse category/description;
-- colour;
-- approximate size class where geometry supports it;
-- movable/static hypothesis;
-- simple spatial relationships.
-
-Every accepted claim stores evidence IDs, method/model version, timestamp and
-confidence. A claim can expire to stale without deleting its history.
+Also ahead, though M4 does not need it: proposing things seen once and never
+placed, which are a third of the observations and one of the questions the
+[design](autonomous-curiosity-design.md) asks the rover to answer.
 
 ### Knowledge gaps
 
-Generate explicit questions such as:
+An inspection names one of the gaps the rover measures:
 
-- insufficient independent viewpoints;
-- conflicting attribute estimates;
-- appearance changed since last observation;
-- uncertain relation to another placed entity;
-- entity was expected but not visible in a sufficiently complete revisit.
+- placed more loosely than a viewpoint from elsewhere would fix, which is the
+  gain the goals predict today;
+- seen from one side only, or never ranged;
+- ranged looks that disagree;
+- another record suspected of being the same thing;
+- seen empty: a look with the place in the depth camera's view found nothing
+  to file.
 
-### Viewpoint planner v1
+Gaps about what a thing is or how it looks (conflicting attributes, changed
+appearance, relations to other things) wait for attribute claims.
 
-Start deterministic. Candidate viewpoints can be sampled from the current map around
-a placed entity and filtered through reachability/safety. Score them using predicted:
+### Viewpoint choice
 
-- parallax improvement;
-- image scale/distance;
-- occlusion proxy where available;
-- travel cost;
-- pose uncertainty;
-- expected ability to test the specific hypothesis.
+The viewpoint planner exists and is deterministic: candidates sampled round a
+placed thing on the map, filtered by reachability, the safe area and the depth
+camera's view, scored on predicted placement gain against travel
+([autonomy/README.md](../../autonomy/README.md)). Learning its bounded
+parameters can begin once acceptance attempts exist, compared against the frozen
+planner on held-out runs within the same safety bounds. That needs no autonomous
+skill discovery and no new neural policy.
 
-The planner records the predicted gain before travel.
+### Attribute claims, later
 
-Versioned learning of bounded viewpoint parameters can begin here once enough
-episodes exist. Compare learned parameter choices with a frozen baseline on held-out
-runs, retaining the same safety bounds. This does not require autonomous skill
-discovery or a new neural policy.
+Typed claims over things, without changing the observations under them: what a
+thing is, its colour, a size class, whether it moves, simple relations. Each
+would carry its evidence IDs, method and model version, time and confidence, and
+expire to stale without losing its history.
 
-### Acceptance dataset
+None of this is in M4, because nothing on the rover makes such claims. The region
+finder names nothing, the vector models compare appearance, and text only searches
+stored pictures. The last model that described things was removed
+([cosmos-reason2.md](../decisions/cosmos-reason2.md)). Attribute claims come
+back once a describing model has been benchmarked offline on labelled pictures
+from this rover, abstains when unsure, and is right about as often as it claims.
+The comparison M4 used to allow, attribute correctness from several viewpoints
+against one, then becomes its own criterion.
 
-Build a physically annotated set of entities and questions across multiple
-viewpoints, large enough for criterion 3's comparison to resolve its predeclared
-minimum improvement. Start from the targets already taped and measured
-(`captures/2026-10-03-targets/TARGETS.txt`) rather than a new set. Keep a
-development subset separate from an acceptance subset if prompts or thresholds are
-tuned.
-
-### Milestone M4: additional viewpoints measurably improve knowledge
+### Milestone M4: chosen viewpoints measurably improve where things are known to be
 
 Pass when all are true:
 
-1. every autonomous inspection names the knowledge gap it is trying to resolve;
-2. claims cannot exist without resolvable evidence IDs;
-3. active viewpoint selection beats a defined baseline (same-pose re-look or nearest
-   reachable viewpoint) on the held-out acceptance set for the chosen metric --
-   attribute correctness, association resolution or calibrated uncertainty;
-4. a predeclared set of applicable hardware active-inspection attempts, sized for
-   criterion 5's median to be told apart from zero, is completed, reporting useful
-   viewpoints, unresolved outcomes and failures;
-5. median realised information gain across that full attempt set is positive;
-   no-evidence attempts count as zero, incorrect changes are penalised, and cases
-   where predicted gain was wrong remain in the report;
-6. false high-confidence semantic claims are reported separately and do not exceed
-   the baseline single-view system;
-7. failure to find a useful safe viewpoint leaves the gap unresolved rather than
-   inventing a result.
+1. every autonomous inspection names the gap it is for and records the gain it
+   predicts before it travels and the placement it measured after;
+2. every placement the rover states can be traced to the looks it rests on, and
+   each look to a stored picture and pose;
+3. on the acceptance set, a look from the viewpoint the rover chose improves its
+   target's placement more than a re-look from where it stood when it chose.
+   Each attempt is paired with its own re-look, both are scored against the same
+   copy of the store, and the paired difference's 95% interval is above zero;
+4. the acceptance attempts are predeclared: the things, the score, the count and
+   the analysis, with the count set from the development rates so that criterion
+   3's comparison can be told apart. Whether an attempt applies is decided from
+   what the rover knew before it, a reachable viewpoint with the thing inside the
+   depth camera's view, and a refused thing is counted as a refusal, not dropped;
+5. across the full attempt set the mean realised gain of chosen-viewpoint looks is
+   positive, its 95% interval above zero. A look that finds nothing counts as
+   zero; one that moves a placement away from the tape, or files to a record of
+   another thing, counts against; attempts whose predicted gain was wrong stay in
+   the report. The shares of attempts that improved, did nothing and did harm are
+   reported by condition (in view, ranged, the thing's size, room), not held to a
+   bar;
+6. claims stay honest: for the attempted things, how often the tape lies inside
+   the stated uncertainty is reported against what a one-sigma figure should
+   cover, and overconfident claims, the tape more than twice the stated figure
+   away, are no more common after chosen-viewpoint looks than after re-looks;
+7. failing to find a useful safe viewpoint, or finding nothing there, leaves the
+   gap open and says so; no placement is invented.
 
-Do not define "information gain" as the model becoming more confident alone. The
-acceptance metric must include correctness against annotation or resolution of a
-geometry/consistency constraint.
+Gain is never the rover becoming more confident alone. The score rewards a
+placement for coming closer to the tape and for an uncertainty that narrows
+honestly, and penalises one that narrows past the tape. The proposal is the
+log-likelihood of the tape's position under the stated position and uncertainty,
+floored at that of a 2 m claim so that one wild claim cannot decide the mean. It
+is fixed in the scoring script before the acceptance attempts.
 
 ## Phase 5 -- temporal memory, staleness and change-driven curiosity
 
@@ -1444,7 +1457,7 @@ the problem.
 | M1 | episodic memory | durable reconstruction across resets/merges, no authority |
 | M2 | curiosity shadow mode | fixed scenarios + a no-action rover shadow run |
 | M3 | bounded autonomous loop | a supervised session in each listed condition, measured stops, permission expiry and failure tests |
-| M4 | active perception | waits on looks reaching their things; held-out multi-view gain + hardware inspections sized for it |
+| M4 | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it |
 | M5 | temporal curiosity | scripted changed/unchanged scene benchmark |
 | M1-M5 usefulness | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted |
 | M6 | restricted skill substrate | malicious/invalid rejection + reference skill equal to the executive in replay and stopping on the rover |
@@ -1462,14 +1475,17 @@ M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
    until criterion 4's
    stopping rule is met. Each session needs the owner, a charge and a cleared
    area, so each is chosen to try something not tried before.
-2. **Let looks reach their things.** This is the world state's work (R-WS-13,
-   R-WS-17, R-WS-18), and M4 waits on it. Autonomy spends no rover time on
-   viewpoint trials until it is done.
-3. **Meanwhile, the offline half of M4**: recording looks that found nothing,
-   recording realised gain beside predicted gain, and proposing things seen
-   once and never placed (*What it waits on*, under Phase 4).
+2. **Prepare M4's acceptance attempts**: a new taped set with its records
+   labelled, the script that scores one attempt against the tape, and the
+   re-look before each chosen viewpoint (*What is ahead before the acceptance
+   attempts*, under Phase 4). Then development attempts to size the set, then
+   the attempts themselves.
+3. **Let looks reach their things.** This is the world state's work (R-WS-13,
+   R-WS-17, R-WS-18). M4 no longer waits on it, but it sets how many attempts
+   improve anything, about one in six with the thing in view on 2026-10-08.
 
 The question the programme now turns on is: **given what the rover actually
 knows, does choosing where to look make it know more?** M3 shows that it can
-choose and act safely. Until looks reach their things, the answer is no,
-whatever is chosen.
+choose and act safely. M4 now asks it of where things are, on average and
+against looking again from where the rover stands; how often a single attempt
+helps stays the world state's to raise.

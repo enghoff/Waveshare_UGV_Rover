@@ -4,6 +4,8 @@ Status: agreed 2026-10-07 by the owner for M3's sessions. The plan's other count
 and the scope of M8, were revised in a review of the
 [plan](../plans/autonomous-curiosity.md) that the owner asked for the same day.
 No code has changed.
+Its M4 item, that M4 waits on looks reaching their thing, is superseded by
+[m4-measures-where-things-are.md](m4-measures-where-things-are.md) (2026-10-09).
 
 M3 no longer counts its sessions. Its criterion 4 asked for twenty supervised
 sessions totalling at least 120 minutes. It now asks for one session in each of
