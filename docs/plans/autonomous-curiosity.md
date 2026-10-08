@@ -748,6 +748,17 @@ reach, and with that lifted they were ambiguous among the painting's eight
 records, several of them mixed. Splitting and joining records comes before the
 visibility rule.
 
+Filing by aim ([R-WS-13](../requirements/world-state.md#r-ws-13), agreed for
+supervised runs) now gives an aimed look's region to its target when the
+target is in the picture: in
+[M4 session 1](../progress/2026-10-08-m4-session-1.md) 7 of 39 aimed looks
+filed, each the right kind of thing, and 4 goals improved their thing. The other
+32 looked at records that are not recognisably in front of the camera at all --
+no region in any of them looked 0.70 like the target
+([2026-10-08](../progress/2026-10-08-why-aimed-looks-miss.md)). What limits M4
+now is which records are chosen as targets, and records placed where nothing
+stands.
+
 Three things on autonomy's side need no rover and are worth doing first, because
 M4's measurement depends on them:
 
