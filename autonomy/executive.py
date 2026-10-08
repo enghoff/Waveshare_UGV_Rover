@@ -524,7 +524,8 @@ class Executive:
             result={"action_id": action_id, **{k: v for k, v in result.items()
                     if k in ("note", "detail", "regions", "attached",
                              "placed", "ranged", "stopped", "going",
-                             "frame_id", "pose", "status", "stored")}},
+                             "frame_id", "pose", "status", "stored",
+                             "aimed_filing")}},
             error=str(result.get("error") or ""),
             duration_s=round(self.now() - began, 2)))
         if not result.get("ok"):

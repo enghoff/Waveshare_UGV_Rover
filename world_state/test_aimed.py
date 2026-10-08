@@ -170,10 +170,36 @@ def test_an_inspection_aimed_at_a_thing_says_what_it_filed():
           "not placed" in aimed_at.get("aimed_filing", {}).get("why", ""), True)
 
 
+def test_an_aimed_look_takes_its_own_picture():
+    """On the rover on 2026-10-08 five aimed looks in eight matched the picture
+    taken a second earlier on arrival, recorded nothing and filed nothing."""
+    from test_fakes import a_camera_showing, a_seeing_inspector, a_sighting
+    from test_harness import SKIP
+    from test_inspect import _room
+    same = _room()
+    if same is None:
+        SKIP.append("an aimed look after the same picture (no numpy or OpenCV)")
+        return
+    looks = [[a_sighting(bbox=[0.45, 0.4, 0.55, 0.6])] for _ in range(2)]
+    results = {}
+    for name, target in (("plain", None), ("aimed", "object:404")):
+        _store, _eyes, inspector = a_seeing_inspector(
+            tempfile.mkdtemp(prefix="world-aimed-again-"), [list(l) for l in looks],
+            capture=a_camera_showing([same]))
+        inspector.inspect(settle=False)
+        results[name] = inspector.inspect(settle=False, target=target)
+    check("the same picture twice: an ordinary look records nothing the second time",
+          results["plain"].get("status"), "unchanged")
+    check("...but a look aimed at a thing records it and says what it filed",
+          (results["aimed"].get("status"), "aimed_filing" in results["aimed"]),
+          ("ok", True))
+
+
 TESTS = (
     test_the_region_at_the_aim_goes_to_the_target,
     test_a_look_that_does_not_point_at_the_target_files_nothing,
     test_two_regions_alike_at_the_aim_are_refused,
     test_an_aimed_range_is_the_position_and_the_claim,
     test_an_inspection_aimed_at_a_thing_says_what_it_filed,
+    test_an_aimed_look_takes_its_own_picture,
 )

@@ -529,8 +529,12 @@ class Inspector(InspectionRanges):
         `target` names the thing the look was aimed at. Once the look is recorded
         the region at the aim is filed to it (`aimed.file_by_aim`), inside this
         lock so that no settling pass can take the region first, and the reply
-        carries what was filed as `aimed_filing`.
+        carries what was filed as `aimed_filing`. It is always a fresh look: on
+        the rover on 2026-10-08 five aimed looks in eight matched the picture the
+        moving look took a second earlier on arrival, recorded nothing, and so
+        had nothing to file.
         """
+        fresh = fresh or bool(target)
         held = (self._lock.acquire(timeout=wait_s) if wait_s > 0
                 else self._lock.acquire(blocking=False))
         if not held:
