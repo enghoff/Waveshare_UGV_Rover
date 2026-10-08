@@ -165,9 +165,11 @@ identity had not been defined. The historical progress entries remain unchanged.
   one-object pairs on the independent labels against the proposer's 3, with 1
   wrong of 98, and takes the 2026-10-08 rug from seven records to two where the
   proposer leaves seven; 17 of 25 random joins are one object by photograph, 1
-  is two ([2026-10-08](../progress/2026-10-08-merging-by-cofit.md)). Measured on
-  final stores; whether joining every few hundred looks makes the resolver
-  refuse later looks is being replayed.
+  is two ([2026-10-08](../progress/2026-10-08-merging-by-cofit.md)). Joined
+  every 300 looks on the resolver's own records it links more of each object's
+  looks but puts two points more of them under the wrong thing
+  ([2026-10-08](../progress/2026-10-08-merging-while-the-rover-looks-again.md)),
+  so its place is the group table below, which the resolver does not read.
 - **Rebuilding a few neighbouring things from their pooled looks** handles wrong looks
   best. With the dining chairs aside and weights fitted without the things scored, it
   keeps 7 of 37 wrong looks with their object, against 10 for single-look removal at
