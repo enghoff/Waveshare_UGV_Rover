@@ -64,9 +64,18 @@ def watch(path, stop):
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     f = connect()
-    here = call(f, "nav_status").get("pose") or {}
+    status = call(f, "nav_status")
+    here = status.get("pose") or {}
     if not here:
         raise SystemExit("navigation has no pose: nothing driven")
+    # The rule autonomy's permission applies (R-SAFE-17), which a person's drive
+    # does not go through: a bias of exactly zero or beyond 5 deg/s is the
+    # board's motion sensor frozen, and a rover that cannot feel itself turn
+    # must not be driven. Seen again at a power-up on 2026-10-08.
+    bias = status.get("gyro_bias_dps")
+    if bias is not None and (bias == 0 or abs(float(bias)) > 5.0):
+        raise SystemExit("the gyro bias reads %s deg/s: the motion sensor is frozen; "
+                         "power-cycle the rover, nothing driven" % bias)
     along = math.degrees(math.atan2(FAR[1] - START[1], FAR[0] - START[0]))
     if mode == "start":
         args = {"x_m": START[0], "y_m": START[1], "heading_deg": along}
