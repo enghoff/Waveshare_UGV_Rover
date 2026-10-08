@@ -23,9 +23,15 @@ def call(c, a=None):
     f.write(json.dumps({"call": c, "arguments": a or {}}).encode() + b"\n"); f.flush()
     return json.loads(f.readline())
 nav = call("nav_status")
+percent = call("battery").get("percent")
 print("pre", {k: nav.get(k) for k in ("pose", "position_trusted", "map_settled", "map_id",
                                      "gyro_bias_dps")},
-      call("battery").get("percent"), "%", "fence", fence)
+      percent, "%", "fence", fence)
+# The owner's floor is 10% at rest; standing still to start a run is at rest. On
+# 2026-10-08 a run was opened straight after a reading of 10%, because a wait for
+# set-asides to lapse had drained the last 5% while the rover idled.
+if percent is not None and percent <= 10:
+    raise SystemExit("the battery reads %s%%, at the 10%% floor: no run opened; drive home" % percent)
 budget = {"seconds": 900, "travel_m": None, "actions": None}
 if fence:
     budget["geofence"] = fence
