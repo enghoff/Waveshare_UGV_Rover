@@ -730,7 +730,10 @@ conditions are:
   drifting towards the owner until Nav2 stopped it. With the planner's
   [live layer](../progress/2026-10-08-live-layer.md) the same 4.4 m leg was
   driven round the owner standing still, without a stop: met for a person with
-  room to pass. Standing where there is no way round, a doorway, is still owed;
+  room to pass. [Standing in a doorway](../progress/2026-10-09-no-way-round.md)
+  with no way round, Nav2 spun the rover in front of the owner; it now holds
+  still and waits 3 s instead, seen on the rover, though given 45 cm beside
+  them it squeezes past at the wall margin, which the owner chose to keep;
 - **furniture moved since the map was made**: something standing in a mapped
   gap, or a door open that the map has shut;
 - **the depth camera unavailable**, its service stopped for the run, which is
