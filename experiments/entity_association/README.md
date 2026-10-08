@@ -656,6 +656,28 @@ scoring, and reports what the resolver did with it. Whether a pick shows the
 target is judged from the photographs
 ([2026-10-08](../../docs/progress/2026-10-08-aimed-looks.md)).
 
+`claim_honesty.py --output <file>` scores the aimed-depth claim against the tape
+on the six taped targets, by how many viewpoints ranged a thing, with and
+without counting ranges that no longer agree
+([2026-10-08](../../docs/progress/2026-10-08-claims-and-suspects.md)).
+`aimed_misses.py` (run on the rover against a session's `aimed-looks.json`)
+says, for each aimed look that filed nothing, the region nearest the aim and the
+gate it failed, and the regions that look most like the target
+([2026-10-08](../../docs/progress/2026-10-08-why-aimed-looks-miss.md)).
+`target_features.py` lists facts about each aimed look's target beside whether
+it filed ([2026-10-08](../../docs/progress/2026-10-08-what-predicts-a-filing.md)).
+
+`pair_evidence.py --store <store> --output <file>` lists every pair of placed
+records whose identity the frozen labels settle, with record-to-record
+appearance and position (the merge proposer's two halves), whether they share a
+picture, and co-fit: how many of each one's looks would also have fitted the
+other. `merge_after_session.py --replay <dir> --rule cofit|propose|both
+--output <dir>` joins records on a replayed session's final store for
+`score_session.py`. `replay_session.py`'s `merge_propose_every` and
+`merge_both_every` variants run the journalled merge every 300 looks and let the
+resolver carry on. `cofit_review_20261008.json` is the photograph review of 25
+co-fit joins ([2026-10-08](../../docs/progress/2026-10-08-merging-by-cofit.md)).
+
 `replay_aimed.py --output <file>` puts the 157 recorded aimed looks through
 `world_state/aimed.py` on a copy of the 2026-10-06 store, as if each had named its
 target, and keeps what each filing did

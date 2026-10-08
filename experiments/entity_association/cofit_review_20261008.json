@@ -1,0 +1,184 @@
+{
+ "judged_at": "2026-10-08",
+ "by": "analyst (Claude), from three crops of each record; not owner-confirmed",
+ "store": ".cache/m4-session-store/world-20261008.db (copy of the rover's store after M4 session 2)",
+ "rule": "co-fit both ways >= 0.3, no shared picture (merge_after_session.cofit_pairs)",
+ "sample": "25 of 344 pairs, random.Random(20261008)",
+ "pairs": [
+  {
+   "a": "object:313",
+   "b": "object:562",
+   "score": 0.625,
+   "judgment": "mixed",
+   "note": "both records mix the dark door with dining chairs"
+  },
+  {
+   "a": "object:299",
+   "b": "object:672",
+   "score": 0.875,
+   "judgment": "alike",
+   "note": "dining chairs; which chair cannot be told"
+  },
+  {
+   "a": "object:255",
+   "b": "object:538",
+   "score": 0.5,
+   "judgment": "one",
+   "note": "the corridor doorway with the teal door at its end"
+  },
+  {
+   "a": "object:597",
+   "b": "object:607",
+   "score": 0.667,
+   "judgment": "one",
+   "note": "the floor lamp"
+  },
+  {
+   "a": "object:349",
+   "b": "object:670",
+   "score": 0.775,
+   "judgment": "one",
+   "note": "the narrow bright window"
+  },
+  {
+   "a": "object:381",
+   "b": "object:470",
+   "score": 0.633,
+   "judgment": "alike",
+   "note": "a ceiling fan; there are two alike"
+  },
+  {
+   "a": "object:487",
+   "b": "object:621",
+   "score": 0.833,
+   "judgment": "one",
+   "note": "the blue painting over the shelf; one crop of the first is the lamp"
+  },
+  {
+   "a": "object:473",
+   "b": "object:566",
+   "score": 0.675,
+   "judgment": "mixed",
+   "note": "the first mixes a chair with the kitchen doorway; the second is chairs"
+  },
+  {
+   "a": "object:493",
+   "b": "object:677",
+   "score": 0.6,
+   "judgment": "likely one",
+   "note": "the grey gold-framed painting; one crop of the first is dark"
+  },
+  {
+   "a": "object:373",
+   "b": "object:390",
+   "score": 0.675,
+   "judgment": "one",
+   "note": "the snowy painting over the cabinet"
+  },
+  {
+   "a": "object:403",
+   "b": "object:621",
+   "score": 0.5,
+   "judgment": "one",
+   "note": "the blue painting over the shelf"
+  },
+  {
+   "a": "object:422",
+   "b": "object:558",
+   "score": 0.8,
+   "judgment": "likely one",
+   "note": "the brown animal painting; one crop of the second is the black cabinet"
+  },
+  {
+   "a": "object:381",
+   "b": "object:596",
+   "score": 0.35,
+   "judgment": "alike",
+   "note": "a ceiling fan; there are two alike"
+  },
+  {
+   "a": "object:356",
+   "b": "object:612",
+   "score": 0.45,
+   "judgment": "one",
+   "note": "the floor lamp"
+  },
+  {
+   "a": "object:491",
+   "b": "object:621",
+   "score": 0.903,
+   "judgment": "one",
+   "note": "the blue painting over the shelf"
+  },
+  {
+   "a": "object:255",
+   "b": "object:256",
+   "score": 0.517,
+   "judgment": "two",
+   "note": "the corridor doorway and the open white door beside it"
+  },
+  {
+   "a": "object:390",
+   "b": "object:510",
+   "score": 0.55,
+   "judgment": "likely one",
+   "note": "the snowy painting; the second's crops are blurred or cut by the frame edge"
+  },
+  {
+   "a": "object:317",
+   "b": "object:327",
+   "score": 0.675,
+   "judgment": "one",
+   "note": "the purple armchair"
+  },
+  {
+   "a": "object:597",
+   "b": "object:612",
+   "score": 0.667,
+   "judgment": "one",
+   "note": "the floor lamp"
+  },
+  {
+   "a": "object:389",
+   "b": "object:429",
+   "score": 0.625,
+   "judgment": "likely one",
+   "note": "a rug; the second may include the hallway runner"
+  },
+  {
+   "a": "object:313",
+   "b": "object:321",
+   "score": 0.475,
+   "judgment": "mixed",
+   "note": "both records mix the dark door with dining chairs"
+  },
+  {
+   "a": "object:402",
+   "b": "object:607",
+   "score": 0.868,
+   "judgment": "one",
+   "note": "the floor lamp"
+  },
+  {
+   "a": "object:322",
+   "b": "object:590",
+   "score": 0.727,
+   "judgment": "mixed",
+   "note": "the first mixes the green painting with chairs; the second is chairs"
+  },
+  {
+   "a": "object:431",
+   "b": "object:582",
+   "score": 0.825,
+   "judgment": "likely one",
+   "note": "the colourful village painting"
+  },
+  {
+   "a": "object:325",
+   "b": "object:638",
+   "score": 0.375,
+   "judgment": "one",
+   "note": "the floor lamp"
+  }
+ ]
+}

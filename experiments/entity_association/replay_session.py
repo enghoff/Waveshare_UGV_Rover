@@ -34,6 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from world_state import appearance, locate, replay, resolve  # noqa: E402
 from world_state.store import WorldStore  # noqa: E402
 
@@ -400,6 +401,69 @@ def _ranged_claim():
     return Patch()
 
 
+#: How many looks between merge passes in the merge variants: about one
+#: autonomy run's worth at a look a second, the moment a pass would run on the
+#: rover (after a run, standing still).
+MERGE_EVERY = 300
+
+
+class _MergePasses:
+    """Join records every `MERGE_EVERY` looks with the world state's own journalled
+    merge (`merging.apply`), then let the resolver carry on: whether joining
+    records makes the resolver refuse later looks of them, which merging while
+    the rover looked did on 2026-10-04."""
+
+    def __init__(self, cofit_threshold=None):
+        self.cofit_threshold = cofit_threshold
+        self.passes = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def after(self, store, count, reach):
+        if count % MERGE_EVERY:
+            return
+        from world_state import merging
+        joined = 0
+        for _ in range(20):
+            pairs = [[p["keep"], p["gone"]] for p in merging.propose(store)["proposals"]]
+            if not pairs:
+                break
+            done = merging.apply(store, pairs, reach)
+            joined += len(done.get("joined") or [])
+            if not done.get("joined"):
+                break
+        cofit = 0
+        if self.cofit_threshold is not None:
+            from merge_after_session import cofit_pairs
+            for _ in range(20):
+                _things, pairs = cofit_pairs(store, store.map_session(), self.cofit_threshold)
+                if not pairs:
+                    break
+                done = merging.apply(store, [[a, b] for a, b, _s in pairs], reach)
+                cofit += len(done.get("joined") or [])
+                if not done.get("joined"):
+                    break
+        self.passes.append([count, joined, cofit])
+        print("  merge pass at look %d: %d by the proposer, %d by co-fit"
+              % (count, joined, cofit), flush=True)
+
+
+@variant("merge_propose_every")
+def _merge_propose_every():
+    """The proposer's rounds every `MERGE_EVERY` looks."""
+    return _MergePasses()
+
+
+@variant("merge_both_every")
+def _merge_both_every():
+    """The proposer's rounds, then co-fit at 0.3, every `MERGE_EVERY` looks."""
+    return _MergePasses(cofit_threshold=0.3)
+
+
 def looks_in_order(database: Path, session: int) -> list[list[dict]]:
     """The session's observations grouped by the look that took them, ordered as
     the rover stored them (by identifier: 37 regions carry invalid clocks)."""
@@ -568,6 +632,8 @@ def run(database: Path, session: int, grid: Path | None, output: Path,
                                 + ") VALUES (" + ",".join("?" * len(columns)) + ")",
                                 tuple(row.get(k) for k in columns))
                     outcome = resolve.resolve(store, reach=reach)
+                    if hasattr(context, "after"):
+                        context.after(store, count, reach)
                     for one in outcome["decisions"]:
                         if one["outcome"] != resolve.NEW:
                             history.setdefault(one["observation_id"], []).append(
@@ -592,7 +658,8 @@ def run(database: Path, session: int, grid: Path | None, output: Path,
               "seconds": round(time.time() - started, 1),
               "things": len(things), "owners": owners, "placements": things,
               "foundings": log, "attached": attached, "placed": placed,
-              "look_shift": {str(k): round(v, 3) for k, v in LOOK_SHIFT.items()}}
+              "look_shift": {str(k): round(v, 3) for k, v in LOOK_SHIFT.items()},
+              "merge_passes": getattr(context, "passes", None)}
     (output / "result.json").write_text(json.dumps(result) + "\n")
     return result
 
