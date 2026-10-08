@@ -14,9 +14,23 @@ stored images.
 
 `world_state_groups {}` is a diagnostic control call on TCP 8769. It recomputes
 candidate groups on a disposable database backup, leaving the real observations,
-entities, placements, exemplars and merge journal untouched. Neither the resolver
-nor the console, voice tools or executive consumes this preview. There is no apply
-operation. A later preview can withdraw an earlier group.
+entities, placements, exemplars and merge journal untouched. A group is what the
+merge proposer's rounds join, then what co-fit's rounds join on top
+(`merging.cofit_pairs`: records at least 0.3 of whose looks each would also have
+been filed to the other). There is no apply operation. A later preview can
+withdraw an earlier group.
+
+The resolver, the console and the voice tools do not read groups. An autonomous
+run does, for one thing only: after a goal at a record it sets the record's
+group-mates aside with it, as it does a look's same-object suspects. The daemon
+keeps the latest groups in `groups.json` beside the store, written by
+`groups_job.py` in a low-priority process of its own (co-fit is Python loops,
+and in the daemon's process it would hold the interpreter from the threads that
+answer STOP), and starts it again when they are 15 minutes old; it takes about
+a minute and a half on a desktop over 449 records. Why co-fit, and what it was
+measured to join: [2026-10-08](../docs/progress/2026-10-08-merging-by-cofit.md);
+why the joins stay out of the resolver's own records:
+[2026-10-08](../docs/progress/2026-10-08-merging-while-the-rover-looks-again.md).
 
 The response names original member IDs and a representative, supplies the world
 generation, map session and evidence revision, and reports whether concurrent

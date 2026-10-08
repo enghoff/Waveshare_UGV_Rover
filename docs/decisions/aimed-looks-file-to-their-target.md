@@ -72,6 +72,18 @@ Offline, on recorded looks; analyst labels, not owner-confirmed:
 - **Same-object suspects are untested on the rover.** They also share the risk
   of any appearance-based pairing: alike objects, such as the dining chairs.
 
+## Extended 2026-10-08: group-mates are set aside as suspects are
+
+After a goal at a record, a run now also sets aside the records the latest
+grouping joined with it -- the merge proposer's, then co-fit's
+([2026-10-08](../progress/2026-10-08-merging-by-cofit.md)) -- as it does the
+look's same-object suspects. Judged under this case, because the action and
+its cost are the same: a record wrongly grouped is set aside for 15 minutes,
+nothing is merged, and the resolver never reads the groups. Measured: of 25
+random co-fit joins, 17 were one object by photograph and 1 was two. The owner
+had said on 2026-10-08 that they generally trust the analyst's judgement on
+such calls; this extension is theirs to reverse.
+
 ## The ask
 
 Agree it for supervised runs, M3 sessions and the first M4 trials. A run's

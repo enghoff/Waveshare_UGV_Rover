@@ -96,6 +96,21 @@ LOOKS_ALIKE_ABOVE = 0.0
 #: How many looks of each side a proposal names, for a person to look at.
 SHOWN = 6
 
+#: Co-fit: two records are proposed as one object when at least this share of
+#: each one's looks would also have been filed to the other -- its allowance,
+#: height and appearance at filing's own bar, the test `aimed.also_fits` applies
+#: to a look aimed at a thing. Fixed on 2026-10-08 against the frozen labels: at
+#: 0.3 both ways it joined 7 of 8 joinable one-object pairs of the independent
+#: sets, where `propose` joined 3, with 1 wrong of 98, and on the rover's store it
+#: takes the rug under the dining table from seven records to two
+#: (docs/progress/2026-10-08-merging-by-cofit.md). It compares one look with the
+#: other record, so it reaches what record-to-record appearance cannot: an object
+#: seen in pieces from different sides, and records that claim their positions
+#: more tightly than they hold them.
+COFIT_SHARE = 0.3
+#: How many of a record's looks co-fit tries, spread through its history.
+COFIT_SAMPLE = 40
+
 #: The entity columns held as bytes, which go into the journal as they are.
 _BLOBS = ("exemplars", "exemplars_alone")
 
@@ -197,6 +212,74 @@ def _things(store, session: int) -> list[_Thing]:
                 " WHERE entity_id IS NOT NULL ORDER BY observed_at, id"):
             looks.setdefault(row["entity_id"], []).append(dict(row))
     return [_Thing(row, looks[row["id"]]) for row in rows if row["id"] in looks]
+
+
+def _cofit_share(store, looks: list[dict[str, Any]], other: "_Thing") -> float | None:
+    """Share of `looks` that would also have been filed to `other`."""
+    from . import locate, resolve
+
+    tried = hits = 0
+    for row in looks:
+        ray = resolve.ray_of(row, None)
+        if ray is None:
+            continue
+        tried += 1
+        if resolve._allowance_used(other.placement, ray) is None:
+            continue
+        if not locate.stands_as_high(other.placement, ray):
+            continue
+        seen = resolve.appearance(store, other.id, row.get("dino_blob") or b"")
+        if seen is not None and seen >= resolve.DIFFERENT_THING:
+            hits += 1
+    return hits / tried if tried else None
+
+
+def cofit_pairs(store, share: float = COFIT_SHARE) -> list[dict[str, Any]]:
+    """Pairs of this map session's things whose looks fit each other, strongest first.
+
+    Never a pair sharing a picture or further apart than `MAX_APART_M`, as for
+    `propose`; the keeper is the side with more looks. Each thing is in at most
+    one pair, so that the list can be applied as it stands; ask again after
+    joining for the next round.
+    """
+    session = store.map_session()
+    things = {thing.id: thing for thing in _things(store, session)}
+    sampled = {}
+    for thing_id in things:
+        rows = [row for row in store.observations(thing_id, vectors=True)
+                if row.get("bearing_deg") is not None]
+        if len(rows) > COFIT_SAMPLE:
+            step = (len(rows) - 1) / (COFIT_SAMPLE - 1)
+            rows = [rows[round(i * step)] for i in range(COFIT_SAMPLE)]
+        sampled[thing_id] = rows
+    scored = []
+    for a, b in combinations(sorted(things), 2):
+        first, second = things[a], things[b]
+        if first.pictures & second.pictures:
+            continue
+        if math.hypot(first.placement["x_m"] - second.placement["x_m"],
+                      first.placement["y_m"] - second.placement["y_m"]) > MAX_APART_M:
+            continue
+        one = _cofit_share(store, sampled[a], second)
+        if one is None or one < share:
+            continue
+        other = _cofit_share(store, sampled[b], first)
+        if other is None or other < share:
+            continue
+        keep, gone = (a, b) if first.count >= second.count else (b, a)
+        scored.append({"keep": keep, "gone": gone, "cofit": round(min(one, other), 3),
+                       "apart_m": round(math.hypot(
+                           first.placement["x_m"] - second.placement["x_m"],
+                           first.placement["y_m"] - second.placement["y_m"]), 2)})
+    scored.sort(key=lambda pair: -pair["cofit"])
+    used: set = set()
+    pairs = []
+    for pair in scored:
+        if pair["keep"] in used or pair["gone"] in used:
+            continue
+        used.update((pair["keep"], pair["gone"]))
+        pairs.append(pair)
+    return pairs
 
 
 def propose(store) -> dict[str, Any]:

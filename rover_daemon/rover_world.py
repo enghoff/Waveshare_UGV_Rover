@@ -7,6 +7,7 @@ measured pose and camera provenance accompany every stored observation.
 from __future__ import annotations
 
 import base64
+import json
 import math
 import os
 import sys
@@ -39,6 +40,12 @@ else:
 DETAIL_LIMIT = 40
 PAGE_MAX = 200
 RAY_LIMIT = 6
+#: How old the record groups (world_state/groups_job.py) may be before the daemon
+#: starts the job again. Groups older than this are still listed meanwhile: they
+#: only set records aside, and the job takes minutes on the Orin.
+GROUPS_MAX_AGE_S = 900.0
+#: The groups job's file, beside the store.
+GROUPS_FILE = "groups.json"
 SELECTED_RAY_LIMIT = 24
 SIGHT_LIMIT = 60
 CAMERA_RETRY_S = 0.5
@@ -510,6 +517,62 @@ class RoverWorld:
             self._world_store_cache = store
         return store
 
+    def _world_groups(self, store) -> dict[str, list[str]]:
+        """Each record's group-mates in this map session, from the latest grouping.
+
+        The grouping is the console's preview -- the merge proposer's rounds,
+        then co-fit's (world_state/reader_groups.py) -- run on a copy of the
+        store by `world_state/groups_job.py` in a process of its own, at low
+        priority: co-fit is Python loops, and in this process it would hold the
+        interpreter from the threads that answer STOP. Nothing here joins
+        anything. An autonomous run reads the mates to set a group's records
+        aside together after a goal at one of them, as it does a look's
+        same-object suspects (docs/decisions/aimed-looks-file-to-their-target.md).
+
+        When the file is older than `GROUPS_MAX_AGE_S`, from another map session
+        or missing, the job is started again; what the file holds meanwhile is
+        still answered, if it is this map session's.
+        """
+        path = os.path.join(store.dir, GROUPS_FILE)
+        got = None
+        try:
+            stamp = os.path.getmtime(path)
+            cached = getattr(self, "_world_groups_cache", None)
+            if cached is not None and cached[0] == stamp:
+                got = cached[1]
+            else:
+                with open(path, encoding="utf-8") as handle:
+                    got = json.load(handle)
+                self._world_groups_cache = (stamp, got)
+        except (OSError, ValueError):
+            got = None
+        session = store.map_session()
+        here = bool(got and got.get("ok") and got.get("map_session") == session)
+        if not here or time.time() - float(got.get("computed_at") or 0.0) > GROUPS_MAX_AGE_S:
+            self._start_groups_job(store, path)
+        if not here:
+            return {}
+        mates: dict[str, list[str]] = {}
+        for members in got.get("groups") or []:
+            for one in members:
+                mates[str(one)] = [str(other) for other in members if other != one]
+        return mates
+
+    def _start_groups_job(self, store, path: str) -> None:
+        """Start the grouping job unless one is running. POSIX only: it is the
+        rover's job, and `nice` is how it stays out of the way."""
+        job = getattr(self, "_world_groups_job", None)
+        if job is not None and job.poll() is None:
+            return
+        if os.name != "posix":
+            return
+        import subprocess
+        root = os.path.dirname(os.path.dirname(os.path.abspath(world_state.__file__)))
+        self._world_groups_job = subprocess.Popen(
+            ["nice", "-n", "15", sys.executable, "-m", "world_state.groups_job",
+             store.path, path], cwd=root, stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     def _world_inspector(self):
         inspector = getattr(self, "_world_inspector_cache", None)
         if inspector is None:
@@ -949,9 +1012,13 @@ class RoverWorld:
         # object (world_state/aimed.py), so a run can put them aside together.
         suspects = (store.same_object_suspects(store.map_session())
                     if hasattr(store, "same_object_suspects") else {})
+        # And which records the latest grouping found to be one object, for the
+        # same purpose; see `_world_groups`.
+        mates = self._world_groups(store)
         for entity in entities:
             entity["ranging"] = ranging.get(entity["id"])
             entity["same_object_suspects"] = suspects.get(entity["id"], [])
+            entity["group_mates"] = mates.get(entity["id"], [])
             observations = store.observations(entity["id"], limit=RAY_LIMIT)
             # With the placement, each ray also carries how it stands to it --
             # the range, how far off the bearing is and whether that is inside

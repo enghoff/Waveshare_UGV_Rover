@@ -99,6 +99,34 @@ def test_the_world_state_calls_reach_the_store():
                       for one in rover.call("world_state_entities", {})["entities"]}
             check("things an aimed look found to be one object say so on both",
                   (listed.get(first), listed.get(second)), ([second], [first]))
+            # And the grouping job's answer, written beside the store: each
+            # record lists its group-mates, and a stale answer starts the job
+            # again while it is still listed.
+            import json as _json
+            started = []
+            rover._start_groups_job = lambda *_a: started.append(True)
+            groups_path = os.path.join(store.dir, "groups.json")
+            with open(groups_path, "w", encoding="utf-8") as handle:
+                json.dump({"ok": True, "computed_at": time.time(), "map_session": session,
+                            "groups": [[first, second]]}, handle)
+            mates = {one["id"]: one.get("group_mates")
+                     for one in rover.call("world_state_entities", {})["entities"]}
+            check("records the grouping found to be one object list each other",
+                  (mates.get(first), mates.get(second), started), ([second], [first], []))
+            with open(groups_path, "w", encoding="utf-8") as handle:
+                json.dump({"ok": True, "computed_at": time.time() - 3600.0,
+                            "map_session": session, "groups": [[first, second]]}, handle)
+            os.utime(groups_path, (time.time() + 5, time.time() + 5))
+            mates = {one["id"]: one.get("group_mates")
+                     for one in rover.call("world_state_entities", {})["entities"]}
+            check("...an hour-old grouping is still listed and starts the job again",
+                  (mates.get(first), bool(started)), ([second], True))
+            os.remove(groups_path)
+            started.clear()
+            mates = {one["id"]: one.get("group_mates")
+                     for one in rover.call("world_state_entities", {})["entities"]}
+            check("...and none at all lists no mates and starts it",
+                  (mates.get(first), bool(started)), ([], True))
             check("the gimbal angles it was taken at are on the observation",
                   (observation["observer_pan_deg"], observation["observer_tilt_deg"]),
                   (25.0, -8.0))

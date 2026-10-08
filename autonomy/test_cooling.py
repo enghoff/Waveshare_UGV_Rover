@@ -140,6 +140,17 @@ def test_a_look_at_one_record_puts_its_same_object_records_aside() -> None:
     check("a thing with no other record puts nothing more aside",
           cooling.after_attempt([], "object:8", _reading(6), _reading(7, 0.30), now=NOW), [])
 
+    def grouped(uncertainty_m):
+        here = a_thing("object:8", 1.6, 1.0, uncertainty_m=uncertainty_m, looks=7)
+        here["group_mates"] = ["object:5"]
+        mate = a_thing("object:5", 1.9, 0.8, uncertainty_m=0.6, looks=40)
+        mate["group_mates"] = ["object:8"]
+        return a_situation(ROOM, entities=[here, mate], at=NOW)
+
+    cooled = cooling.after_attempt([], "object:8", grouped(0.6), grouped(0.3), now=NOW)
+    check("a record the grouping joined with the thing is put aside with it too",
+          [one["target"] for one in cooled], ["object:5"])
+
 
 def test_a_placement_is_judged_by_what_it_claims() -> None:
     """2026-10-08: goals measured gain on the tolerance the resolver matches

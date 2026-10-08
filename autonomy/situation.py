@@ -52,7 +52,7 @@ WORLD_STALE_S = 600.0
 ENTITY_FIELDS = ("id", "kind", "label", "observation_count", "created_at",
                  "last_seen_at", "placement", "placement_uncertainty_m",
                  "placement_map_session", "last_map_session", "ranging",
-                 "exemplar_count", "same_object_suspects")
+                 "exemplar_count", "same_object_suspects", "group_mates")
 
 
 def claimed_m(entity: dict[str, Any]) -> float | None:

@@ -195,7 +195,50 @@ def test_proposals_never_reuse_a_thing_or_mix_backends() -> None:
         store.close()
 
 
+def _rug(store, shared_picture=False):
+    """The rug of 2026-10-08 in miniature: two records 0.2 m apart whose looks
+    point at the same place, the second's seen from the other side, so that its
+    masked crop and its SigLIP vector look like something else."""
+    _thing(store, "object:1", 3.0, 0.1)
+    _thing(store, "object:2", 3.0, -0.1)
+    for look, at in enumerate(PLACES[:2], start=1):
+        _look(store, look, at, DOOR, "object:1")
+    for look, at in enumerate(PLACES[2:], start=3):
+        oid = _look(store, look, at, DOOR, "object:2")
+        store.db.execute("UPDATE observations SET dino_alone_blob=?, siglip_blob=?"
+                         " WHERE id=?", (_vector(PLAIN, 9), _vector(SEMANTIC, 9), oid))
+    if shared_picture:
+        _look(store, 1, PLACES[0], (3.0, 0.4), "object:2")
+    _count(store)
+
+
+def test_cofit_joins_what_appearance_between_records_refuses() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        _rug(store)
+        a, b = merging._things(store, 1)
+        check("record to record, the two sides of the rug look like two things",
+              merging.appearance(a, b) < merging.LOOKS_ALIKE_ABOVE, True)
+        check("...so the proposer offers nothing", merging.propose(store)["proposals"], [])
+        pairs = merging.cofit_pairs(store)
+        check("but each one's looks would have been filed to the other",
+              [(one["keep"], one["gone"], one["cofit"]) for one in pairs],
+              [("object:1", "object:2", 1.0)])
+        store.close()
+
+
+def test_cofit_never_joins_two_regions_of_one_picture() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        _rug(store, shared_picture=True)
+        check("two records with a region each in one picture are two things",
+              merging.cofit_pairs(store), [])
+        store.close()
+
+
 TESTS = (test_the_split_door_is_proposed_joined_and_put_back_exactly,
          test_a_look_recorded_since_stays_where_the_resolver_put_it,
          test_it_refuses_rather_than_guess,
-         test_proposals_never_reuse_a_thing_or_mix_backends)
+         test_proposals_never_reuse_a_thing_or_mix_backends,
+         test_cofit_joins_what_appearance_between_records_refuses,
+         test_cofit_never_joins_two_regions_of_one_picture)

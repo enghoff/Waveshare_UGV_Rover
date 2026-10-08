@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from test_fakes import a_store
 from test_harness import check
-from test_merging import _split_door, _thing, _look, _count, DOOR
+from test_merging import _rug, _split_door, _thing, _look, _count, DOOR
 from world_state import merging, reader_groups
 
 
@@ -124,7 +124,24 @@ def test_old_recording_is_upgraded_only_in_the_disposable_copy():
             store.close()
 
 
-TESTS = (test_preview_preserves_every_live_row_and_withdraws_conflicts,
+def test_cofit_groups_what_the_proposer_leaves():
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            _rug(store)
+            before = list(store.db.iterdump())
+            grouped = reader_groups.preview(store)
+            check("the rug's two records are one group, by co-fit",
+                  (grouped["groups"], [e.get("rule") for e in grouped["rounds"]]),
+                  ([{"representative": "object:1", "members": ["object:1", "object:2"]}],
+                   ["cofit"]))
+            check("...and the live store is untouched", list(store.db.iterdump()), before)
+        finally:
+            store.close()
+
+
+TESTS = (test_cofit_groups_what_the_proposer_leaves,
+         test_preview_preserves_every_live_row_and_withdraws_conflicts,
          test_geometry_blocks_strong_appearance_before_ranking,
          test_concurrent_preview_is_refused_and_later_retry_is_free,
          test_new_evidence_during_preview_marks_snapshot_stale,

@@ -126,9 +126,11 @@ def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
     # **The other records of the same object are put aside whatever came of
     # it.** A look aimed at a thing files its region there, and where that
     # region also fitted other records, they are probably the same object
-    # (world_state/aimed.py) -- going to one of them next would be going back
-    # to the thing just looked at, which is what the owner asked about on
-    # 2026-10-08. Their own placement is left to lapse them as `update` does.
+    # (world_state/aimed.py); so are the records the latest grouping joined
+    # with it (world_state/reader_groups.py). Going to one of them next would be
+    # going back to the thing just looked at, which is what the owner asked
+    # about on 2026-10-08. Their own placement is left to lapse them as
+    # `update` does.
     if here is not None:
         for other in here["same_as"]:
             if other == target or any(str(one.get("target") or "") == other
@@ -231,7 +233,13 @@ def _by_id(body: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
         out[target] = {
             "looks": int(entity.get("observation_count") or 0),
             "uncertainty_m": uncertainty,
-            "same_as": [str(one) for one in entity.get("same_object_suspects") or []]}
+            # A look's same-object suspects, and the records the latest
+            # grouping found to be one object with it (the daemon's
+            # `_world_groups`): both mean that going to them next is going
+            # back to the thing just looked at.
+            "same_as": sorted({str(one) for one in [
+                *(entity.get("same_object_suspects") or []),
+                *(entity.get("group_mates") or [])]})}
     return out
 
 
