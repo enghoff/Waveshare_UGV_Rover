@@ -223,6 +223,7 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
         self.map_at = None
         self.odom = None
         self.plan = None
+        self.plan_at = None
         self.surroundings = None
         self.base_state = None
         self.trail = Trail()
@@ -273,6 +274,9 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
     def on_plan(self, msg):
         with self._lock:
             self.plan = msg
+            # When, for `nav_moves.no_way_watch`: a planner that has stopped
+            # sending routes is one that cannot find any.
+            self.plan_at = time.monotonic()
 
     def on_surroundings(self, msg):
         try:

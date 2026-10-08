@@ -141,6 +141,24 @@ PAST_IT_M = 1.4
 #: static layer's own `lethal_cost_threshold`, left at Nav2's default.
 MAP_OCCUPIED = 100
 
+#: **Someone where there is no way round them is waited for, not spun at.**
+#: With the planner's live layer, a person standing in a doorway leaves the
+#: planner no route at all, and Nav2 answers that with its recoveries. On
+#: 2026-10-08 the owner stood in a corridor's 1.0 m mouth 2 m from the rover:
+#: every plan failed after about 2.5 s, each failure cleared the costmaps, and
+#: from 11 s it spun 225 degrees, waited, reversed 0.35 m and spun again, until
+#: they stepped aside. The route watch, looking 1 m ahead, never came near them.
+#: So when Nav2 starts a recovery and the planner has sent no route for this
+#: goal in `PLAN_STALE_S` -- the planner failing rather than the controller,
+#: which replans every second while it struggles -- the goal is stopped there,
+#: and the rover holds still asking the planner itself for `BLOCKED_WAIT_S`, then
+#: drives on or hands the goal back as blocked (`wait_for_a_route`).
+PLAN_STALE_S = 2.0
+NO_WAY = "there is no way past"
+#: nav2_msgs ComputePathToPose NO_VALID_PATH (nav_codes.py): the one refusal
+#: that waiting can mend.
+NO_VALID_PATH = 208
+
 
 def route_ahead(route, here, metres):
     """The route from the point on it nearest `here` on for `metres`, as a list
@@ -683,6 +701,79 @@ class NavMoves:
                     "note": "the planner's costmap has no live layer"}
         return {"ok": True, "enabled": bool(value.bool_value)}
 
+    def no_way_watch(self, give_up):
+        """`give_up`, and a `NO_WAY` sentence when Nav2 starts a recovery while
+        the planner has sent no route for this goal in `PLAN_STALE_S`.
+
+        Asks nothing of the planner itself: a request while Nav2's goal runs
+        would take the planner server from the behaviour tree's own and fail
+        that, which reads to the tree as one more failure to recover from.
+        """
+        began = [None]
+        seen = [0]
+
+        def watch(now, feedback):
+            if began[0] is None:
+                began[0] = now
+            count = int(feedback.get("recoveries") or 0)
+            if count > seen[0]:
+                seen[0] = count
+                with self._lock:
+                    at = getattr(self, "plan_at", None)
+                if at is None or at < began[0] or now - at > PLAN_STALE_S:
+                    return ("%s: Nav2 began recovering with no route from the "
+                            "planner" % NO_WAY)
+            return give_up(now, feedback) if give_up else ""
+
+        return watch
+
+    def wait_for_a_route(self, where, yaw_deg, placed, say, give_up, guard,
+                         unwedge, stopped, tries):
+        """The planner found no route and the goal was stopped before Nav2's
+        recoveries turned the rover on the spot (`no_way_watch`). Hold still and
+        ask the planner every `BLOCKED_ASK_S` -- nothing else is asking it now --
+        for `BLOCKED_WAIT_S`: with a route, on to the goal; still none, the goal
+        is handed back as blocked. A refusal of any other kind, about where the
+        rover stands say, goes back to Nav2 as one goal with neither watch, to be
+        dealt with as it always was. Nothing moves in here.
+        """
+        seq = self.stop_seq
+        gx, gy, yaw = placed
+        began = time.monotonic()
+        waited = False
+        while True:
+            route, code = self.route_to(gx, gy, yaw)
+            if route is not None or code != NO_VALID_PATH:
+                break
+            refused = ("a stop was asked for while waiting for a way past"
+                       if self.stop_seq != seq else
+                       autonomy_guard.refusal(guard, self.stop_seq, pose=self.pose()))
+            if refused:
+                stopped["detail"] = refused
+                return stopped
+            spent = time.monotonic() - began
+            if spent >= BLOCKED_WAIT_S:
+                stopped["detail"] = ("%s: something is in the way and the planner "
+                                     "has no way round it, and it did not clear "
+                                     "in %.0f s" % (NO_WAY, spent))
+                return stopped
+            if not waited:
+                say("waiting", "something is in the way and there is no way "
+                               "round it; waiting for it to move")
+                waited = True
+            time.sleep(BLOCKED_ASK_S)
+        rest = self.goto(where, yaw_deg, say, give_up=give_up, guard=guard,
+                         unwedge=unwedge,
+                         tries=tries + 1 if route is not None else NEAR_TRIES)
+        for key in ("travelled_m", "turned_deg"):
+            rest[key] = round(float(stopped.get(key) or 0.0)
+                              + float(rest.get(key) or 0.0), 3)
+        if rest.get("reason") == "arrived" and waited:
+            said = "waited for something in the way with no way round it"
+            rest["detail"] = ("%s -- %s" % (said, rest["detail"])
+                              if rest.get("detail") else said)
+        return rest
+
     def route_points(self):
         """The route Nav2 is following, as (x, y) in the map frame, or []."""
         with self._lock:
@@ -895,6 +986,8 @@ class NavMoves:
             # Not for a near goal's own straight line (`near=False`), which has
             # `near_watch` already.
             give_up = self.route_watch(give_up)
+            if tries < NEAR_TRIES:
+                give_up = self.no_way_watch(give_up)
 
         previous_give_up = give_up
         if guard is not None:
@@ -960,6 +1053,11 @@ class NavMoves:
                 and str(outcome.get("detail") or "").startswith(IN_THE_WAY)):
             return self.past_it(where, yaw_deg, say, caller_give_up, guard,
                                 unwedge, outcome, tries)
+        if (near and outcome.get("reason") == "blocked"
+                and str(outcome.get("detail") or "").startswith(NO_WAY)):
+            return self.wait_for_a_route(where, yaw_deg, (gx, gy, yaw), say,
+                                         caller_give_up, guard, unwedge, outcome,
+                                         tries)
         if (unwedge and outcome.get("code") == START_OCCUPIED
                 and float(outcome.get("travelled_m") or 0.0) < UNWEDGE_MOVED_M):
             return self.unwedged(outcome, where, yaw_deg, say, previous_give_up,

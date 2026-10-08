@@ -15,6 +15,12 @@ where to stand before it sets off:
                             it faces now: a near goal, which should wait for
                             somebody standing 0.7 m in front of it for more than
                             5 s and then go round them or hand the goal back
+    block_trial.py door     drive from the charger end into the corridor, to
+                            `DOOR_GOAL`, 1.9 m past the corridor's mouth: about
+                            1.0 m wide, and on the map the only way there. With
+                            somebody standing in the middle of the mouth there
+                            is no way round them, so the planner finds no route
+                            at all (2026-10-08, the live layer's open case)
 
 Each waits `COUNTDOWN_S` before it moves, and writes the rover's pose and what
 navigation says it is doing twice a second to `/tmp/m3trials/block-<mode>-<time>.jsonl`.
@@ -30,6 +36,11 @@ import time
 
 START = (-17.034, -16.013)
 FAR = (-17.05, -11.60)
+#: The corridor's mouth is at about (-15.4, -14.0), where the owner stands; this
+#: is its middle 1.9 m further in. Measured off the map of 2026-10-08: the
+#: corridor is 1.0 m wide from x -15.5 to -13.5, and with 0.25 m of legs across
+#: its middle the goal cannot be reached at the planner's 0.20 m clearance.
+DOOR_GOAL = (-13.5, -13.65)
 COUNTDOWN_S = 10.0
 NEAR_M = 1.2
 OUT = "/tmp/m3trials"
@@ -88,6 +99,10 @@ def main():
         heading = float(here["heading_deg"])
         args = {"ahead_m": NEAR_M, "left_m": 0.0, "heading_deg": heading}
         told = "%.1f m straight ahead; stand 0.7 m in front of it and stay" % NEAR_M
+    elif mode == "door":
+        args = {"x_m": DOOR_GOAL[0], "y_m": DOOR_GOAL[1]}
+        told = ("into the corridor, %.1f m; stand in the middle of its mouth"
+                % math.hypot(DOOR_GOAL[0] - here["x_m"], DOOR_GOAL[1] - here["y_m"]))
     else:
         raise SystemExit(__doc__)
     os.makedirs(OUT, exist_ok=True)

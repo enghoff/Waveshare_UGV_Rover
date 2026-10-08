@@ -627,6 +627,159 @@ def test_the_live_layer_is_switched_off_and_on_at_run_time():
           node.live_layer().get("enabled"), None)
 
 
+def test_a_person_with_no_way_round_is_waited_for_not_spun_at():
+    """The doorway trial of 2026-10-08, 23:48, as Nav2 logged it.
+
+    The owner stood in the middle of a corridor's 1.0 m mouth, the only way to
+    a goal 1.9 m beyond it, 2 m from the rover. The planner's live layer had
+    them on its costmap, so there was no route at all: every attempt failed
+    after about 2.5 s and was followed by a costmap clear, and after the fourth
+    Nav2's recoveries began -- a spin at 11 s (225 degrees on the chassis), a
+    5 s wait, a reverse at 23 s, another spin at 30 s -- until the owner
+    stepped aside. The route watch, which looks 1 m ahead, never came near them.
+    """
+    section("a person where there is no way round them")
+    sys.path.insert(0, HERE)
+    from test_planning import _ros_messages
+    _ros_messages()
+    try:
+        import threading
+        import types
+        import nav_moves
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+    start = (-17.38, -14.41)
+    goal = (-13.5, -13.65)
+    #: Nav2's ladder against a planner that cannot plan, from its logs: a
+    #: recovery counted at each costmap clear and each behaviour, by second.
+    LADDER = {2: 1, 5: 2, 8: 3, 11: 4, 14: 5, 23: 6, 27: 7, 30: 8}
+    SPINS = (11, 30)
+    BACKUPS = (23,)
+
+    class Doorway(nav_moves.NavMoves):
+        """The planner has no route while the owner stands in the mouth, and
+        Nav2 climbs its ladder; once they have gone, the goal is driven."""
+
+        def __init__(self, stays_s, planner_fails=True):
+            self.at = [start[0], start[1], math.radians(100.0)]
+            self.clock = 0.0
+            self.stays_s = stays_s
+            self.planner_fails = planner_fails
+            self.spun, self.backed, self.said, self.asked = 0, 0, [], 0
+            self.stop_seq = 3
+            self._lock = threading.Lock()
+            self.plan = None
+            self.plan_at = None
+            self.args = types.SimpleNamespace(map_frame="map")
+
+        def owner_there(self):
+            return self.clock < self.stays_s
+
+        def pose(self):
+            return tuple(self.at)
+
+        def footprint(self):
+            return BODY
+
+        def costmap(self):
+            return None
+
+        def mapped_walls(self):
+            return None
+
+        def live_costmap(self):
+            return None
+
+        def route_points(self):
+            return []
+
+        def get_clock(self):
+            stamp = types.SimpleNamespace(to_msg=lambda: None)
+            return types.SimpleNamespace(now=lambda: stamp)
+
+        def route_to(self, gx, gy, yaw):
+            # The planner asked directly takes as long to fail as Nav2's own
+            # attempts did.
+            self.asked += 1
+            if self.owner_there() and self.planner_fails:
+                self.clock += 2.5
+                return None, nav_moves.NO_VALID_PATH
+            return (math.hypot(gx - self.at[0], gy - self.at[1]), 0.0), 0
+
+        def sleep(self, seconds):
+            self.clock += seconds
+
+        def run_goal(self, kind, goal_msg, limit_s, say, measure, motion="driving",
+                     budget=None, give_up=None, guard=None):
+            to = goal_msg.pose.pose.position
+            began = self.clock
+            count = 0
+            for second in range(0, 120):
+                now = began + second
+                self.clock = now
+                if self.owner_there() and self.planner_fails:
+                    count = LADDER.get(second, count)
+                    self.spun += second in SPINS
+                    self.backed += second in BACKUPS
+                else:
+                    # The controller stuck on something else for a moment:
+                    # recoveries with a fresh route from the planner each time.
+                    self.plan_at = now
+                    if not self.planner_fails and second in (3, 6):
+                        count += 1
+                why = give_up(now, {"recoveries": count}) if give_up else ""
+                if why:
+                    return {"reason": "blocked", "travelled_m": 0.0,
+                            "turned_deg": 0.0, "detail": why}
+                if not self.owner_there() or not self.planner_fails:
+                    if second >= 8:
+                        self.at = [to.x, to.y, self.at[2]]
+                        return {"reason": "arrived", "travelled_m": 4.0,
+                                "turned_deg": 0.0}
+            return {"reason": "timeout", "travelled_m": 0.0, "turned_deg": 0.0,
+                    "detail": "ran out of time"}
+
+    def said(rover):
+        def say(phase, why="", **fields):
+            rover.said.append((phase, why))
+        return say
+
+    saved = nav_moves.time.sleep, nav_moves.time.monotonic
+    try:
+        rover = Doorway(stays_s=30.0)
+        nav_moves.time.sleep = rover.sleep
+        nav_moves.time.monotonic = lambda: rover.clock
+        out = rover.goto(goal, None, said(rover))
+        check("blocked in a doorway, it is not turned on the spot or reversed "
+              "while the owner stands there",
+              (rover.spun, rover.backed), (0, 0))
+        check("...it says it is waiting, and hands the goal back as blocked when "
+              "they stay, a few seconds later",
+              (any(phase == "waiting" for phase, _ in rover.said), out.get("reason"),
+               str(out.get("detail") or "").startswith(nav_moves.NO_WAY),
+               rover.clock < 15.0),
+              (True, "blocked", True, True))
+
+        rover = Doorway(stays_s=4.0)
+        nav_moves.time.sleep = rover.sleep
+        nav_moves.time.monotonic = lambda: rover.clock
+        out = rover.goto(goal, None, said(rover))
+        check("one who steps aside while it waits: it drives on and arrives, "
+              "never having turned on the spot",
+              (out.get("reason"), rover.spun, rover.backed), ("arrived", 0, 0))
+
+        rover = Doorway(stays_s=0.0, planner_fails=False)
+        nav_moves.time.sleep = rover.sleep
+        nav_moves.time.monotonic = lambda: rover.clock
+        out = rover.goto(goal, None, said(rover))
+        check("Nav2 recovering from something else, with the planner answering, "
+              "is left to it: the planner is not asked",
+              (out.get("reason"), rover.asked), ("arrived", 0))
+    finally:
+        nav_moves.time.sleep, nav_moves.time.monotonic = saved
+
+
 def test_the_map_walls_are_the_occupied_cells():
     """What the route watch asks "is that a wall" of: slam_toolbox's map, as
     the planner's static layer reads it, and nothing the live layer adds."""
@@ -669,5 +822,6 @@ TESTS = (
     test_a_person_stepping_in_front_of_a_near_goal_is_waited_for,
     test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round,
     test_the_live_layer_is_switched_off_and_on_at_run_time,
+    test_a_person_with_no_way_round_is_waited_for_not_spun_at,
     test_the_map_walls_are_the_occupied_cells,
 )
