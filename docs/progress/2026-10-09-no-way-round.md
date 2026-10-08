@@ -96,16 +96,19 @@ Afterwards the owner drove the rover by clicking the map and was told, several
 times, "there is nowhere within half a metre of that spot where the rover's
 body fits -- it is inside a wall or under something". The spot they clicked is
 not logged. Spots are fitted to the body on the planner's costmap, and since the
-live layer that has on it whatever the scan sees: the owner, who was walking
-beside the rover, and the charger dock, 15 lethal cells 0.26 to 0.43 m from the
-rover's parked position, which the map does not have. One of the refusals came
+live layer that has on it whatever the scan sees, including the owner, who was
+walking beside the rover: back at the charger at 00:16, 15 lethal cells the map
+does not have sat 0.26 to 0.43 m from the rover, and they were gone ten minutes
+later, so they were most likely the owner, not the dock. One of the refusals came
 when a drive to (-10.26, -16.56), which fits now, was stopped after 2 s and a
 point further along its route was then refused: most likely the owner was on
 it. That is a judgment from the logs, not a measurement. The sentence now
 looks: when the planner's costmap has something lethal within the reach of the
 fit that the map does not have, it says the scan sees something there that the
 map does not, a person or something moved. Tested in `test_way_round.py`;
-ros_nav 642 tests pass.
+ros_nav 642 tests pass. On the rover, with the deployed code against the live
+costmap and map: beside clutter the scan sees at (-18.4, -17.2) it answers that
+the scan sees something; at a bare corridor wall and on open floor it does not.
 
 ## What is still open
 
