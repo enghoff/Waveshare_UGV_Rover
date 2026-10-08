@@ -649,6 +649,13 @@ trial): split objects (R-WS-17), wrong looks (R-WS-18), looks still waiting,
 and, for four objects certainly the same across days, how many records hold
 their looks.
 
+`aimed_attachment.py --directory captures/entity-target-audit-20261006 --output <file>
+[--rule allowance|window]` picks, for each aimed look the targeted-look audit
+kept, the region that is the thing the look was aimed at, by a rule fixed before
+scoring, and reports what the resolver did with it. Whether a pick shows the
+target is judged from the photographs
+([2026-10-08](../../docs/progress/2026-10-08-aimed-looks.md)).
+
 `replay_measured_visibility.py` tests extending mapped reach to stored positive
 finite depth, without changing measurement bytes. `--known-only` limits this to
 existing-record matching; discovery and placement refitting keep original bounds.
