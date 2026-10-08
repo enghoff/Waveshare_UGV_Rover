@@ -1,9 +1,11 @@
 """Something in the way of a near goal: seen on the live scan, waited for, gone round.
 
-The planner's costmap is the map and nothing else, so a person standing in
-front of the rover is only on the controller's: the live scan's local
-costmap. These checks put a person there and nowhere else, which is what the
-rover had in M3 session 13 on 2026-10-07.
+Until 2026-10-08 the planner's costmap was the map and nothing else, so a
+person standing in front of the rover was only on the controller's: the live
+scan's local costmap. Most checks here put a person there and nowhere else,
+which is what the rover had in M3 session 13 on 2026-10-07, and is still what
+a near goal works from; the planner's live layer (config/nav2.yaml) puts them
+on its costmap too, and the checks that say so are the ones about that.
 """
 import math
 import sys
@@ -335,6 +337,9 @@ def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
         def costmap(self):
             return None
 
+        def mapped_walls(self):
+            return None
+
         def correction(self):
             return correction
 
@@ -512,15 +517,36 @@ def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
               (out.get("reason"), rover.sent), ("arrived", [("goto",)]))
 
         # A doorway's frame the route passes close by: on the live scan and on
-        # the planner's map alike. Nav2 meant to pass it; it is not stopped for.
+        # the map alike. Nav2 meant to pass it; it is not stopped for.
         rover = Room(steps_in_s=0)
         frame = rover.owner
-        rover.costmap = lambda: _grid(goal_fit, frame, [frame])
-        check("something the planner's map has as well is a wall, not something "
+        rover.costmap = rover.mapped_walls = lambda: _grid(goal_fit, frame, [frame])
+        check("something the map has as well is a wall, not something "
               "in the way", rover.seen_on_the_route(), "")
-        rover.costmap = lambda: _grid(goal_fit, frame, [])
+        rover.costmap = rover.mapped_walls = lambda: _grid(goal_fit, frame, [])
         check("...while something only the live scan has is",
               rover.seen_on_the_route().startswith(nav_moves.IN_THE_WAY), True)
+
+        # **A person the planner's costmap has too, since its live layer**
+        # (config/nav2.yaml, 2026-10-08). Where there is a way round, the
+        # planner takes it and the route never reaches them. Where there is
+        # none -- a doorway they stand in -- the planner finds no route, Nav2
+        # keeps following the last one, through them, and runs its recoveries:
+        # a quarter turn on the spot. So it is the map's walls that say what is
+        # a wall, not the planner's costmap.
+        rover = Room(steps_in_s=0)
+        person = rover.owner
+        rover.costmap = lambda: _grid(goal_fit, person, [person])
+        rover.mapped_walls = lambda: _grid(goal_fit, person, [])
+        check("a person on the planner's costmap as well as the live scan is "
+              "still in the way, not a wall",
+              rover.seen_on_the_route().startswith(nav_moves.IN_THE_WAY), True)
+        out = rover.goto(goal, bearing, say)
+        check("...so where the planner can find no way round them it stops "
+              "within two seconds and waits, rather than turning on the spot",
+              (rover.stopped_after_s is not None and rover.stopped_after_s <= 2,
+               rover.swung_s <= 2, any(phase == "waiting" for phase, _ in rover.said)),
+              (True, True, True))
     finally:
         nav_moves.time.sleep = saved_sleep
 
@@ -601,9 +627,47 @@ def test_the_live_layer_is_switched_off_and_on_at_run_time():
           node.live_layer().get("enabled"), None)
 
 
+def test_the_map_walls_are_the_occupied_cells():
+    """What the route watch asks "is that a wall" of: slam_toolbox's map, as
+    the planner's static layer reads it, and nothing the live layer adds."""
+    section("the map's walls")
+    sys.path.insert(0, HERE)
+    from test_planning import _ros_messages
+    _ros_messages()
+    try:
+        import threading
+        import types
+        import goal_fit
+        import nav_moves
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+
+    class Node(nav_moves.NavMoves):
+        def __init__(self, msg):
+            self._lock = threading.Lock()
+            self.map_msg = msg
+
+    origin = types.SimpleNamespace(position=types.SimpleNamespace(x=-2.0, y=-1.0))
+    info = types.SimpleNamespace(width=4, height=1, resolution=0.05, origin=origin)
+    msg = types.SimpleNamespace(info=info, data=[100, 0, -1, 65])
+    node = Node(msg)
+    walls = node.mapped_walls()
+    check("occupied is a wall; free, unknown and the merely likely are not",
+          (list(walls.data), walls.width, walls.origin_x, walls.origin_y),
+          ([goal_fit.LETHAL, 0, 0, 0], 4, -2.0, -1.0))
+    check("...asked again of the same map, the same grid, not a new one",
+          node.mapped_walls() is walls, True)
+    node.map_msg = types.SimpleNamespace(info=info, data=[0, 0, 0, 100])
+    check("...and a new map is read afresh",
+          list(node.mapped_walls().data), [0, 0, 0, goal_fit.LETHAL])
+    check("no map yet: nothing to say", Node(None).mapped_walls(), None)
+
+
 TESTS = (
     test_a_way_round_a_person_is_found_on_the_live_scan,
     test_a_person_stepping_in_front_of_a_near_goal_is_waited_for,
     test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round,
     test_the_live_layer_is_switched_off_and_on_at_run_time,
+    test_the_map_walls_are_the_occupied_cells,
 )

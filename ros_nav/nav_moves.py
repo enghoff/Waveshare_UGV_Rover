@@ -97,11 +97,14 @@ ROUND_LEGS = 4
 ROUND_EXTRA_M = 3.0
 
 #: **A near goal looks for what is in its way on the live scan, not the map.**
-#: The planner's costmap is slam_toolbox's map alone (config/nav2.yaml), which
-#: a person standing in front of a still rover is never drawn into. In M3
-#: session 13 (2026-10-07) the planner drew a 1.0 m goal straight through the
-#: owner, the controller -- which sees them -- refused every move forward, and
-#: the rover swung on the spot for 25 s until the stall watch ended it. So the
+#: Until 2026-10-08 the planner's costmap was slam_toolbox's map alone, which a
+#: person standing in front of a still rover is never drawn into, and it has
+#: the live scan within 3 m now (config/nav2.yaml, `live_layer`) only when that
+#: layer is switched on. In M3 session 13 (2026-10-07) the planner drew a 1.0 m
+#: goal straight through the owner, the controller -- which sees them --
+#: refused every move forward, and the rover swung on the spot for 25 s until
+#: the stall watch ended it. A near goal is still driven this way rather than
+#: by the planner, live layer or not. So the
 #: way is read on the local costmap: blocked when the body would sweep a cell
 #: the scan hit, bar the first `LIVE_SKIP_M`. A way round keeps the centre
 #: `ROUND_CLEAR_M` from them -- the footprint's furthest corner, 0.244 m, and
@@ -133,6 +136,10 @@ IN_THE_WAY = "something is in the way"
 #: to the goal, at most `NEAR_TRIES` times.
 ROUTE_LOOK_M = 1.0
 PAST_IT_M = 1.4
+
+#: A cell of slam_toolbox's map at this or above is a wall: the planner's
+#: static layer's own `lethal_cost_threshold`, left at Nav2's default.
+MAP_OCCUPIED = 100
 
 
 def route_ahead(route, here, metres):
@@ -549,6 +556,31 @@ class NavMoves:
                                  grid.metadata.origin.position.y,
                                  bytes(bytearray(grid.data)))
 
+    def mapped_walls(self):
+        """The SLAM map's walls as a costmap, or None before there is a map:
+        lethal where the map is occupied and nothing anywhere else, which is
+        what the planner's static layer makes of the same grid. Not the
+        planner's costmap itself, which has the live layer's marks on it too.
+
+        Converted once per map, not per question: the map changes every few
+        seconds while the rover is looking at once a second.
+        """
+        with self._lock:
+            msg = getattr(self, "map_msg", None)
+            kept = getattr(self, "_walls", None)
+        if msg is None:
+            return None
+        if kept is not None and kept[0] is msg:
+            return kept[1]
+        info = msg.info
+        grid = goal_fit.CostGrid(
+            info.width, info.height, info.resolution, info.origin.position.x,
+            info.origin.position.y,
+            bytes(goal_fit.LETHAL if v >= MAP_OCCUPIED else 0 for v in msg.data))
+        with self._lock:
+            self._walls = (msg, grid)
+        return grid
+
     def live_costmap(self):
         """The local costmap -- the live scan round the rover, in the odom
         frame -- and the `map -> odom` correction to read it by, or None.
@@ -685,10 +717,16 @@ class NavMoves:
             # can pass close enough to its frame that the body's sweep touches
             # the scan's hits on it, and that is a wall the planner meant to
             # pass, not something stepping into the way. So the same stretch is
-            # asked of the planner's own costmap, once, and a stretch that is
-            # blocked there too is left to Nav2.
+            # asked of the map's walls, once, and a stretch that is blocked
+            # there too is left to Nav2.
+            #
+            # The map, not the planner's costmap: since its live layer
+            # (2026-10-08) that has a person in the way on it as well, and a
+            # person in a doorway -- no way round, so Nav2 keeps the last route,
+            # through them -- would be taken for a wall and left to Nav2's
+            # recoveries, a quarter turn on the spot in front of them.
             if mapped[0] is None:
-                mapped[0] = self.costmap() or False
+                mapped[0] = self.mapped_walls() or False
             if mapped[0] and not goal_fit.line_fits(mapped[0], body, a, b,
                                                     worst=goal_fit.LETHAL,
                                                     skip_m=skip):
