@@ -760,6 +760,12 @@ no region in any of them looked 0.70 like the target
 ([2026-10-08](../progress/2026-10-08-why-aimed-looks-miss.md)). What limits M4
 now is which records are chosen as targets, and records placed where nothing
 stands.
+Choosing targets better helps only so far: records at least 0.3 m across, or
+often ranged, file about twice as often, but still only about one look in
+three ([2026-10-08](../progress/2026-10-08-what-predicts-a-filing.md)), and
+looking again at a record that came up empty filed 1 time in 15 that day.
+Criterion 5 needs more than half of attempts to improve their thing, so on this
+store it waits on the store: one record per object, placed where the object is.
 
 Three things on autonomy's side need no rover and are worth doing first, because
 M4's measurement depends on them:
