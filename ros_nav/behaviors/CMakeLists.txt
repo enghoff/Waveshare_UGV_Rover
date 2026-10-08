@@ -35,16 +35,19 @@ find_package(geometry_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 
-add_library(ugv_behaviors SHARED src/escape_behaviors.cpp)
+# The escape behaviours, and the live obstacle layer the planner's costmap loads
+# (include/ugv_behaviors/live_obstacle_layer.hpp), in one library.
+add_library(ugv_behaviors SHARED src/escape_behaviors.cpp src/live_obstacle_layer.cpp)
 target_include_directories(ugv_behaviors PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(ugv_behaviors
   nav2_behaviors nav2_core nav2_costmap_2d nav2_msgs nav2_util
-  geometry_msgs pluginlib rclcpp rclcpp_lifecycle tf2 tf2_ros)
+  geometry_msgs pluginlib rclcpp rclcpp_lifecycle sensor_msgs tf2 tf2_ros)
 
 # `Spin` is not header-only the way `DriveOnHeading` is: its constructor, onRun
 # and onConfigure live in libnav2_spin_behavior.so, so the subclass has to link
@@ -70,7 +73,14 @@ find_library(NAV2_BACK_UP_BEHAVIOR_LIB nav2_back_up_behavior
 target_link_libraries(test_direction ugv_behaviors ${NAV2_BACK_UP_BEHAVIOR_LIB})
 add_test(NAME behavior_direction COMMAND test_direction)
 
+# The live layer's marking, on a costmap with no node behind it.
+add_executable(test_live_layer src/test_live_layer.cpp)
+ament_target_dependencies(test_live_layer nav2_costmap_2d rclcpp sensor_msgs)
+target_link_libraries(test_live_layer ugv_behaviors)
+add_test(NAME live_layer COMMAND test_live_layer)
+
 pluginlib_export_plugin_description_file(nav2_core ugv_behaviors.xml)
+pluginlib_export_plugin_description_file(nav2_costmap_2d ugv_costmap_layers.xml)
 
 install(TARGETS ugv_behaviors
   ARCHIVE DESTINATION lib

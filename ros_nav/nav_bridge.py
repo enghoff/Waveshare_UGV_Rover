@@ -69,7 +69,7 @@ from nav2_msgs.action import (BackUp, ComputePathToPose, DriveOnHeading,
                               NavigateToPose, Spin)
 from nav2_msgs.srv import GetCostmap
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
-from rcl_interfaces.srv import GetParameters
+from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -187,6 +187,11 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
         # goal looks for a person in the way on (`seen_in_the_way`).
         self.live_client = self.create_client(
             GetCostmap, "/local_costmap/get_costmap",
+            callback_group=self.group)
+        # The planner's live obstacle layer's switch (`live_layer`), which is
+        # how the layer is taken back out without a redeploy.
+        self.layer_set_client = self.create_client(
+            SetParameters, "/global_costmap/global_costmap/set_parameters",
             callback_group=self.group)
         self.body = None
         self.inscribed_m = None
@@ -730,6 +735,12 @@ class Handler(socketserver.StreamRequestHandler):
                 window_deg=_maybe(request.get("window_deg")),
                 min_score=_maybe(request.get("min_score")))
             self.write({"kind": "reply", "ok": True, **result})
+        elif op == "live_layer":
+            # Read, or with "enabled", switch the planner's live obstacle layer.
+            # Not a move, and quick.
+            enabled = request.get("enabled")
+            self.write({"kind": "reply", **node.live_layer(
+                None if enabled is None else bool(enabled))})
         elif op in ("drive", "turn", "goto", "explore"):
             self.move(node, op, request)
         else:

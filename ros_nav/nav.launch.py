@@ -99,11 +99,14 @@ def generate_launch_description():
         Node(package="nav2_planner", executable="planner_server",
              name="planner_server", output="screen",
              parameters=[params,
-                         {"GridBased.lattice_filepath": LATTICE_FILE}]),
+                         {"GridBased.lattice_filepath": LATTICE_FILE}],
+             # The global costmap lives in this process and loads the live
+             # obstacle layer from the same library as the escape behaviours.
+             additional_env=behavior_env()),
         Node(package="nav2_behaviors", executable="behavior_server",
              name="behavior_server", output="screen", parameters=[params],
-             # The one node that is given a second install prefix, because it is
-             # the only one that loads a plugin this repository compiled.
+             # Given this repository's install prefix, as the planner server is,
+             # because it loads a plugin this repository compiled.
              # `behaviors/` builds the escape behaviours -- config/nav2.yaml says
              # what they change and why -- into behaviors/install rather than
              # into the conda environment, which is an installed dependency a

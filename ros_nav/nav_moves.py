@@ -20,7 +20,8 @@ from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import Point, PoseStamped
 from nav2_msgs.action import BackUp, DriveOnHeading, NavigateToPose, Spin
 from nav2_msgs.srv import GetCostmap
-from rcl_interfaces.srv import GetParameters
+from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
+from rcl_interfaces.srv import GetParameters, SetParameters
 
 # Beside this file and with no ROS in them, for the reasons nav_bridge.py gives:
 # the phrases, the geometry and what a route costs are each one function shared
@@ -615,6 +616,40 @@ class NavMoves:
             return give_up(now, feedback)
 
         return watch
+
+    def live_layer(self, enabled=None):
+        """The planner's live obstacle layer's switch, set first when `enabled`
+        is given (config/nav2.yaml, `live_layer`). The run-time way to take the
+        layer back out: switched off it clears its marks on the next update."""
+        name = "live_layer.enabled"
+        if enabled is not None:
+            client = getattr(self, "layer_set_client", None)
+            if client is None or not client.wait_for_service(timeout_sec=1.0):
+                return {"ok": False, "error": "the planner's costmap is not answering"}
+            value = ParameterValue()
+            value.type = ParameterType.PARAMETER_BOOL
+            value.bool_value = bool(enabled)
+            request = SetParameters.Request()
+            request.parameters = [Parameter(name=name, value=value)]
+            future = client.call_async(request)
+            if not self.wait(future, COSTMAP_TIMEOUT_S) or future.result() is None:
+                return {"ok": False, "error": "the planner's costmap did not answer"}
+            result = future.result().results[0]
+            if not result.successful:
+                return {"ok": False, "error": result.reason or "the costmap refused it"}
+        if not self.footprint_client.wait_for_service(timeout_sec=1.0):
+            return {"ok": False, "error": "the planner's costmap is not answering"}
+        request = GetParameters.Request()
+        request.names = [name]
+        future = self.footprint_client.call_async(request)
+        if (not self.wait(future, COSTMAP_TIMEOUT_S) or future.result() is None
+                or not future.result().values):
+            return {"ok": False, "error": "the planner's costmap did not answer"}
+        value = future.result().values[0]
+        if value.type != ParameterType.PARAMETER_BOOL:
+            return {"ok": True, "enabled": None,
+                    "note": "the planner's costmap has no live layer"}
+        return {"ok": True, "enabled": bool(value.bool_value)}
 
     def route_points(self):
         """The route Nav2 is following, as (x, y) in the map frame, or []."""

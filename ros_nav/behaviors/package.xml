@@ -17,9 +17,11 @@
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>tf2</depend>
 
   <export>
     <nav2_core plugin="${prefix}/ugv_behaviors.xml" />
+    <nav2_costmap_2d plugin="${prefix}/ugv_costmap_layers.xml" />
   </export>
 </package>

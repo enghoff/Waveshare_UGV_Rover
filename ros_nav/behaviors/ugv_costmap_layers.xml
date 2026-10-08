@@ -1,0 +1,12 @@
+<class_libraries>
+  <library path="ugv_behaviors">
+    <class type="ugv_behaviors::LiveObstacleLayer" base_class_type="nav2_costmap_2d::Layer">
+      <description>
+        What the lidar sees now and the map does not have, laid on the planner's
+        costmap each update and kept for none: so the planner routes round a
+        person, and the ghost walls an obstacle layer leaves under SLAM cannot
+        build up. Switched off at run time with its `enabled` parameter.
+      </description>
+    </class>
+  </library>
+</class_libraries>

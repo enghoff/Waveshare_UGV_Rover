@@ -51,7 +51,7 @@ echo "== building against $ROS_ENV_PREFIX"
 # remembers absolute paths into a conda prefix that a reinstall can replace, so
 # the environment goes into the hash too.
 STAMP="$PREFIX/.built-from"
-current=$(cat "$DIR/CMakeLists.txt" "$DIR/ugv_behaviors.xml" \
+current=$(cat "$DIR/CMakeLists.txt" "$DIR/ugv_behaviors.xml" "$DIR/ugv_costmap_layers.xml" \
               "$DIR/src/"*.cpp "$DIR/include/ugv_behaviors/"*.hpp 2>/dev/null |
           sha256sum | cut -d" " -f1)
 current="$current $ROS_ENV_PREFIX"

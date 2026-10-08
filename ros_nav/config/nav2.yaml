@@ -654,7 +654,9 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0
+      # Twice a second, for the live layer below: a person who steps in front
+      # is on the planner's map within half a second rather than a whole one.
+      update_frequency: 2.0
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
@@ -699,7 +701,29 @@ global_costmap:
       # since the last map update -- and that one belongs to the local costmap,
       # which does have an obstacle layer, is rebuilt from the live scan, and is
       # what DWB actually drives against.
-      plugins: ["static_layer", "inflation_layer"]
+      #
+      # **What it does have since 2026-10-08 is a layer with no memory.**
+      # `live_layer` (ros_nav/behaviors, LiveObstacleLayer) lays the latest scan
+      # on the grid each update, transformed with the map transform as it is
+      # now, keeps nothing, and skips anything within 10 cm of a wall the map
+      # already has -- so the planner routes round a person standing in the way
+      # and no ghost can build up, because nothing is remembered to become one.
+      # Without it the planner drew its route through the owner and the rover
+      # had to find a way round on its own, in blind straight legs, the second
+      # of which drifted into them (docs/progress/2026-10-08-blocking-trials.md).
+      #
+      # **To take it back out**: at run time, the bridge's
+      # {"op": "live_layer", "enabled": false} -- it clears its marks on the next
+      # update and marks nothing after; for good, delete it from this list.
+      plugins: ["static_layer", "live_layer", "inflation_layer"]
+      live_layer:
+        plugin: "ugv_behaviors::LiveObstacleLayer"
+        enabled: true
+        scan_topic: /scan
+        max_range_m: 3.0
+        min_range_m: 0.15
+        max_age_s: 0.5
+        wall_margin_m: 0.10
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         # slam_toolbox's live map, not a saved one. It republishes the whole grid

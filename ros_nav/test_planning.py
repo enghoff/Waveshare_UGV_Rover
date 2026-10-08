@@ -663,7 +663,8 @@ def _ros_messages():
         return type(name, (), {"__init__": init})
 
     def action(name):
-        return type(name, (), {"Goal": message(name + "Goal")})
+        return type(name, (), {"Goal": message(name + "Goal"),
+                               "Request": message(name + "Request")})
 
     header = message("Header", frame_id="", stamp=None)
     pose = message("Pose", position=types.SimpleNamespace,
@@ -682,7 +683,13 @@ def _ros_messages():
                                             "Spin")},
         "nav2_msgs.srv": {"GetCostmap": action("GetCostmap")},
         "rcl_interfaces": {}, "rcl_interfaces.srv": {
-            "GetParameters": action("GetParameters")},
+            "GetParameters": action("GetParameters"),
+            "SetParameters": action("SetParameters")},
+        "rcl_interfaces.msg": {
+            "Parameter": message("Parameter", value=None),
+            "ParameterValue": message("ParameterValue", type=0, bool_value=False),
+            "ParameterType": types.SimpleNamespace(PARAMETER_NOT_SET=0,
+                                                   PARAMETER_BOOL=1)},
     }
     for name, contents in modules.items():
         module = types.ModuleType(name)

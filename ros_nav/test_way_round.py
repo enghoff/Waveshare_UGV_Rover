@@ -525,8 +525,85 @@ def test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round():
         nav_moves.time.sleep = saved_sleep
 
 
+def test_the_live_layer_is_switched_off_and_on_at_run_time():
+    """`{"op": "live_layer", "enabled": false}` is how the planner's live
+    obstacle layer comes back out without a redeploy (config/nav2.yaml)."""
+    section("the live layer's switch")
+    sys.path.insert(0, HERE)
+    from test_planning import _ros_messages
+    _ros_messages()
+    try:
+        import types
+        import nav_moves
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+
+    class Done:
+        def __init__(self, answer):
+            self.answer = answer
+
+        def result(self):
+            return self.answer
+
+    class Costmap:
+        """The planner's costmap node: its parameters and nothing else."""
+
+        def __init__(self):
+            self.values = {"live_layer.enabled": True}
+            self.set_calls = []
+
+        def wait_for_service(self, timeout_sec=None):
+            return True
+
+    costmap = Costmap()
+
+    class Setter:
+        def wait_for_service(self, timeout_sec=None):
+            return True
+
+        def call_async(self, request):
+            one = request.parameters[0]
+            costmap.set_calls.append((one.name, one.value.bool_value))
+            costmap.values[one.name] = one.value.bool_value
+            return Done(types.SimpleNamespace(
+                results=[types.SimpleNamespace(successful=True, reason="")]))
+
+    class Getter:
+        def wait_for_service(self, timeout_sec=None):
+            return True
+
+        def call_async(self, request):
+            name = request.names[0]
+            if name not in costmap.values:
+                value = types.SimpleNamespace(type=0, bool_value=False)
+            else:
+                value = types.SimpleNamespace(type=1, bool_value=costmap.values[name])
+            return Done(types.SimpleNamespace(values=[value]))
+
+    class Node(nav_moves.NavMoves):
+        def __init__(self):
+            self.layer_set_client = Setter()
+            self.footprint_client = Getter()
+
+        def wait(self, future, timeout):
+            return True
+
+    node = Node()
+    check("read without a value, it says the layer is on",
+          node.live_layer(), {"ok": True, "enabled": True})
+    check("...switched off, it says off and asked for exactly that",
+          (node.live_layer(False), costmap.set_calls),
+          ({"ok": True, "enabled": False}, [("live_layer.enabled", False)]))
+    check("...and back on", node.live_layer(True), {"ok": True, "enabled": True})
+    del costmap.values["live_layer.enabled"]
+    check("a costmap with no live layer says so rather than guessing",
+          node.live_layer().get("enabled"), None)
+
+
 TESTS = (
     test_a_way_round_a_person_is_found_on_the_live_scan,
     test_a_person_stepping_in_front_of_a_near_goal_is_waited_for,
     test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round,
+    test_the_live_layer_is_switched_off_and_on_at_run_time,
 )
