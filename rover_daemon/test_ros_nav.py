@@ -237,6 +237,53 @@ def test_the_grid_follows_the_map_rather_than_walling_it_off():
           grid.config.grid_cells, ros_navigator.GRID_MAX_CELLS)
 
 
+def test_what_the_live_layer_marked_is_drawn_in_its_own_colour():
+    """The planner's live obstacle layer, on the map picture (2026-10-09).
+
+    The bridge sends the cells the layer has marked -- lethal on the planner's
+    costmap, not walls on the map -- beside the grid, and the picture paints
+    them orange, so what the rover is steering round can be told from the walls
+    it was built from. Read off the drawn pixels, as the map's other checks are.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        SKIP.append("the live-cell drawing needs numpy")
+        return
+    import mapimg
+    import ros_navigator
+
+    width = height = 60
+    values = [0] * (width * height)              # all free, origin 1.5 m back-right
+    payload = _payload(width, height, 100, 0.05, -1.5, -1.5, values)
+    payload["pose"] = {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}
+    payload["live"] = [[0.825, 0.025], [0.875, 0.025], [0.925, 0.025]]
+
+    def drawn(grid):
+        png, caption = mapimg.render(grid, half_extent_m=1.5, scale=3)
+        picture = mapimg._decode(png)
+        orange = np.all(picture == np.array(mapimg.C_LIVE, dtype=np.uint8), axis=-1)
+        return orange, caption
+
+    grid = ros_navigator._GridSlam(payload)
+    check("the daemon keeps what the bridge sent", len(grid.live), 3)
+    orange, caption = drawn(grid)
+    rows, cols = np.nonzero(orange)
+    half = int(round(1.5 / 0.05))
+    # Forward is up the page: 0.8 to 0.95 m ahead is 16 to 19 cells above the
+    # middle, and a few centimetres left of the line is just left of centre.
+    check("the marks are drawn, 0.8 to 0.95 m straight ahead of the rover",
+          (bool(orange.any()),
+           (half - 19) * 3 <= int(rows.min()) and int(rows.max()) <= (half - 16) * 3 + 3,
+           abs(int(cols.mean()) - half * 3) <= 4), (True, True, True))
+    check("...and the caption says what orange is", "Orange is" in caption, True)
+
+    del payload["live"]
+    orange, caption = drawn(ros_navigator._GridSlam(payload))
+    check("an older bridge that sends none draws none and claims none",
+          (bool(orange.any()), "Orange" in caption), (False, False))
+
+
 def test_a_map_that_lies_about_its_size_is_refused():
     """The width and height are the sender's claim about bytes somebody else
     compressed, and believing them would reshape into whatever numpy allowed."""
@@ -793,6 +840,7 @@ def test_resolution_is_readable_before_any_map_has_arrived():
 
 TESTS = (
     test_a_ros_map_lands_where_it_belongs,
+    test_what_the_live_layer_marked_is_drawn_in_its_own_colour,
     test_the_three_occupancy_states_survive_the_trip,
     test_the_grid_follows_the_map_rather_than_walling_it_off,
     test_a_map_that_lies_about_its_size_is_refused,

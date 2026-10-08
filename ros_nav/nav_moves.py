@@ -164,6 +164,16 @@ NO_VALID_PATH = 208
 FIT_BODY_M = 0.25
 
 
+def walled(walls, x, y):
+    """Is there a wall on the map at (x, y), or in a cell next to it? The cell
+    either side forgives the planner's costmap and the map rounding a wall onto
+    neighbouring cells."""
+    col, row = walls.cell_of(x, y)
+    return any(0 <= col + dc < walls.width and 0 <= row + dr < walls.height
+               and walls.data[(row + dr) * walls.width + col + dc] == goal_fit.LETHAL
+               for dc in (-1, 0, 1) for dr in (-1, 0, 1))
+
+
 def route_ahead(route, here, metres):
     """The route from the point on it nearest `here` on for `metres`, as a list
     of (x, y) starting at `here`; [] when there is no route."""
@@ -894,15 +904,35 @@ class NavMoves:
                     continue
                 cx = grid.origin_x + (c + 0.5) * grid.resolution
                 cy = grid.origin_y + (r + 0.5) * grid.resolution
-                if math.hypot(cx - x, cy - y) > radius:
-                    continue
-                wc, wr = walls.cell_of(cx, cy)
-                if not any(0 <= wc + dc < walls.width and 0 <= wr + dr < walls.height
-                           and walls.data[(wr + dr) * walls.width + wc + dc]
-                           == goal_fit.LETHAL
-                           for dc in (-1, 0, 1) for dr in (-1, 0, 1)):
+                if math.hypot(cx - x, cy - y) <= radius and not walled(walls, cx, cy):
                     return True
         return False
+
+    def live_cells(self):
+        """What the planner's live obstacle layer has marked: the cells lethal
+        on its costmap that are not walls on the map, give or take a cell, as
+        (x, y) centres in map metres. For the map picture, which draws them in a
+        colour of their own. [] when the costmap or the map cannot be had, or
+        when Nav2 is not up -- asked without waiting, because the picture is
+        asked for every few seconds and must not stall for want of it."""
+        client = getattr(self, "costmap_client", None)
+        if client is not None and not client.service_is_ready():
+            return []
+        walls = self.mapped_walls()
+        grid = self.costmap() if walls is not None else None
+        if grid is None:
+            return []
+        out = []
+        lethal = bytes([goal_fit.LETHAL])
+        at = grid.data.find(lethal)
+        while at >= 0:
+            row, col = divmod(at, grid.width)
+            x = grid.origin_x + (col + 0.5) * grid.resolution
+            y = grid.origin_y + (row + 0.5) * grid.resolution
+            if not walled(walls, x, y):
+                out.append((round(x, 3), round(y, 3)))
+            at = grid.data.find(lethal, at + 1)
+        return out
 
     def fit_goal(self, gx, gy, yaw):
         """Move a goal to the nearest place the rover's body will actually go.

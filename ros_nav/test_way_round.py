@@ -869,6 +869,34 @@ def test_the_map_walls_are_the_occupied_cells():
           list(node.mapped_walls().data), [0, 0, 0, goal_fit.LETHAL])
     check("no map yet: nothing to say", Node(None).mapped_walls(), None)
 
+    # What the map picture draws in its own colour: the planner's lethal cells
+    # that are not walls on the map. Here a wall along the bottom row, on both,
+    # and a person two rows up, on the planner's costmap only.
+    class Planner(Node):
+        def __init__(self, msg, costmap, ready=True):
+            Node.__init__(self, msg)
+            self.grid = costmap
+            self.costmap_client = types.SimpleNamespace(
+                service_is_ready=lambda: ready)
+
+        def costmap(self):
+            return self.grid
+
+    width = 6
+    walls_row = [100] * width
+    msg = types.SimpleNamespace(
+        info=types.SimpleNamespace(width=width, height=4, resolution=0.05,
+                                   origin=origin),
+        data=walls_row + [0] * (3 * width))
+    lethal = goal_fit.LETHAL
+    cost = bytes([lethal] * width + [0] * width + [0, 0, lethal, lethal, 0, 0]
+                 + [0] * width)
+    costmap = goal_fit.CostGrid(width, 4, 0.05, -2.0, -1.0, cost)
+    check("the live cells are the person's, not the wall's",
+          Planner(msg, costmap).live_cells(), [(-1.875, -0.875), (-1.825, -0.875)])
+    check("...and nothing is asked of a costmap that is not up",
+          Planner(msg, costmap, ready=False).live_cells(), [])
+
 
 TESTS = (
     test_a_way_round_a_person_is_found_on_the_live_scan,

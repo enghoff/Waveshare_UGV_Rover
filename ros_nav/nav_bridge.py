@@ -580,8 +580,10 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
                 "x_m": where[0], "y_m": where[1], "heading_deg":
                 math.degrees(where[2])},
             "trail": trail,
-            # Outside the lock: the first one asks the costmap node.
+            # Outside the lock, both: the first asks the costmap node, the second
+            # the planner's costmap.
             **self.walking_body(),
+            "live": self.live_cells(),
         }
 
     # --- writes ---------------------------------------------------------------

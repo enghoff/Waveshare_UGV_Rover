@@ -169,6 +169,7 @@ class _GridSlam:
             self.pose = (0.0, 0.0, 0.0)
             self._grid = None
             self.trail: tuple = ()
+            self.live: tuple = ()
             return
 
         resolution = float(payload.get("resolution_m") or DEFAULT_RESOLUTION_M)
@@ -180,6 +181,10 @@ class _GridSlam:
                      math.radians(float(where.get("heading_deg") or 0.0)))
         self.trail = tuple((float(x), float(y))
                            for x, y in payload.get("trail") or ())
+        # What the planner's live obstacle layer has marked, in map metres, which
+        # the renderer draws in its own colour; absent from an older bridge.
+        self.live = tuple((float(x), float(y))
+                          for x, y in payload.get("live") or ())
         self._grid = self._place(payload)
 
     def _place(self, payload: dict[str, Any]):

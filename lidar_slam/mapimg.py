@@ -47,6 +47,7 @@ C_ANCHOR = (250, 236, 120)          # the exact pose, inside the arrow
 C_SCALE = (24, 24, 28)              # the one-metre bar
 C_BORDER = (150, 150, 156)          # the edge of the crop
 C_CAMERA = (150, 80, 210)           # where the camera is looking, and how wide
+C_LIVE = (245, 130, 20)             # what the lidar sees now that the map has not
 
 # The step between two poses in the track that is too far to have been driven, so
 # the line is broken rather than drawn through it. The poses are half a second
@@ -326,6 +327,28 @@ def _draw_track(image, np, points, scale, break_px=None):
             image[py[inside], px[inside]] = colour
 
 
+def _draw_cells(image, np, points, scale):
+    """Paint one square per point into an (h, w, 3) numpy image, in `C_LIVE`.
+
+    `points` are cell centres already in pixel coordinates. Each square is the
+    cell's own size, but never under two pixels: the console draws a whole flat at
+    one pixel a cell, and a person's legs are four or five cells, which as single
+    pixels is a speck nobody would see. Returns how many landed in the picture.
+    """
+    height, width = image.shape[:2]
+    size = max(scale, 2)
+    drawn = 0
+    for col, row in points:
+        c0, r0 = int(math.floor(col - size / 2.0)), int(math.floor(row - size / 2.0))
+        c1, r1 = min(width, c0 + size), min(height, r0 + size)
+        c0, r0 = max(0, c0), max(0, r0)
+        if c0 >= c1 or r0 >= r1:
+            continue
+        image[r0:r1, c0:c1] = C_LIVE
+        drawn += 1
+    return drawn
+
+
 def reachable_free(shown, origin):
     """Free cells 4-connected to the rover, as a boolean mask the same shape as `shown`.
 
@@ -517,6 +540,11 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
     much of the room is in shot. Omit it and nothing is drawn and nothing is
     claimed, which is the right answer for a rover with no camera on it.
 
+    A map object with a `live` attribute -- (x, y) cell centres in map metres --
+    has them painted in `C_LIVE`: what the lidar sees right now that the map does
+    not have, which is the planner's live obstacle layer (ros_nav/config/nav2.yaml)
+    and what it steers round. A map object without one draws as it always did.
+
     Returns (png_bytes, description) where description says what the picture is,
     because a model shown an unlabelled top-down grid has no way to know the
     orientation, the scale, or that grey means unknown.
@@ -529,6 +557,7 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
         res = slam.config.resolution_m
         cells = slam.config.grid_cells
         occupied_at = slam.config.occupied_at
+        live = tuple(getattr(slam, "live", ()) or ())
 
     # Rounded, not truncated. The resolution comes out of the C config as a float32,
     # so 0.05 is really 0.050000000745 and three metres divided by it is 59.999999 --
@@ -573,6 +602,11 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
         forward = dgx * ahead_cos + dgy * ahead_sin
         sideways = -dgx * ahead_sin + dgy * ahead_cos
         return (half_cells - sideways) * scale, (half_cells - forward) * scale
+
+    # What the planner is steering round that the map does not have. Over the
+    # occupancy, which it is a correction to, and under the track, the cone and
+    # the rover, which are where the rover is and has been.
+    live_drawn = _draw_cells(big, np, [to_px(*cell) for cell in live], scale)
 
     # Where the rover has been, so "go around it" can be checked afterwards. Drawn
     # thick enough to survive against a busy background, since a one-pixel track over
@@ -644,6 +678,11 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
     # Said only when it is drawn. A caption describing a violet cone on a picture
     # that has none is the map's version of the rover saying it turned the lights on.
     cone = "" if camera is None else " " + camera_caption(camera[0], camera[1])
+    # The same rule for the orange: said when there is some in the picture.
+    scan_only = ("" if not live_drawn else
+                 " Orange is something the lidar sees right now that the map does "
+                 "not have -- a person, or something moved -- and the rover's "
+                 "planner steers round it.")
     description = (
         f"A top-down map of roughly {2 * half_extent_m:.0f} by "
         f"{2 * half_extent_m:.0f} metres around the rover, built from its lidar. "
@@ -652,7 +691,7 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
         f"the path it has driven.{cone} Black is solid, green is empty space the rover "
         f"can reach from where it is standing, near-white is empty but cut off from "
         f"here by something solid, sandy beige is seen but not confirmed solid, and "
-        f"flat grey is unknown -- not empty. The bar at the bottom "
+        f"flat grey is unknown -- not empty.{scan_only} The bar at the bottom "
         f"left is one metre. {solid} cells are solid out of {seen} seen. Distances "
         f"here are good to a few centimetres locally, but the rover's own position "
         f"drifts over a long run, so use this to judge what is nearby rather than to "

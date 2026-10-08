@@ -176,7 +176,8 @@ marks go at the next update; removing it from the plugin list in
 `config/nav2.yaml` takes it out for good. A goal is fitted to the body on the
 same costmap, so a spot next to a person or something moved is refused or
 moved too, and a refusal for something only the scan has says so rather than
-blaming a wall.
+blaming a wall. The bridge's `map` reply carries the layer's marks as `live`,
+map-frame cell centres, and the map picture draws them in orange.
 
 Longer goals also check the next metre of Nav2's route on the live scan every
 second. Something on it that is not a wall on the map stops the goal, and the

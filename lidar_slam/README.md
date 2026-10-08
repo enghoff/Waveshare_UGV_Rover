@@ -203,6 +203,15 @@ file's palette rather than its own. Empty floor the rover can reach from where i
 stands is green; empty that is cut off by a wall stays the cream "empty" of the
 occupancy ramp, which is why those two sit next to each other on the key.
 
+Orange is what the lidar sees right now that the map does not have: the cells the
+planner's live obstacle layer has marked
+([ros_nav/README.md](../ros_nav/README.md)), which the bridge sends beside the grid
+as map coordinates. They are what the rover is steering round -- a person, or a
+chair moved since the map was made -- so they are drawn over the occupancy as a
+correction to it, never under two pixels a cell so that a person's legs stay
+visible at the console's one pixel a cell, and they are gone from the next picture
+once the scan stops seeing them. A map object with no `live` draws as before.
+
 A client can zoom, and zooming keeps the picture the size it was. `map_png` in the
 daemon takes how many metres to show and how big a picture to send back, and works
 pixels-per-cell out from the two; `render` still takes it directly, since by then the
