@@ -159,6 +159,10 @@ NO_WAY = "there is no way past"
 #: that waiting can mend.
 NO_VALID_PATH = 208
 
+#: How far past `goal_fit.REACH_M` a spot's refusal looks for something only the
+#: scan has: the body's furthest corner, 0.244 m, rounded up.
+FIT_BODY_M = 0.25
+
 
 def route_ahead(route, here, metres):
     """The route from the point on it nearest `here` on for `metres`, as a list
@@ -875,6 +879,31 @@ class NavMoves:
                               if rest.get("detail") else said)
         return rest
 
+    def scan_has_near(self, grid, x, y, radius):
+        """Is anything lethal on the planner's costmap within `radius` of
+        (x, y) that the map's walls do not have, give or take a cell? False
+        when there is no map to ask, which keeps the old wording."""
+        walls = self.mapped_walls()
+        if walls is None:
+            return False
+        reach = int(math.ceil(radius / grid.resolution))
+        col, row = grid.cell_of(x, y)
+        for r in range(max(0, row - reach), min(grid.height, row + reach + 1)):
+            for c in range(max(0, col - reach), min(grid.width, col + reach + 1)):
+                if grid.data[r * grid.width + c] != goal_fit.LETHAL:
+                    continue
+                cx = grid.origin_x + (c + 0.5) * grid.resolution
+                cy = grid.origin_y + (r + 0.5) * grid.resolution
+                if math.hypot(cx - x, cy - y) > radius:
+                    continue
+                wc, wr = walls.cell_of(cx, cy)
+                if not any(0 <= wc + dc < walls.width and 0 <= wr + dr < walls.height
+                           and walls.data[(wr + dr) * walls.width + wc + dc]
+                           == goal_fit.LETHAL
+                           for dc in (-1, 0, 1) for dr in (-1, 0, 1)):
+                    return True
+        return False
+
     def fit_goal(self, gx, gy, yaw):
         """Move a goal to the nearest place the rover's body will actually go.
 
@@ -901,6 +930,15 @@ class NavMoves:
             return (gx, gy, yaw), None
         placed = goal_fit.fit(grid, body, gx, gy, yaw)
         if placed is None:
+            # The planner's costmap has what the scan sees as well as the map
+            # (`live_layer`), so a refusal may be about a person standing there
+            # or something moved, and blaming a wall for that sends whoever
+            # asked to look at the map.
+            if self.scan_has_near(grid, gx, gy, goal_fit.REACH_M + FIT_BODY_M):
+                return None, ("there is nowhere within half a metre of that spot "
+                              "where the rover's body fits right now -- the scan "
+                              "sees something there that the map does not have, "
+                              "a person or something moved")
             return None, ("there is nowhere within half a metre of that spot "
                           "where the rover's body fits -- it is inside a wall "
                           "or under something")

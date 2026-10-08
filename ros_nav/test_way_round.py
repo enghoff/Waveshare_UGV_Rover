@@ -780,6 +780,59 @@ def test_a_person_with_no_way_round_is_waited_for_not_spun_at():
         nav_moves.time.sleep, nav_moves.time.monotonic = saved
 
 
+def test_a_spot_refused_for_something_the_scan_sees_says_so():
+    """2026-10-09: the owner, driving by map clicks after the doorway trials, was
+    told a spot was "inside a wall or under something". The spot is fitted to
+    the body on the planner's costmap, which since its live layer has on it
+    whatever the scan sees -- the owner walking beside the rover, the charger
+    dock -- and the sentence blamed the map for it."""
+    section("a spot refused for something the scan sees")
+    sys.path.insert(0, HERE)
+    from test_planning import _ros_messages
+    _ros_messages()
+    try:
+        import threading
+        import goal_fit
+        import nav_moves
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+    spot = (2.0, 1.0)
+
+    def ring(points):
+        # Something round the spot at 0.3 m every 20 degrees: no body fits
+        # within half a metre of the middle.
+        return [(spot[0] + 0.3 * math.cos(math.radians(a)),
+                 spot[1] + 0.3 * math.sin(math.radians(a))) for a in range(0, 360, 20)] + points
+
+    class Node(nav_moves.NavMoves):
+        def __init__(self, costmap, walls):
+            self._lock = threading.Lock()
+            self.grid, self.walls = costmap, walls
+
+        def footprint(self):
+            return BODY
+
+        def costmap(self):
+            return self.grid
+
+        def mapped_walls(self):
+            return self.walls
+
+    around = _grid(goal_fit, spot, ring([]))
+    empty = _grid(goal_fit, spot, [])
+    placed, why = Node(around, empty).fit_goal(spot[0], spot[1], 0.0)
+    check("something only the scan has round the spot: refused, and said to be "
+          "something the scan sees, not a wall",
+          (placed, "scan" in why, "wall" in why), (None, True, False))
+    placed, why = Node(around, around).fit_goal(spot[0], spot[1], 0.0)
+    check("...the same on the map as well: a wall, as before",
+          (placed, "inside a wall" in why), (None, True))
+    placed, why = Node(around, None).fit_goal(spot[0], spot[1], 0.0)
+    check("...and with no map to ask, as before",
+          (placed, "inside a wall" in why), (None, True))
+
+
 def test_the_map_walls_are_the_occupied_cells():
     """What the route watch asks "is that a wall" of: slam_toolbox's map, as
     the planner's static layer reads it, and nothing the live layer adds."""
@@ -823,5 +876,6 @@ TESTS = (
     test_a_person_in_the_way_of_a_longer_goal_is_waited_for_and_gone_round,
     test_the_live_layer_is_switched_off_and_on_at_run_time,
     test_a_person_with_no_way_round_is_waited_for_not_spun_at,
+    test_a_spot_refused_for_something_the_scan_sees_says_so,
     test_the_map_walls_are_the_occupied_cells,
 )

@@ -173,7 +173,10 @@ without a stop, the rover's centre passing about half a metre from them
 ([2026-10-08](../docs/progress/2026-10-08-live-layer.md)). The bridge's
 `{"op": "live_layer", "enabled": false}` switches it off at run time and its
 marks go at the next update; removing it from the plugin list in
-`config/nav2.yaml` takes it out for good.
+`config/nav2.yaml` takes it out for good. A goal is fitted to the body on the
+same costmap, so a spot next to a person or something moved is refused or
+moved too, and a refusal for something only the scan has says so rather than
+blaming a wall.
 
 Longer goals also check the next metre of Nav2's route on the live scan every
 second. Something on it that is not a wall on the map stops the goal, and the
@@ -183,6 +186,15 @@ live layer on, this is for what the planner has not routed round: someone
 stepping in close, or standing where there is no way round. Whether something
 is a wall is asked of slam_toolbox's map, not the planner's costmap, which has
 the person on it as well.
+
+Someone standing where there is no way round, in a doorway, leaves the planner
+with no route at all, and Nav2's answer to that is its recoveries: on the rover
+a spin of 225 degrees, a wait, a reverse and another spin, 2 m from the person.
+So when Nav2 starts a recovery and the planner has sent no route for this goal
+in the last 2 s, the goal is stopped there. The rover holds still and asks the
+planner itself every second, for the same 3 s a near goal waits; with a route
+it drives on, and without one the goal is handed back as blocked. A refusal of
+any other kind goes back to Nav2 as it always did.
 
 No goal turns on the spot for ever. A drive that has not got 0.5 m further on
 in 25 s while Nav2 attempts no recovery is ended and says so. Nav2's own
@@ -220,12 +232,12 @@ answered once.
   manual reverse can be required before replanning.
 - Long routes may legitimately detour because this differential-drive chassis
   cannot follow every geometric shortcut.
-- With the live layer on, a person standing where there is no way round, in a
-  doorway, leaves the planner with no route at all. Nav2's own recoveries for
-  that (clearing the costmaps, a quarter turn on the spot, a 5 s wait, a short
-  reverse) can then start while the person is still more than a metre off,
-  before the route watch is close enough to stop the goal. This is predicted
-  from Nav2's default behaviour tree and has not been tried on the rover.
+- The planner keeps the same margin from a person as from a wall: its centre
+  0.20 m from what the scan sees, which is the leg, a few centimetres from the
+  body's side. In a doorway on 2026-10-09 it took the 45 cm between the
+  owner's legs and the wall, and the owner chose to keep that margin. That
+  close, the rover counts itself inside an obstacle when it next plans, and
+  the back-off for that (`back_off`) turned it on the spot beside them.
 
 These are hardware/navigation issues. Reproduce them with a recording or the
 provided simulator before changing configuration.
