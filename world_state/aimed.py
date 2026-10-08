@@ -28,11 +28,18 @@ and the claim -- see `aimed_claim`). It is *not* added to the target's exemplars
 a wrong pick that became one would make the target accept the next wrong look
 more readily, which is the ratchet `appearance.appearance` exists to avoid.
 
-**Records the region also fits.** A region that points at, and looks very like
-(`resolve.RECOGNISED`), another record besides the target is evidence that the
-two records are one object -- the painting of 2026-10-07 had eight. Those are
-kept with the filing (`same_object_suspects`) so that the executive can cool them
-off together and a person can be offered the merge. Nothing is merged here.
+**Records the region also fits.** A region that points at another record
+besides the target, and would have passed the appearance bar for being filed to
+it (`resolve.DIFFERENT_THING`), is evidence that the two records are one object
+-- the painting of 2026-10-07 had eight. Those are kept with the filing
+(`same_object_suspects`) so that the executive can cool them off together and a
+person can be offered the merge. Nothing is merged here. The bar was
+`RECOGNISED` until M4 session 1 (2026-10-08): the rug under the dining table
+had seven records, its filed regions looked 0.57 to 0.68 like the others, and
+none was named, so the run went back to it by a second record. At filing's own
+bar, 11 of the 13 records added on that session's filings were the same object
+by their photographs (the rug's six, five of the black cabinet's seven; the
+other two were the painting above the cabinet and a person in front of it).
 """
 from __future__ import annotations
 
@@ -99,7 +106,7 @@ def choose(store, target_id: str, placement: dict[str, Any],
 
 def also_fits(store, target_id: str, observation: dict[str, Any],
               ray: dict[str, Any], entities: list[dict[str, Any]]) -> list[str]:
-    """Other records this region points at and looks very like."""
+    """Other records this region points at and could have been filed to."""
     from . import resolve
     vector = observation.get("dino_blob") or b""
     if not vector:
@@ -116,7 +123,7 @@ def also_fits(store, target_id: str, observation: dict[str, Any],
         if not locate.stands_as_high(placement, ray):
             continue
         seen = resolve.appearance(store, entity["id"], vector)
-        if seen is not None and seen >= resolve.RECOGNISED:
+        if seen is not None and seen >= resolve.DIFFERENT_THING:
             found.append(entity["id"])
     return found
 
@@ -179,14 +186,20 @@ def aimed_claim(rays: list[dict[str, Any]], aimed_ids: set[int],
     the tape inside the claim 68% of the time. Only aimed looks count, because
     over every look a mixed record's ranges dragged the position back off
     (docs/progress/2026-10-08-depth-placement.md).
+
+    **An aimed range that no longer points at the placement still counts
+    against the claim.** It gives no position, but the spread is taken over it
+    too. On the rover on 2026-10-08 a kitchen cabinet's two aimed ranges landed
+    1.25 m apart; dropping the one that disagreed left the other claiming 0.20
+    m. On the taped targets counting them changed no claim's median and the
+    tape stayed inside every one (`claim_honesty.py`).
     """
     from . import resolve
     points = []
     for ray in rays:
         if ray.get("observation_id") not in aimed_ids or ray.get("range_m") is None:
             continue
-        if resolve._allowance_used(placement, ray) is None:
-            continue
+        agrees = resolve._allowance_used(placement, ray) is not None
         elevation = locate.elevation_of(ray) or 0.0
         flat = float(ray["range_m"]) * math.cos(math.radians(elevation))
         bearing = math.radians(float(ray["bearing_deg"]))
@@ -198,14 +211,17 @@ def aimed_claim(rays: list[dict[str, Any]], aimed_ids: set[int],
         points.append((float(ray["x_m"]) + flat * math.cos(bearing),
                        float(ray["y_m"]) + flat * math.sin(bearing), own,
                        (round(float(ray["x_m"]) / locate.MIN_BASELINE_M),
-                        round(float(ray["y_m"]) / locate.MIN_BASELINE_M))))
-    if not points:
+                        round(float(ray["y_m"]) / locate.MIN_BASELINE_M)), agrees))
+    agreeing = [p for p in points if p[4]]
+    if not agreeing:
         return None
-    x = statistics.median(p[0] for p in points)
-    y = statistics.median(p[1] for p in points)
+    x = statistics.median(p[0] for p in agreeing)
+    y = statistics.median(p[1] for p in agreeing)
     spread = math.sqrt(sum((p[0] - x) ** 2 + (p[1] - y) ** 2 for p in points)
                        / len(points))
-    own = statistics.median(p[2] for p in points) / math.sqrt(len({p[3] for p in points}))
+    own = (statistics.median(p[2] for p in agreeing)
+           / math.sqrt(len({p[3] for p in agreeing})))
     return {"x_m": round(x, 3), "y_m": round(y, 3),
             "aimed_uncertainty_m": round(max(spread, own, CLAIM_FLOOR_M), 3),
-            "aimed_ranges": len(points)}
+            "aimed_ranges": len(agreeing),
+            "aimed_ranges_disagreeing": len(points) - len(agreeing)}

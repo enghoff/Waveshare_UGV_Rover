@@ -230,15 +230,18 @@ A look can name the thing it was aimed at (`inspect(target=...)`, the daemon's
 thing the region that points at it within the resolver's allowance, the map's
 reach left out, with height, range and appearance agreeing; a near tie files
 nothing. The region is attached, but not made an appearance example, and the
-filing is kept in `aimed_looks` with the other records the region fitted, which
-are probably the same object (`WorldStore.same_object_suspects`). Where aimed
-looks ranged the thing, `resolve._replace_placement` takes its position and its
-claim (`stated_uncertainty_m`, never below `aimed.CLAIM_FLOOR_M`) from them; the
-tolerance it is matched with stays the bearings' own. The autonomy executive
-names targets only once
-[the case](../docs/decisions/aimed-looks-file-to-their-target.md) is agreed. Why
-and how it was measured:
-[2026-10-08](../docs/progress/2026-10-08-aimed-filing.md).
+filing is kept in `aimed_looks` with the other records the region fitted and
+could have been filed to, which are probably the same object
+(`WorldStore.same_object_suspects`). Where aimed looks ranged the thing,
+`resolve._replace_placement` takes its position and its claim
+(`stated_uncertainty_m`, never below `aimed.CLAIM_FLOOR_M`) from them; an aimed
+range that no longer points at the placement gives no position but still widens
+the claim. The tolerance it is matched with stays the bearings' own. The
+autonomy executive names targets under
+[the case](../docs/decisions/aimed-looks-file-to-their-target.md), agreed for
+supervised runs. Why and how it was measured:
+[2026-10-08](../docs/progress/2026-10-08-aimed-filing.md), and on the rover in
+[M4 session 1](../docs/progress/2026-10-08-m4-session-1.md).
 
 ## What to expect from it
 

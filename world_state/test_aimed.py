@@ -95,6 +95,27 @@ def test_the_region_at_the_aim_goes_to_the_target():
     check("...and it is not made one of the target's exemplars", exemplars, 3 * PLAIN * 4)
 
 
+def test_a_record_the_region_could_have_been_filed_to_is_a_suspect():
+    """The rug of 2026-10-08: seven records, whose filed regions looked 0.57 to
+    0.68 like each other -- under `RECOGNISED`, so none was named and the run went
+    back to the rug by a second record."""
+    store = _fresh()
+    _thing(store, "object:1", 3.0, 0.0)
+    _thing(store, "object:2", 3.1, 0.05)
+    _thing(store, "object:3", 3.0, -0.05)
+    # Cosines of about 0.62 and 0.45 against the region: one passes filing's
+    # own bar, the other does not.
+    store.db.execute("UPDATE entities SET exemplars=? WHERE id='object:2'",
+                     (_vector(0, 1.265) * 3,))
+    store.db.execute("UPDATE entities SET exemplars=? WHERE id='object:3'",
+                     (_vector(0, 2.0) * 3,))
+    store.db.commit()
+    _region(store, 13, (0.0, 0.0), PAINTING)
+    got = aimed.file_by_aim(store, "object:1", "frame-13")
+    check("a record it fits and looks 0.62 like is a suspect; one at 0.45 is not",
+          got["same_object_suspects"], ["object:2"])
+
+
 def test_a_look_that_does_not_point_at_the_target_files_nothing():
     store = _fresh()
     _thing(store, "object:1", 3.0, 0.0)
@@ -153,6 +174,29 @@ def test_an_aimed_range_is_the_position_and_the_claim():
           after["uncertainty_m"], bearings_only["uncertainty_m"])
 
 
+def test_an_aimed_range_that_disagrees_widens_the_claim():
+    """A kitchen cabinet on the rover on 2026-10-08: two aimed ranges 1.25 m
+    apart, the one that no longer pointed at the placement dropped, and the
+    other claiming 0.20 m."""
+    store = _fresh()
+    _thing(store, "object:1", 3.0, 0.0)
+    agrees = _region(store, 11, (0.0, 0.0), PAINTING, entity_id="object:1", range_m=3.0)
+    # From further along, ranged to something two metres to the side.
+    off = _region(store, 12, (0.0, 2.0), (3.0, 2.0), entity_id="object:1", range_m=3.0)
+    placement = json.loads(store.db.execute(
+        "SELECT placement_json FROM entities WHERE id='object:1'").fetchone()[0])
+    rays = [resolve.ray_of(one) for one in store.observations("object:1")]
+    alone = aimed.aimed_claim(rays, {agrees}, placement)
+    both = aimed.aimed_claim(rays, {agrees, off}, placement)
+    check("one aimed range on its own claims the floor",
+          alone["aimed_uncertainty_m"], aimed.CLAIM_FLOOR_M)
+    check("...a second that disagrees gives no position",
+          (round(both["x_m"], 1), round(both["y_m"], 1), both["aimed_ranges"]),
+          (3.0, 0.0, 1))
+    check("...but widens the claim to the disagreement rather than vanishing",
+          (both["aimed_uncertainty_m"] > 1.0, both["aimed_ranges_disagreeing"]), (True, 1))
+
+
 def test_an_inspection_aimed_at_a_thing_says_what_it_filed():
     from test_fakes import a_seeing_inspector, a_sighting
     directory = tempfile.mkdtemp(prefix="world-aimed-inspect-")
@@ -197,9 +241,11 @@ def test_an_aimed_look_takes_its_own_picture():
 
 TESTS = (
     test_the_region_at_the_aim_goes_to_the_target,
+    test_a_record_the_region_could_have_been_filed_to_is_a_suspect,
     test_a_look_that_does_not_point_at_the_target_files_nothing,
     test_two_regions_alike_at_the_aim_are_refused,
     test_an_aimed_range_is_the_position_and_the_claim,
+    test_an_aimed_range_that_disagrees_widens_the_claim,
     test_an_inspection_aimed_at_a_thing_says_what_it_filed,
     test_an_aimed_look_takes_its_own_picture,
 )
