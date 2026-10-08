@@ -159,6 +159,15 @@ identity had not been defined. The historical progress entries remain unchanged.
   relation. This is conditional on an explicit identity policy and needs an
   independent recording. The bench is documented in
   [experiments/entity_association](../../experiments/entity_association/README.md).
+- **Co-fit finds duplicates the proposer cannot.** Two records are scored by how
+  many of each one's looks would also have fitted the other -- the test
+  same-object suspects use. At 0.3 both ways it joins 7 of 8 joinable
+  one-object pairs on the independent labels against the proposer's 3, with 1
+  wrong of 98, and takes the 2026-10-08 rug from seven records to two where the
+  proposer leaves seven; 17 of 25 random joins are one object by photograph, 1
+  is two ([2026-10-08](../progress/2026-10-08-merging-by-cofit.md)). Measured on
+  final stores; whether joining every few hundred looks makes the resolver
+  refuse later looks is being replayed.
 - **Rebuilding a few neighbouring things from their pooled looks** handles wrong looks
   best. With the dining chairs aside and weights fitted without the things scored, it
   keeps 7 of 37 wrong looks with their object, against 10 for single-look removal at
