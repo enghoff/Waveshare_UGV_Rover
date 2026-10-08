@@ -53,12 +53,13 @@ On a three-column screen, driving, voice, face tracking, headlights, battery and
 network controls sit on the left; the map is in the centre; camera, depth and
 navigation status sit on the right. The same stacks wrap on narrower screens.
 
-The drive pad surrounds a top view of the rover: left and right turns use the
-15, 45, 90 and 180 degree presets on either side; forward is above and reverse
-below. Both drive directions use the positive distance in metres beneath the pad.
-Speed is automatic. Arrow keys drive forward/backward or turn 90 degrees; space
-and Escape stop, and plus/minus zoom the map. Motion controls wait for a connected,
-idle rover, and an invalid distance sends no drive request.
+The drive pad surrounds a top view of the rover. Turns run horizontally, from
+15 degrees nearest the centre to 45, 90 and 180 degrees farther out; left is on
+the left and right on the right. Forward distances run upward and reverse
+distances downward, from 0.1 m nearest the centre to 0.25, 0.5 and 1 m farther
+out. Each button sends that one bounded movement at automatic speed. Arrow keys
+drive 0.5 m forward/backward or turn 90 degrees; space and Escape stop, and
+plus/minus zoom the map. Motion controls wait for a connected, idle rover.
 
 Under the gimbal camera's picture is the OAK's depth map. It travels as
 millimetres -- zlib-compressed by the daemon, about 34 kB, served at

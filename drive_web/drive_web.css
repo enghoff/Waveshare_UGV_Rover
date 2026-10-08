@@ -386,27 +386,27 @@
   .row input.num { width: 74px; text-align: right; }
 
   .drive-pad {
-    display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
-    grid-template-areas: ". forward ." "left rover right" ". reverse .";
-    align-items: center; gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) 48px repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(9, 36px); gap: 4px 2px; align-items: center;
   }
-  .drive-pad button { min-height: 40px; padding: 8px 4px; }
-  .drive-forward { grid-area: forward; }
-  .drive-reverse { grid-area: reverse; }
-  .drive-forward, .drive-reverse {
-    justify-self: center; min-width: 94px; color: var(--accent);
+  .drive-pad button {
+    height: 36px; min-width: 0; padding: 0; font-size: 11px;
+    font-variant-numeric: tabular-nums;
   }
-  .drive-forward span, .drive-reverse span { display: block; font-size: 20px; line-height: 1; }
-  .turn-wing { display: grid; gap: 6px; }
-  .turn-left { grid-area: left; }
-  .turn-right { grid-area: right; }
-  .rover-top { grid-area: rover; }
-  .rover-top svg { display: block; width: 100%; }
+  .drive-pad .drive-step { width: 64px; justify-self: center; color: var(--accent); font-size: 13px; }
+  .turn-wing, #driveDistances { display: contents; }
+  .pad-label { color: var(--dim); font-size: 12px; }
+  .pad-left { grid-row: 4; grid-column: 1 / 5; align-self: end; }
+  .pad-right { grid-row: 4; grid-column: 6 / 10; text-align: right; align-self: end; }
+  .pad-forward { grid-row: 1; grid-column: 6 / 10; margin-left: 12px; }
+  .pad-reverse { grid-row: 9; grid-column: 6 / 10; margin-left: 12px; }
+  .rover-top { grid-row: 5; grid-column: 5; }
+  .rover-top svg { display: block; width: 28px; margin: auto; }
   .drive-axis { fill: none; stroke: var(--line); stroke-dasharray: 3 4; }
   .rover-wheel { fill: var(--dim); }
   .rover-body { fill: var(--sunken); stroke: var(--accent); stroke-width: 2; }
   .rover-heading { fill: var(--accent); }
-  .drive-distance { justify-content: center; margin-top: 14px; }
 
   /* --- nav_status ------------------------------------------------------- */
   #statusRows { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; }

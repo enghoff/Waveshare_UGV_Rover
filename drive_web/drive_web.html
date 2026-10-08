@@ -58,9 +58,11 @@
   <section id="driveCard">
     <h2>drive</h2>
     <div class="drive-pad" role="group" aria-label="drive and turn">
-      <button class="drive-forward" data-move="drive" data-direction="1" disabled>
-        <span aria-hidden="true">&#8593;</span> forward
-      </button>
+      <span class="pad-label pad-forward" aria-hidden="true">&#8593; forward</span>
+      <span class="pad-label pad-left" aria-hidden="true">&#8630; left</span>
+      <span class="pad-label pad-right" aria-hidden="true">right &#8631;</span>
+      <span class="pad-label pad-reverse" aria-hidden="true">&#8595; reverse</span>
+      <div id="driveDistances" role="group" aria-label="drive distance"></div>
       <div class="turn-wing turn-left" id="turnLeft" role="group" aria-label="turn left"></div>
       <div class="rover-top" aria-hidden="true">
         <svg viewBox="0 0 80 112">
@@ -74,15 +76,9 @@
         </svg>
       </div>
       <div class="turn-wing turn-right" id="turnRight" role="group" aria-label="turn right"></div>
-      <button class="drive-reverse" data-move="drive" data-direction="-1" disabled>
-        <span aria-hidden="true">&#8595;</span> reverse
-      </button>
+
     </div>
-    <div class="row drive-distance">
-      <label for="distance">distance</label>
-      <input class="num mono" type="number" id="distance" value="0.5" min="0.01" step="any" required>
-      <span class="hint" style="margin:0">m</span>
-    </div>
+
   </section>
 
   <!-- The microphone, the face detector, the lamps and the battery are one card:

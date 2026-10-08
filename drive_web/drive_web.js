@@ -32,11 +32,6 @@ function post(action) {
     .then((reply) => reply.ok, () => false);
 }
 
-// What the boxes currently say, sent with the action rather than remembered by
-// the server: they are the only things on this page that are genuinely local,
-// because a half-typed distance is not a fact about the rover.
-const number = (id) => $(id).value.trim();
-
 // The map's age is the one thing on this page that changes while nothing happens,
 // so it is the one thing drawn on a clock. A second is as fine as it is ever shown.
 function tick() {
@@ -686,9 +681,6 @@ function wire() {
     if (e.key === "Enter") post({do: "connect", address: $("address").value});
   };
 
-  for (const button of $("driveCard").querySelectorAll('[data-move="drive"]')) {
-    button.onclick = () => drive(Number(button.dataset.direction));
-  }
   // No arguments and no keyboard shortcut, both deliberately. This is the one
   // control that hands the rover ten minutes of its own work, and it should take
   // a deliberate click rather than a key pressed next to the arrows.
@@ -737,10 +729,9 @@ function wire() {
   };
 }
 
-const drive = (direction = 1) => {
+const drive = (distance = 0.5) => {
   if (!state || !state.link.can_drive || state.busy !== null || state.exploring) return;
-  if (!$("distance").reportValidity()) return;
-  return post({do: "drive", distance_m: direction * Number(number("distance"))});
+  return post({do: "drive", distance_m: distance});
 };
 const turn = (angle) => {
   if (!state || !state.link.can_drive || state.busy !== null || state.exploring) return;
@@ -763,7 +754,7 @@ function keys() {
     if (event.target.tagName === "INPUT") return;
     const moves = {
       ArrowUp: () => drive(),
-      ArrowDown: () => drive(-1),
+      ArrowDown: () => drive(-0.5),
       ArrowLeft: () => turn(90),
       ArrowRight: () => turn(-90),
       // Plus zooms in, the way it does everywhere else, which means asking for a
@@ -781,15 +772,31 @@ async function start() {
 
   // Positive is left in this whole repository, and left is the left column, so a
   // button's place on screen matches the way the rover is about to go.
-  for (const magnitude of setup.presets_deg) {
+  for (const [index, magnitude] of setup.presets_deg.entries()) {
     for (const sign of [1, -1]) {
       const button = document.createElement("button");
       button.dataset.move = "preset";
       button.disabled = true;
-      button.textContent = `${sign > 0 ? "\u21b6" : "\u21b7"} ${magnitude}\u00b0`;
+      button.textContent = `${magnitude}\u00b0`;
+      button.style.gridRow = "5";
+      button.style.gridColumn = String(sign > 0 ? 4 - index : 6 + index);
       button.setAttribute("aria-label", `turn ${magnitude} degrees ${sign > 0 ? "left" : "right"}`);
       button.onclick = () => turn(sign * magnitude);
       $(sign > 0 ? "turnLeft" : "turnRight").append(button);
+    }
+  }
+  for (const [index, distance] of [0.1, 0.25, 0.5, 1].entries()) {
+    for (const sign of [1, -1]) {
+      const button = document.createElement("button");
+      button.dataset.move = "drive";
+      button.className = "drive-step";
+      button.disabled = true;
+      button.textContent = `${distance} m`;
+      button.setAttribute("aria-label", `drive ${sign > 0 ? "forward" : "reverse"} ${distance} metres`);
+      button.style.gridColumn = "5";
+      button.style.gridRow = String(sign > 0 ? 4 - index : 6 + index);
+      button.onclick = () => drive(sign * distance);
+      $("driveDistances").append(button);
     }
   }
   const legend = $("legend");
