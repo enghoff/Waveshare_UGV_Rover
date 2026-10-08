@@ -105,6 +105,12 @@ Send it over WiFi rather than the serial port: the daemon owns the UART, and
 interleaving with its traffic is a needless risk. The board is back in about
 three seconds. Do it with the motors stopped.
 
+**It does not always work.** On 2026-10-08 the frozen readings (`gz` -28417,
+`az` 0) were byte-identical straight after `{"T":600}`, and only the owner's
+full power cycle cleared them
+([that session](../progress/2026-10-08-m4-session-1.md)). Try it, check twice a
+second apart, and ask for a power cycle if nothing moved.
+
 **Then restart `ros_nav`.** `base_node` keeps its bias estimate across the
 board coming back, so it will spend a while averaging dead readings together
 with live ones -- ours reported 346 deg/s of rotation on a stationary rover

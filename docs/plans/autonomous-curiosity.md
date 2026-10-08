@@ -704,11 +704,13 @@ conditions are:
 - **another room, fenced, starting away from the charger**: new geometry for
   choosing goals, fitting the body and finding the way home;
 - **the whole flat, unfenced, under the current code**: doorways, long routes,
-  and a run ending on the battery. Sessions 1 and 2 drove it before the body-fit
-  walk and the 0.6 m margin existed;
+  and a run ending on the battery. Met by
+  [M4 session 1](../progress/2026-10-08-m4-session-1.md): 9.5 minutes and about
+  51 m, ended on the battery and driven home;
 - **straight after a full power-up**: the cold start in which the gyro fault
   appeared, with the map's restore, the gyro's bias and the depth camera all
-  fresh;
+  fresh. Met by [M4 session 1](../progress/2026-10-08-m4-session-1.md), four
+  minutes after the owner's power cycle;
 - **a person moving through the area**, crossing the rover's path and standing
   where it wants to go, several times in a session. Session 10 had the owner in
   view once, which does not count; session 11 found the rover swinging when
