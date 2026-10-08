@@ -656,6 +656,13 @@ scoring, and reports what the resolver did with it. Whether a pick shows the
 target is judged from the photographs
 ([2026-10-08](../../docs/progress/2026-10-08-aimed-looks.md)).
 
+`placement_calibration.py --output <file>` feeds the 126 eye-matched looks of
+the six targets taped on 2026-10-03 in time order and scores three ways of
+placing them against the tape: the resolver's bearings, every bearing pooled,
+and depth where it agrees. `score_tape.py <replay>/result.json ...` scores where a
+session replay leaves those six targets
+([2026-10-08](../../docs/progress/2026-10-08-depth-placement.md)).
+
 `replay_measured_visibility.py` tests extending mapped reach to stored positive
 finite depth, without changing measurement bytes. `--known-only` limits this to
 existing-record matching; discovery and placement refitting keep original bounds.

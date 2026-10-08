@@ -298,6 +298,108 @@ def _moving_join_only():
     return Patch()
 
 
+@variant("ranged_refine")
+def _ranged_refine():
+    """A placement refitted from the depth readings that agree with it, where any
+    do (2026-10-08). On the six taped targets this put placements a median 0.11 m
+    from the tape against 0.36 m from bearings, with the tape inside the stated
+    uncertainty 68% of the time (`placement_calibration.py`). Here the question is
+    what it does to identity: a placement that moves and a stated uncertainty that
+    shrinks also move and narrow every gate that reads them.
+
+    The same rule as `placement_calibration.ranged`: rays that ranged and point at
+    the bearing-only refinement within its allowance give points, their range laid
+    flat at their elevation; the median point is the position; the uncertainty is
+    the larger of the points' spread and their median own error over the root of
+    how many viewpoints ranged it. Still 2.0 degrees, moving 4.5. The ellipse is
+    made a circle of that radius.
+    """
+    import statistics
+    original = locate.refine
+
+    def refine(point, rays):
+        base = original(point, rays)
+        points = []
+        for ray in rays:
+            rng = ray.get("range_m")
+            if rng is None or resolve._allowance_used(base, ray) is None:
+                continue
+            elevation = locate.elevation_of(ray) or 0.0
+            flat = float(rng) * math.cos(math.radians(elevation))
+            b = math.radians(ray["bearing_deg"])
+            move = ((ray.get("origin_sigma_m") or 0.0) > 0.0
+                    or (ray.get("bearing_sigma_deg") or 0.0) > locate.BEARING_SIGMA_DEG)
+            own = math.hypot(float(ray.get("range_sigma_m") or locate.RANGE_SIGMA_M),
+                             flat * math.tan(math.radians(4.5 if move else 2.0)))
+            points.append((ray["x_m"] + flat * math.cos(b), ray["y_m"] + flat * math.sin(b),
+                           own, (round(ray["x_m"] / locate.MIN_BASELINE_M),
+                                 round(ray["y_m"] / locate.MIN_BASELINE_M))))
+        if not points:
+            return base
+        x = statistics.median(p[0] for p in points)
+        y = statistics.median(p[1] for p in points)
+        spread = math.sqrt(sum((p[0] - x) ** 2 + (p[1] - y) ** 2 for p in points)
+                           / len(points))
+        own = statistics.median(p[2] for p in points) / math.sqrt(len({p[3] for p in points}))
+        u = round(max(spread, own), 3)
+        return {**base, "x_m": round(x, 3), "y_m": round(y, 3), "uncertainty_m": u,
+                "error_major_m": u, "error_minor_m": u, "ranged_from": len(points)}
+
+    class Patch:
+        def __enter__(self):
+            locate.refine = refine
+            return self
+
+        def __exit__(self, *exc):
+            locate.refine = original
+            return False
+    return Patch()
+
+
+@variant("ranged_claim")
+def _ranged_claim():
+    """`ranged_refine`'s position and uncertainty, but only as the placement's
+    position and its claim (`stated_uncertainty_m`); the tolerance the resolver
+    matches with (`uncertainty_m` and the error ellipse) stays the bearing-only
+    figure. `ranged_refine` narrowed every gate with its smaller figure and split
+    more objects (2026-10-08); this keeps the gates as they were.
+    """
+    inner = _ranged_refine()
+    ranged = None
+    original_refine, original_stated = locate.refine, locate.stated_uncertainty
+
+    def refine(point, rays):
+        base = original_refine(point, rays)
+        locate.refine = ranged
+        try:
+            got = ranged(point, rays)
+        finally:
+            locate.refine = refine
+        if not got.get("ranged_from"):
+            return base
+        return {**base, "x_m": got["x_m"], "y_m": got["y_m"],
+                "ranged_from": got["ranged_from"],
+                "ranged_uncertainty_m": got["uncertainty_m"]}
+
+    def stated(placement):
+        if placement.get("ranged_uncertainty_m") is not None:
+            return placement["ranged_uncertainty_m"]
+        return original_stated(placement)
+
+    class Patch:
+        def __enter__(self):
+            nonlocal ranged
+            inner.__enter__()
+            ranged = locate.refine
+            locate.refine, locate.stated_uncertainty = refine, stated
+            return self
+
+        def __exit__(self, *exc):
+            locate.refine, locate.stated_uncertainty = original_refine, original_stated
+            return False
+    return Patch()
+
+
 def looks_in_order(database: Path, session: int) -> list[list[dict]]:
     """The session's observations grouped by the look that took them, ordered as
     the rover stored them (by identifier: 37 regions carry invalid clocks)."""
