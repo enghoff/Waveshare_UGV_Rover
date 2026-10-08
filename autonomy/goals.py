@@ -151,6 +151,19 @@ PLACEMENT_FLOOR_M = 0.10
 #: tilt +20 and nothing says which one this look would need.
 HEIGHT_SIGMA_LIMIT_M = 0.50
 
+#: How far above or below where the gimbal points the depth camera still sees a
+#: place: half of its 40-degree vertical view (65 by 40), less 3 degrees so that
+#: the place's own patch fits. On 2026-10-08, 14 of the 16 aimed looks (of 135)
+#: that improved their thing had it inside the depth camera's view; of 31 aimed
+#: at things more than 40 degrees up, none ranged it and none improved
+#: (docs/progress/2026-10-08-depth-sees-the-thing.md).
+DEPTH_HALF_VIEW_DEG = 17.0
+
+#: The tilts a look is calibrated at (`rover_daemon/permission.py`,
+#: INSPECTION_TILTS), the gimbal's resting one first: a look that needs no other
+#: does not move the gimbal at all.
+LOOK_TILTS_DEG = (20.0, 0.0)
+
 
 class Candidate:
     """One thing the rover could do, with everything a decision needs about it.
@@ -401,6 +414,13 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
     # Only when there is nowhere inside the band to stand, so that the refusal
     # appears in the record instead of the thing quietly not being considered.
     predicted = predicted or outside
+    # And of those, the places the depth camera can see the thing from, for the
+    # same reason as the band: a thing two metres up seen from a metre away is
+    # above the depth camera's view, and from there no look on record has ranged
+    # it or improved it. The others are kept only when there are no such places,
+    # so that `scoring.py` refuses them with the elevation in the sentence.
+    predicted = ([one for one in predicted if one[0]["in_depth_view"] is not False]
+                 or predicted)
     if not predicted:
         # Two different answers, and they must not read alike. Somewhere to
         # stand and nothing to gain is a thing that is already placed as well as
@@ -462,6 +482,9 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
                          "in_certified_band": (BAND_NEAR_M <= got["range_m"]
                                                <= BAND_FAR_M),
                          "tilt_unknown": got["tilt_unknown"],
+                         "in_depth_view": got["in_depth_view"],
+                         "elevation_deg": got["elevation_deg"],
+                         "look_tilt_deg": got["look_tilt_deg"],
                          "goal": {"x_m": round(view_x, 3),
                                   "y_m": round(view_y, 3),
                                   "heading_deg": round(heading, 1)},
@@ -589,6 +612,11 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
     height_sigma = placement.get("height_sigma_m")
     tilt_unknown = (height_sigma is None
                     or float(height_sigma) > HEIGHT_SIGMA_LIMIT_M)
+    tilt, elevation = _tilt_for(placement, range_m)
+    # Whether the depth camera can see the thing from here, at a tilt a look is
+    # calibrated at: None where the thing's height is not known well enough to
+    # say, which `tilt_unknown` already discounts.
+    in_depth_view = None if tilt_unknown or elevation is None else tilt is not None
 
     return {"gain_m": max(0.0, round(before - after, 4)),
             "before_m": round(before, 4), "after_m": round(after, 4),
@@ -600,8 +628,26 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
             "viewpoints_so_far": placement.get("viewpoints"),
             "parallax_so_far_deg": placement.get("parallax_deg"),
             "tilt_unknown": tilt_unknown,
+            "elevation_deg": None if elevation is None else round(elevation, 1),
+            "look_tilt_deg": tilt,
+            "in_depth_view": in_depth_view,
             "why": _why(entity, before, after, range_m, crossing_deg,
                         first_range)}
+
+
+def _tilt_for(placement: dict[str, Any], range_m: float
+              ) -> tuple[float | None, float | None]:
+    """The calibrated tilt that puts the thing in the depth camera's view from
+    `range_m` away, and the thing's elevation; (None, elevation) when none does,
+    (None, None) when its height is not known."""
+    height = placement.get("height_m")
+    if height is None:
+        return None, None
+    elevation = math.degrees(math.atan2(float(height), max(range_m, 0.05)))
+    for tilt in LOOK_TILTS_DEG:
+        if abs(elevation - tilt) <= DEPTH_HALF_VIEW_DEG:
+            return tilt, elevation
+    return None, elevation
 
 
 def _why(entity: dict[str, Any], before: float, after: float, range_m: float,

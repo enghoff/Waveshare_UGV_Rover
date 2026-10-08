@@ -152,6 +152,20 @@ def test_a_look_at_one_record_puts_its_same_object_records_aside() -> None:
           [one["target"] for one in cooled], ["object:5"])
 
 
+def test_a_thing_seen_empty_where_the_depth_camera_could_see_stays_aside_longer() -> None:
+    plain = cooling.after_attempt([], "object:8", _reading(6), _reading(7), now=NOW)
+    empty = cooling.after_attempt([], "object:8", _reading(6), _reading(7), now=NOW,
+                                  seen_empty=True)
+    check("an ordinary goal that got nowhere is aside for 15 minutes",
+          plain[0]["until"] - NOW, cooling.COOLDOWN_S)
+    check("...one whose look could see the place and found nothing, for two hours",
+          (empty[0]["until"] - NOW, "probably not where" in empty[0]["why"]),
+          (cooling.EMPTY_COOLDOWN_S, True))
+    helped = cooling.after_attempt([], "object:8", _reading(6), _reading(7, 0.30),
+                                   now=NOW, seen_empty=True)
+    check("...and a look that improved it puts nothing aside", helped, [])
+
+
 def test_a_placement_is_judged_by_what_it_claims() -> None:
     """2026-10-08: goals measured gain on the tolerance the resolver matches
     with, which never falls below its best crossing, rather than on what the
@@ -185,7 +199,8 @@ def test_a_place_navigation_could_not_reach_is_set_aside_for_a_while() -> None:
           cooling.after_failed_drive(places, {}, "why", now=NOW), places)
 
 
-TESTS = (
+TESTS = (test_a_thing_seen_empty_where_the_depth_camera_could_see_stays_aside_longer,
+         
     test_a_look_at_one_record_puts_its_same_object_records_aside,
     test_a_placement_is_judged_by_what_it_claims,
     test_a_place_navigation_could_not_reach_is_set_aside_for_a_while,

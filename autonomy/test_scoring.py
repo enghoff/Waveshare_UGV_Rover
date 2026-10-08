@@ -48,6 +48,20 @@ def test_every_term_of_the_score_is_written_down() -> None:
           scoring.DEFAULT.version)
 
 
+def test_a_look_the_depth_camera_cannot_see_is_refused() -> None:
+    """2026-10-08: no look at a thing outside the depth camera's view ranged it."""
+    here = _situation(entities=[_a_thing_worth_looking_at()])
+    candidate = goals.improve_geometry(here)[0]
+    candidate.constraints.update(in_depth_view=False, elevation_deg=58.0)
+    refused = [one["veto"] for one in scoring.vetoes(candidate, here)]
+    check("a viewpoint from which no calibrated tilt sees the thing is refused",
+          "outside the depth camera's view" in refused, True)
+    candidate.constraints.update(in_depth_view=None)
+    refused = [one["veto"] for one in scoring.vetoes(candidate, here)]
+    check("...and one whose thing's height is not known is not",
+          "outside the depth camera's view" in refused, False)
+
+
 def test_a_bigger_gain_never_buys_past_a_veto() -> None:
     """The check this file exists for."""
     here = _situation(CLOSET, entities=[a_thing("object:8", 0.55, 0.30,
@@ -297,6 +311,7 @@ def test_a_purpose_makes_one_kind_of_goal_matter_more() -> None:
 
 
 TESTS = (
+    test_a_look_the_depth_camera_cannot_see_is_refused,
     test_every_term_of_the_score_is_written_down,
     test_a_bigger_gain_never_buys_past_a_veto,
     test_a_low_battery_shuts_no_gate,

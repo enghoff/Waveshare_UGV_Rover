@@ -25,6 +25,7 @@ import math
 
 import client
 import cooling
+import decide as decide_mod
 import executive as executive_mod
 import permission
 import scoring
@@ -180,6 +181,47 @@ def test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it():
         session.close()
     finally:
         executive_mod.NAME_THE_TARGET = True
+
+
+def test_a_geometry_look_tilts_level_only_when_the_thing_needs_it():
+    """goals.LOOK_TILTS_DEG: a thing on the floor is seen by the depth camera
+    only with the gimbal level; anything else is looked at from rest."""
+    session = Session()
+    candidate = {"id": "improve_geometry:object:9@0.50,0.00", "type": "improve_geometry",
+                 "target": "object:9", "expects": "",
+                 "constraints": {"goal": {"x_m": 0.5, "y_m": 0.0, "heading_deg": 0.0},
+                                 "look_at": {"x_m": 2.0, "y_m": 0.0},
+                                 "look_tilt_deg": 0.0}}
+    look = session.executive.plan(candidate)[-1]["params"]
+    check("a look at a rug below the camera asks for the level tilt",
+          look.get("tilt_deg"), 0.0)
+    candidate["constraints"]["look_tilt_deg"] = 20.0
+    look = session.executive.plan(candidate)[-1]["params"]
+    check("...and a look at the resting tilt does not move the gimbal",
+          "tilt_deg" in look, False)
+    session.close()
+
+
+def test_a_look_that_could_see_the_place_and_found_nothing_sets_it_aside_longer():
+    """A record whose aimed look, taken with its place in the depth camera's
+    view, filed nothing is probably not where it claims (2026-10-08)."""
+    thing = a_thing()
+    thing["placement"]["height_m"] = 0.3
+    rover = test_fakes.ActingRover(room=ROOM, entities=[thing])
+    rover.inspection = {**dict(rover.inspection), "aimed_filing": {
+        "filed": None, "why": "no region of the look points at it"}}
+    session = Session(rover)
+    _arriving(session)
+    got = session.executive.once()
+    attempt = [one["body"] for one in session.events(got["episode"])
+               if one["kind"] == "measured" and one["body"].get("what") == "the attempt"]
+    check("the attempt says the place was seen empty",
+          attempt[-1].get("seen_empty"), True)
+    cooled = decide_mod._loads(session.store.marked(decide_mod.COOLED_MARK))
+    entry = [one for one in cooled if one["target"] == "object:19"][0]
+    check("...and the record is aside for two hours",
+          entry["until"] - entry["since"], cooling.EMPTY_COOLDOWN_S)
+    session.close()
 
 
 def test_a_geometry_look_records_and_leaves_settling_to_the_rover():
@@ -705,7 +747,9 @@ def test_a_goal_that_got_nowhere_is_not_chosen_again():
     session.close()
 
 
-TESTS = (
+TESTS = (test_a_look_that_could_see_the_place_and_found_nothing_sets_it_aside_longer,
+         test_a_geometry_look_tilts_level_only_when_the_thing_needs_it,
+         
     test_a_place_navigation_could_not_reach_is_not_driven_to_again,
     test_a_goal_that_got_nowhere_is_not_chosen_again,
     test_one_turn_drives_looks_and_writes_down_what_changed,

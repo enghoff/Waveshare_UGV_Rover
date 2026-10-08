@@ -520,6 +520,28 @@ def test_the_height_it_cannot_predict_is_declared_rather_than_assumed() -> None:
           found[0].constraints["tilt_unknown"], True)
 
 
+def test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands() -> None:
+    """2026-10-08: every goal that improved its thing had it inside the depth
+    camera's view; 31 looks at things more than 40 degrees up ranged none."""
+    painting = {"x_m": 2.0, "y_m": 0.0, "error_major_m": 0.6, "error_minor_m": 0.2,
+                "error_major_deg": 90.0, "height_m": 1.6, "height_sigma_m": 0.1}
+    near = goals._from_viewpoint(painting, {"id": "object:8"}, 1.0, 0.0)
+    far = goals._from_viewpoint(painting, {"id": "object:8"}, -0.5, 0.0)
+    check("a painting 1.6 m up seen from a metre away is above the depth camera",
+          (near["in_depth_view"], near["look_tilt_deg"], round(near["elevation_deg"])),
+          (False, None, 58))
+    check("...and from 2.5 m it is in view at the resting tilt",
+          (far["in_depth_view"], far["look_tilt_deg"]), (True, 20.0))
+    rug = {**painting, "height_m": -0.4}
+    low = goals._from_viewpoint(rug, {"id": "object:9"}, 0.5, 0.0)
+    check("a rug 0.4 m below the camera from 1.5 m wants the level tilt",
+          (low["in_depth_view"], low["look_tilt_deg"]), (True, 0.0))
+    unsure = goals._from_viewpoint({**painting, "height_sigma_m": 1.2},
+                                   {"id": "object:8"}, 1.0, 0.0)
+    check("a height too uncertain to say is not judged at all",
+          unsure["in_depth_view"], None)
+
+
 def test_the_same_situation_produces_the_same_list_twice() -> None:
     here = _situation(entities=[a_thing("object:8", 1.6, 1.0,
                                         uncertainty_m=0.6),
@@ -531,7 +553,8 @@ def test_the_same_situation_produces_the_same_list_twice() -> None:
     check("...and there are some", bool(first), True)
 
 
-TESTS = (
+TESTS = (test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands,
+         
     test_it_cannot_reach_the_rover,
     test_a_doorway_onto_unmapped_ground_is_worth_driving_to,
     test_a_finished_room_offers_nothing_to_explore,

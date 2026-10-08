@@ -225,8 +225,12 @@ estimate is time in different units.
 battery, a latched stop, a pose it does not trust, a map that has not settled, a
 perception loop that has stopped, and the standing fact that nothing here may
 move anything. A *veto* is about one candidate — nowhere to walk to, a viewpoint
-outside 0.5 to 2.5 m, a goal outside a configured safe area, or a thing that is
-cooling off. Both run before the scoring, so a purpose weight of a thousand
+outside 0.5 to 2.5 m, a viewpoint from which no calibrated tilt (20 or 0 degrees)
+puts the thing in the depth camera's 40-degree vertical view, a goal outside a
+configured safe area, or a thing that is cooling off. Viewpoints with the thing in
+that view are preferred, and the look tilts level when the thing needs it: on
+2026-10-08 no look at a thing more than 40 degrees up ranged it
+([the finding](../docs/progress/2026-10-08-depth-sees-the-thing.md)). Both run before the scoring, so a purpose weight of a thousand
 still buys nothing.
 
 **A thing that keeps taking looks and coming out no better is put aside.**
@@ -235,8 +239,11 @@ the executive the moment one geometry goal leaves its thing no better: a look
 from where the rover already looked is the same picture, which is not recorded,
 so counting looks alone let one goal be chosen twenty-two times in a row. The
 entry lapses either after fifteen minutes or the moment the placement really
-improves. Records the world state suspects are the same object as the target
-(`same_object_suspects`, from a look aimed at it) are put aside with it after
+improves; a thing whose aimed look could see its place and filed nothing to it
+is put aside for two hours instead, since it is probably not where it is placed.
+Records the world state suspects are the same object as the target
+(`same_object_suspects`, from a look aimed at it, and `group_mates`, from the
+latest grouping) are put aside with it after
 any geometry attempt, helped or not, so a run does not go back to the object by
 way of another record of it. How well a thing is placed is read as what its
 placement claims (`situation.claimed_m`, `stated_uncertainty_m`), not the

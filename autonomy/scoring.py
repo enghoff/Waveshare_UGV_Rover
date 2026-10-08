@@ -294,6 +294,12 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
                            f"{facts.get('range_m')} m, outside the "
                            f"{goals_mod.BAND_NEAR_M} to {goals_mod.BAND_FAR_M} m "
                            f"band this rover's geometry was accepted in"})
+    if facts.get("in_depth_view") is False:
+        out.append({"veto": "outside the depth camera's view",
+                    "why": f"from there the thing is {facts.get('elevation_deg')} "
+                           f"degrees up, outside what the depth camera sees at "
+                           f"either tilt a look is calibrated at, so the look "
+                           f"could not range it"})
     outside = permission.fence_breach(facts.get("goal"),
                                       _geofence(situation, weights))
     if outside:

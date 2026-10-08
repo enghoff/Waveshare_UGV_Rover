@@ -75,6 +75,7 @@ import client as client_mod
 import cooling
 import decide as decide_mod
 import events
+import goals
 import hypotheses
 import mapgrid
 import refs
@@ -354,7 +355,7 @@ class Executive:
                 self.state = "CHECK"
                 self.check(episode, request, looked)
             self.state = "EVALUATE"
-            after = self.evaluate(episode, here, candidate)
+            after = self.evaluate(episode, here, candidate, looked)
             if request is not None and request.get("answered"):
                 said = request["answered"]
                 after["what"] = f"{said['outcome']}: {said.get('why')}"
@@ -433,6 +434,12 @@ class Executive:
             aim = candidate["constraints"].get("look_at")
             if isinstance(aim, dict):
                 look["aim_at"] = aim
+            # Tilted level only when the thing needs it to be in the depth
+            # camera's view (goals.LOOK_TILTS_DEG); the resting tilt moves
+            # nothing, and saying so would move the gimbal there and back.
+            tilt = candidate["constraints"].get("look_tilt_deg")
+            if tilt is not None and float(tilt) != goals.LOOK_TILTS_DEG[0]:
+                look["tilt_deg"] = float(tilt)
             steps.append({"action": "world_inspect", "params": look})
         if candidate["type"] == hypotheses.GOAL_TYPE:
             # Both steps carry the case and its limits, which is what lets the
@@ -568,7 +575,8 @@ class Executive:
                               f"{ACTION_TIMEOUT_S:.0f} s", "timed out")
 
     def evaluate(self, episode: str, before: situation_mod.Situation,
-                 candidate: dict[str, Any]) -> dict[str, Any]:
+                 candidate: dict[str, Any],
+                 looked: dict[str, Any] | None = None) -> dict[str, Any]:
         """Read the rover again and record what the attempt actually changed.
 
         **What it hoped for is already in the record**, as the candidate's gain,
@@ -595,9 +603,21 @@ class Executive:
             # Put aside if it got nowhere, written where the next deliberation
             # reads its cooling from. See `cooling.after_attempt`.
             cooled = decide_mod._loads(self.store.marked(decide_mod.COOLED_MARK)) or []
+            # **Nothing found where the depth camera could see is worth more
+            # than nothing found.** A look taken with the thing inside the depth
+            # camera's view that filed nothing to it says the record is not
+            # where it claims, and such a record is set aside for longer
+            # (`cooling.EMPTY_COOLDOWN_S`); one taken from where the camera
+            # could not see the place says nothing of the kind.
+            filing = (looked or {}).get("aimed_filing") or {}
+            seen_empty = (bool(looked) and not filing.get("filed")
+                          and "points at it" in str(filing.get("why") or "")
+                          and candidate["constraints"].get("in_depth_view") is True)
+            if seen_empty:
+                measured["seen_empty"] = True
             now_cooled = cooling.after_attempt(cooled, candidate["target"],
                                                before.as_dict(), after.as_dict(),
-                                               now=after.at)
+                                               now=after.at, seen_empty=seen_empty)
             if now_cooled != cooled:
                 self.store.mark(decide_mod.COOLED_MARK, decide_mod._dumps(now_cooled))
                 measured["put_aside"] = True

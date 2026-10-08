@@ -33,6 +33,14 @@ import situation as situation_mod
 #: different viewpoint is not written off for the afternoon.
 COOLDOWN_S = 900.0
 
+#: How long a thing stays aside when a look aimed at it, taken from where the
+#: depth camera could see its place, filed nothing to it: the record is probably
+#: not where it claims to be. Two hours, about a supervised session. On
+#: 2026-10-08 a look at a record that had already come up empty filed 1 time in
+#: 15 (docs/progress/2026-10-08-what-predicts-a-filing.md); an improvement to
+#: its placement still brings it back at once.
+EMPTY_COOLDOWN_S = 7200.0
+
 #: How many more looks a thing may take between two deliberations while getting
 #: no better placed, before it is put aside. Three rather than one: a single
 #: look that does not help is ordinary -- most looks do not cross with anything
@@ -103,7 +111,7 @@ def update(previous: dict[str, Any] | None, current: dict[str, Any],
 
 def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
                   before: dict[str, Any] | None, after: dict[str, Any], *,
-                  now: float) -> list[dict[str, Any]]:
+                  now: float, seen_empty: bool = False) -> list[dict[str, Any]]:
     """The cooling list once a goal at `target` has been carried out.
 
     **A goal that went where it was sent, looked, and left the thing no better
@@ -117,7 +125,9 @@ def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
     choose the same one again.
 
     `before` and `after` are the situations either side of the attempt, read
-    with the same measure `update` lapses an entry by.
+    with the same measure `update` lapses an entry by. `seen_empty` is a look
+    that could see the thing's place and found nothing to file to it, which
+    sets the thing aside for `EMPTY_COOLDOWN_S` rather than `COOLDOWN_S`.
     """
     now = float(now)
     was = _by_id(before).get(target)
@@ -150,16 +160,21 @@ def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
         kept.sort(key=lambda one: str(one.get("target") or ""))
         return kept
     kept = [one for one in kept if str(one.get("target") or "") != target]
+    aside = EMPTY_COOLDOWN_S if seen_empty else COOLDOWN_S
     kept.append({
         "target": target,
         "since": now,
-        "until": now + COOLDOWN_S,
+        "until": now + aside,
         "looks": here["looks"],
         "uncertainty_m": here["uncertainty_m"],
-        "why": (f"a goal at {target} left it placed to "
-                f"{_metres(here['uncertainty_m'])} -- no better than before, so "
-                f"it is put aside for {int(COOLDOWN_S / 60)} minutes or until "
-                f"something changes")})
+        "why": ((f"a look at {target} from where the depth camera could see its "
+                 f"place found nothing to file to it, so it is probably not where "
+                 f"it is placed; put aside for {int(aside / 3600)} hours or until "
+                 f"something changes") if seen_empty else
+                (f"a goal at {target} left it placed to "
+                 f"{_metres(here['uncertainty_m'])} -- no better than before, so "
+                 f"it is put aside for {int(aside / 60)} minutes or until "
+                 f"something changes"))})
     kept.sort(key=lambda one: str(one.get("target") or ""))
     return kept
 
