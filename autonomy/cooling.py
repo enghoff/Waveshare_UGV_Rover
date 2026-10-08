@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import situation as situation_mod
+
 #: How long a target stays cool. Fifteen minutes is long enough that the rover
 #: gets on with something else and short enough that a thing which only needed a
 #: different viewpoint is not written off for the afternoon.
@@ -121,9 +123,29 @@ def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
     was = _by_id(before).get(target)
     here = _by_id(after).get(target)
     kept = [dict(one) for one in cooled or []]
-    # Gone, or helped: nothing to add, and `update` decides the rest.
+    # **The other records of the same object are put aside whatever came of
+    # it.** A look aimed at a thing files its region there, and where that
+    # region also fitted other records, they are probably the same object
+    # (world_state/aimed.py) -- going to one of them next would be going back
+    # to the thing just looked at, which is what the owner asked about on
+    # 2026-10-08. Their own placement is left to lapse them as `update` does.
+    if here is not None:
+        for other in here["same_as"]:
+            if other == target or any(str(one.get("target") or "") == other
+                                      for one in kept):
+                continue
+            again = _by_id(after).get(other) or {}
+            kept.append({
+                "target": other, "since": now, "until": now + COOLDOWN_S,
+                "looks": again.get("looks", 0),
+                "uncertainty_m": again.get("uncertainty_m"),
+                "why": (f"{other} is probably the same object as {target}, "
+                        f"which was looked at just now, so it is put aside for "
+                        f"{int(COOLDOWN_S / 60)} minutes or until something changes")})
+    # Gone, or helped: nothing more to add, and `update` decides the rest.
     if here is None or (was is not None
                         and _improved(was["uncertainty_m"], here["uncertainty_m"])):
+        kept.sort(key=lambda one: str(one.get("target") or ""))
         return kept
     kept = [one for one in kept if str(one.get("target") or "") != target]
     kept.append({
@@ -205,14 +227,11 @@ def _by_id(body: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
         target = str(entity.get("id") or "")
         if not target:
             continue
-        placement = entity.get("placement") or {}
-        uncertainty = placement.get("error_major_m")
-        if uncertainty is None:
-            uncertainty = entity.get("placement_uncertainty_m")
+        uncertainty = situation_mod.claimed_m(entity)
         out[target] = {
             "looks": int(entity.get("observation_count") or 0),
-            "uncertainty_m": (None if uncertainty is None
-                              else float(uncertainty))}
+            "uncertainty_m": uncertainty,
+            "same_as": [str(one) for one in entity.get("same_object_suspects") or []]}
     return out
 
 

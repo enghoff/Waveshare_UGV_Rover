@@ -945,8 +945,13 @@ class RoverWorld:
         # has not, whether looking again could ever change that. One query for
         # the whole list; see `WorldStore.ranging`.
         ranging = store.ranging([entity["id"] for entity in entities])
+        # Which things a look aimed at one of them suggested are the same
+        # object (world_state/aimed.py), so a run can put them aside together.
+        suspects = (store.same_object_suspects(store.map_session())
+                    if hasattr(store, "same_object_suspects") else {})
         for entity in entities:
             entity["ranging"] = ranging.get(entity["id"])
+            entity["same_object_suspects"] = suspects.get(entity["id"], [])
             observations = store.observations(entity["id"], limit=RAY_LIMIT)
             # With the placement, each ray also carries how it stands to it --
             # the range, how far off the bearing is and whether that is inside
@@ -1317,7 +1322,10 @@ class RoverWorld:
                     fresh=fresh, keep_depth=keep_depth,
                     wait_s=(float(arguments.get("wait_s") or CHECK_LOOK_WAIT_S)
                             if wait else 0.0),
-                    before=tilted if moves_gimbal else None)
+                    before=tilted if moves_gimbal else None,
+                    # A look aimed at a thing gives it the region at the aim;
+                    # see world_state/aimed.py.
+                    target=arguments.get("target") or None)
             finally:
                 if moved:
                     # Back to rest, so the next ordinary look is taken from

@@ -172,6 +172,13 @@ RUN_GATES = frozenset({"stopped", "autonomy not enabled",
                        "no movement authority"})
 
 
+
+#: Whether a geometry goal's look names the thing it is aimed at, so that the
+#: world state files the region at the aim to it (world_state/aimed.py). An
+#: action that relies on identity, so off until its case is agreed:
+#: docs/decisions/aimed-looks-file-to-their-target.md.
+NAME_THE_TARGET = False
+
 class Aborted(Exception):
     """Raised inside a turn to end it. Carries the reason the episode closes
     with, because an abort whose reason is assembled later is an abort whose
@@ -414,6 +421,12 @@ class Executive:
             # evaluation straight afterwards misses by that was measured at
             # 9 goals in 171 (2026-10-06, looks-seldom-reach-their-thing).
             look = {"settle": False}
+            if NAME_THE_TARGET:
+                # Named, so that the world state gives the thing the region it
+                # was aimed at rather than filing it like any other look: 5
+                # aimed looks in 157 reached their thing that way (2026-10-08).
+                # See world_state/aimed.py.
+                look["target"] = candidate["target"]
             # Aimed at the thing, which the daemon does from the heading it
             # measures, so the arrival tolerance does not leave it off the
             # picture. A record from before 2026-10-03 has no place to aim at.
@@ -921,10 +934,10 @@ class Executive:
 # --- the sentences a person reads --------------------------------------------
 
 def _uncertainty(here: situation_mod.Situation, target: str) -> float | None:
+    """What the rover claims for the thing's placement; see `situation.claimed_m`."""
     for one in here.entities:
         if one.get("id") == target:
-            value = one.get("placement_uncertainty_m")
-            return None if value is None else float(value)
+            return situation_mod.claimed_m(one)
     return None
 
 

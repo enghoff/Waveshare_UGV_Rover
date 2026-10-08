@@ -118,6 +118,42 @@ def test_a_goal_that_helped_or_lost_its_thing_puts_nothing_aside() -> None:
                                 now=NOW), other)
 
 
+def test_a_look_at_one_record_puts_its_same_object_records_aside() -> None:
+    """The owner's question on 2026-10-08: with a look's region filed to the
+    record it was aimed at, could the rover go back to the same object by way
+    of another record of it? Not straight away: the records the aimed region
+    also fitted are put aside with it, whether or not the look helped."""
+    def reading(uncertainty_m):
+        here = a_thing("object:8", 1.6, 1.0, uncertainty_m=uncertainty_m, looks=7)
+        here["same_object_suspects"] = ["object:9"]
+        twin = a_thing("object:9", 1.7, 1.1, uncertainty_m=0.6, looks=4)
+        twin["same_object_suspects"] = ["object:8"]
+        return a_situation(ROOM, entities=[here, twin], at=NOW)
+
+    cooled = cooling.after_attempt([], "object:8", reading(0.6), reading(0.3), now=NOW)
+    check("a look that helped its thing puts the thing's other record aside",
+          [one["target"] for one in cooled], ["object:9"])
+    check("...saying why", "probably the same object as object:8" in cooled[0]["why"], True)
+    cooled = cooling.after_attempt([], "object:8", reading(0.6), reading(0.6), now=NOW)
+    check("...and one that did not help puts both aside",
+          sorted(one["target"] for one in cooled), ["object:8", "object:9"])
+    check("a thing with no other record puts nothing more aside",
+          cooling.after_attempt([], "object:8", _reading(6), _reading(7, 0.30), now=NOW), [])
+
+
+def test_a_placement_is_judged_by_what_it_claims() -> None:
+    """2026-10-08: goals measured gain on the tolerance the resolver matches
+    with, which never falls below its best crossing, rather than on what the
+    placement claims."""
+    import situation
+    thing = a_thing("object:8", 1.6, 1.0, uncertainty_m=0.5, looks=7)
+    thing["placement"] = dict(thing["placement"], stated_uncertainty_m=0.12)
+    check("the claim is read where there is one", situation.claimed_m(thing), 0.12)
+    del thing["placement"]["stated_uncertainty_m"]
+    check("...and the matching figure where there is not",
+          situation.claimed_m(thing), 0.5)
+
+
 def test_a_place_navigation_could_not_reach_is_set_aside_for_a_while() -> None:
     """Found on 2026-10-03: one frontier the rover could not fit through to was
     driven at four times, forty seconds of recoveries each, until three
@@ -139,6 +175,8 @@ def test_a_place_navigation_could_not_reach_is_set_aside_for_a_while() -> None:
 
 
 TESTS = (
+    test_a_look_at_one_record_puts_its_same_object_records_aside,
+    test_a_placement_is_judged_by_what_it_claims,
     test_a_place_navigation_could_not_reach_is_set_aside_for_a_while,
     test_a_goal_that_left_its_thing_no_better_puts_it_aside_at_once,
     test_a_goal_that_helped_or_lost_its_thing_puts_nothing_aside,

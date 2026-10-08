@@ -235,7 +235,13 @@ the executive the moment one geometry goal leaves its thing no better: a look
 from where the rover already looked is the same picture, which is not recorded,
 so counting looks alone let one goal be chosen twenty-two times in a row. The
 entry lapses either after fifteen minutes or the moment the placement really
-improves.
+improves. Records the world state suspects are the same object as the target
+(`same_object_suspects`, from a look aimed at it) are put aside with it after
+any geometry attempt, helped or not, so a run does not go back to the object by
+way of another record of it. How well a thing is placed is read as what its
+placement claims (`situation.claimed_m`, `stated_uncertainty_m`), not the
+tolerance the resolver matches with, for the goal's prediction, its
+measurement and its cooling alike (2026-10-08).
 It is decided from the two readings rather than remembered, so it survives the
 recorder being stopped and started, and it is part of the inputs a decision is
 snapshotted with.

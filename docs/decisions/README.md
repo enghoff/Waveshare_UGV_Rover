@@ -7,6 +7,7 @@ the reasoning being redone.
 
 | Record | Status | Question it settles |
 |---|---|---|
+| [aimed-looks-file-to-their-target.md](aimed-looks-file-to-their-target.md) | proposed 2026-10-08 | the case for a geometry goal's look naming its target, so the region at the aim is filed to it, its depth sets the target's position and claim, and other records the region fitted cool off with it (R-WS-13) |
 | [trials-are-sized-by-what-they-show.md](trials-are-sized-by-what-they-show.md) | agreed 2026-10-07 | why M3 asks for a session in each of seven conditions instead of twenty sessions and 120 minutes, and why the plan's other counts are set by what they must show; M4 waits on the world state, M8 is optional |
 | [m3-defers-the-voice-trial.md](m3-defers-the-voice-trial.md) | agreed 2026-10-07 | why M3's criterion 12 is met by a person's manual move taking over a run, and a voice request through the realtime model is left until voice can set autonomy's goals |
 | [a-run-with-nothing-to-do-goes-home.md](a-run-with-nothing-to-do-goes-home.md) | agreed 2026-10-03 | why a run with nothing nearby goes further afield, and with nothing anywhere drives back to where it started and ends, instead of waiting on a draining battery; adds R-AUT-13 |

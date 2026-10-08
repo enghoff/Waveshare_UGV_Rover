@@ -48,6 +48,7 @@ from typing import Any, Iterable
 import cooling
 import mapgrid
 import refs
+import situation as situation_mod
 from situation import Situation
 
 #: How many frontiers and how many things are worth ranking in one pass. Both
@@ -349,10 +350,7 @@ def _room_to_improve(entity: dict[str, Any]) -> float:
     a thing nothing has ever measured the distance to is treated as no better
     than a declared stand-in until one does.
     """
-    placement = entity.get("placement") or {}
-    error = placement.get("error_major_m")
-    if error is None:
-        error = placement.get("uncertainty_m")
+    error = situation_mod.claimed_m(entity)
     error = UNKNOWN_PLACEMENT_M if error is None else float(error)
     ranging = entity.get("ranging") or {}
     if ranging.get("never_ranged"):
@@ -546,9 +544,7 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
     sigma = math.radians(BEARING_SIGMA_DEG)
     across_m = max(range_m, 0.05) * sigma
 
-    before = placement.get("error_major_m")
-    if before is None:
-        before = placement.get("uncertainty_m")
+    before = situation_mod.claimed_m({"placement": placement})
     before = UNKNOWN_PLACEMENT_M if before is None else float(before)
 
     major_deg = placement.get("error_major_deg")

@@ -257,4 +257,16 @@ SCHEMA = """
         note_before    TEXT,
         PRIMARY KEY (run_id, observation_id)
     );
+    -- Regions filed by aim: a look the executive aimed at a thing gave it this
+    -- region (aimed.py). Kept apart from the attachment because only aimed
+    -- ranges move a placement, and because the other records the region fitted
+    -- are evidence that they are the same object.
+    CREATE TABLE IF NOT EXISTS aimed_looks (
+        observation_id INTEGER PRIMARY KEY,
+        target_id      TEXT NOT NULL,
+        map_session    INTEGER NOT NULL,
+        filed_at       REAL NOT NULL,
+        entity_before  TEXT,
+        suspects_json  TEXT NOT NULL
+    );
 """

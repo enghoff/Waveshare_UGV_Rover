@@ -223,6 +223,23 @@ the time. It was re-measured and replaced on 2026-09-07 -- see
 lens was also 9.6% short in focal length until 2026-09-30, which put a box three
 degrees off at the edge of its picture; the ranges on those runs carry that too.
 
+## A look aimed at a thing
+
+A look can name the thing it was aimed at (`inspect(target=...)`, the daemon's
+`world_inspect` with `target`). Once the look is recorded, `aimed.py` gives that
+thing the region that points at it within the resolver's allowance, the map's
+reach left out, with height, range and appearance agreeing; a near tie files
+nothing. The region is attached, but not made an appearance example, and the
+filing is kept in `aimed_looks` with the other records the region fitted, which
+are probably the same object (`WorldStore.same_object_suspects`). Where aimed
+looks ranged the thing, `resolve._replace_placement` takes its position and its
+claim (`stated_uncertainty_m`, never below `aimed.CLAIM_FLOOR_M`) from them; the
+tolerance it is matched with stays the bearings' own. The autonomy executive
+names targets only once
+[the case](../docs/decisions/aimed-looks-file-to-their-target.md) is agreed. Why
+and how it was measured:
+[2026-10-08](../docs/progress/2026-10-08-aimed-filing.md).
+
 ## What to expect from it
 
 Measured against the owner's tape on the drives of 2026-10-01, 10-02 and 10-03. These

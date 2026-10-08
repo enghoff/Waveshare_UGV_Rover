@@ -407,6 +407,9 @@ class RoverAutonomy:
                 "settle": params.get("settle", True),
                 "tilt_deg": params.get("tilt_deg"),
                 "aim_at": params.get("aim_at"),
+                # The thing the look is aimed at, whose region is then filed to
+                # it (world_state/aimed.py).
+                "target": params.get("target"),
                 "fresh": bool(params.get("fresh")),
                 "keep_depth": bool(params.get("keep_depth")),
                 "wait": True,

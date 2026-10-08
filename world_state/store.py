@@ -367,6 +367,46 @@ class WorldStore:
             """).fetchall()
         return [_shown(dict(row)) for row in rows]
 
+    def record_aimed(self, observation_id: int, target_id: str, map_session: int,
+                     suspects: list[str], entity_before: str | None = None) -> None:
+        """Note that a look aimed at `target_id` gave it this region, and which
+        other records the region also fitted. See `aimed.py`."""
+        with self._lock, self.db:
+            self.db.execute(
+                "REPLACE INTO aimed_looks(observation_id, target_id, map_session,"
+                " filed_at, entity_before, suspects_json) VALUES(?,?,?,?,?,?)",
+                (int(observation_id), target_id, int(map_session), time.time(),
+                 entity_before, json.dumps(sorted(set(suspects)))))
+
+    def aimed_ids(self, entity_id: str, map_session: int) -> set[int]:
+        """The regions filed to this thing by aim, under this map, that it still holds."""
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT a.observation_id FROM aimed_looks a JOIN observations o"
+                " ON o.id = a.observation_id WHERE a.target_id = ? AND"
+                " a.map_session = ? AND o.entity_id = ?",
+                (entity_id, int(map_session), entity_id)).fetchall()
+        return {int(row[0]) for row in rows}
+
+    def same_object_suspects(self, map_session: int) -> dict[str, list[str]]:
+        """Every placed thing an aimed region suggested is the same object as
+        another, both ways round: `{thing: [things]}`."""
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT target_id, suspects_json FROM aimed_looks WHERE map_session = ?",
+                (int(map_session),)).fetchall()
+        found: dict[str, set] = {}
+        for target, text in rows:
+            try:
+                others = json.loads(text or "[]")
+            except ValueError:
+                continue
+            for other in others:
+                if other and other != target:
+                    found.setdefault(target, set()).add(other)
+                    found.setdefault(other, set()).add(target)
+        return {key: sorted(value) for key, value in found.items()}
+
     def placed_elsewhere(self, map_session: int) -> list[dict[str, Any]]:
         """Entities the rover knows, standing in a map that is not this one.
 

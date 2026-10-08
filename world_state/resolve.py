@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import cluster, locate, oak, view
+from . import aimed, cluster, locate, oak, view
 from .appearance import _UNIT, alone, any_of, appearance, similarity
 
 MATCH = "match"
@@ -1293,12 +1293,32 @@ def _replace_placement(store, entity_id: str, session: int,
                     if one.get("map_session") == session]
     rays = [ray for ray in (ray_of(one, reach) for one in observations) if ray]
     best = locate.best_fix(rays)
+    placed = None
     if best is not None:
         # The pair chooses the answer; every ray that agrees with it then says
         # where exactly. See `locate.refine` -- this is what makes a look taken
         # to confirm a thing worth taking, because until it existed a third
         # agreeing bearing changed nothing at all.
-        store.place(entity_id, locate.refine(best, rays), session)
+        placed = locate.refine(best, rays)
+    # **Where a look aimed at this thing ranged it, that range is the position
+    # and the claim** (`aimed.aimed_claim`); the tolerance it is matched with
+    # stays the bearings' own, because narrowing it split more objects. Read
+    # by identifier, not from the window above, which an aimed look can fall
+    # out of as later looks join.
+    aimed_ids = getattr(store, "aimed_ids", lambda *_: set())(entity_id, session)
+    if aimed_ids:
+        if placed is None:
+            current = store.entity(entity_id) or {}
+            placed = current.get("placement") if isinstance(
+                current.get("placement"), dict) else None
+        if placed is not None:
+            aimed_rays = [ray for ray in (ray_of(one, None) for one in store.observations(
+                ids=sorted(aimed_ids), limit=len(aimed_ids))) if ray]
+            claim = aimed.aimed_claim(aimed_rays, aimed_ids, placed)
+            if claim is not None:
+                placed = {**placed, **claim}
+    if placed is not None:
+        store.place(entity_id, placed, session)
 
 
 #: Which pass makes new things out of bearings that nothing already placed

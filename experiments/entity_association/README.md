@@ -656,6 +656,11 @@ scoring, and reports what the resolver did with it. Whether a pick shows the
 target is judged from the photographs
 ([2026-10-08](../../docs/progress/2026-10-08-aimed-looks.md)).
 
+`replay_aimed.py --output <file>` puts the 157 recorded aimed looks through
+`world_state/aimed.py` on a copy of the 2026-10-06 store, as if each had named its
+target, and keeps what each filing did
+([2026-10-08](../../docs/progress/2026-10-08-aimed-filing.md)).
+
 `placement_calibration.py --output <file>` feeds the 126 eye-matched looks of
 the six targets taped on 2026-10-03 in time order and scores three ways of
 placing them against the tape: the resolver's bearings, every bearing pooled,

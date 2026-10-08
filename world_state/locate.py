@@ -64,7 +64,14 @@ STATED_SINGLE_LOOK_M = 1.0
 
 
 def stated_uncertainty(placement: dict[str, Any]) -> float | None:
-    """How far out a placement may be, as the rover should claim it."""
+    """How far out a placement may be, as the rover should claim it.
+
+    Where looks aimed at the thing ranged it, their own figure (`aimed.py`): on
+    the taped targets of 2026-10-03 the position from ranges was a median 0.11 m
+    off and the figure covered it 68% of the time, against 0.36 m from bearings.
+    """
+    if placement.get("aimed_uncertainty_m") is not None:
+        return round(float(placement["aimed_uncertainty_m"]), 3)
     got = placement.get("uncertainty_m")
     if got is None:
         return None

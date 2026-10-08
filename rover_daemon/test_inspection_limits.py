@@ -338,6 +338,33 @@ def test_an_autonomous_look_waits_for_the_rovers_own_look():
     check("a run's look that only records waits out a whole settling pass",
           (taken[-1]["wait_s"], taken[-1]["settle"]),
           (rover_autonomy.AUTONOMY_LOOK_WAIT_S, False))
+
+
+def test_a_look_aimed_at_a_thing_names_it_to_the_world_state():
+    """2026-10-08: a run's geometry look names the thing it is aimed at, so the
+    world state can give that thing the region at the aim (world_state/aimed.py).
+    The rover's own looking names nothing."""
+    from types import SimpleNamespace
+
+    import rover_autonomy
+    import rover_world
+
+    taken = []
+    rover = SimpleNamespace(
+        _world_ready=lambda: "",
+        _world_inspector=lambda: SimpleNamespace(
+            inspect=lambda **kwargs: taken.append(kwargs) or {"ok": True}),
+        centre_gimbal=lambda *a, **k: True,
+        _aim_pan=lambda aim: {"pan_deg": 0.0})
+    rover._tool_world_inspect = lambda arguments: (
+        rover_world.RoverWorld._tool_world_inspect(rover, arguments))
+    rover_autonomy.RoverAutonomy._autonomy_do(
+        rover, "world_inspect", {"settle": False, "target": "object:328"},
+        "a#4", "episode:1")
+    check("a run's look aimed at a thing names it to the inspector",
+          taken[-1]["target"], "object:328")
+    rover._tool_world_inspect({"settle": False})
+    check("...and the rover's own look names nothing", taken[-1]["target"], None)
     rover_autonomy.RoverAutonomy._autonomy_do(
         rover, "world_inspect", {"settle": True}, "a#4", "episode:1")
     check("...one that settles keeps the shorter wait, to end inside its permit",
@@ -357,4 +384,5 @@ TESTS = (
     test_a_look_aimed_straight_ahead_does_not_move_a_gimbal_already_there,
     test_a_check_look_whose_depth_service_was_down_is_taken_once_more,
     test_an_autonomous_look_waits_for_the_rovers_own_look,
+    test_a_look_aimed_at_a_thing_names_it_to_the_world_state,
 )

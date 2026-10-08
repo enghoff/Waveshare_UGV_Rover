@@ -52,7 +52,25 @@ WORLD_STALE_S = 600.0
 ENTITY_FIELDS = ("id", "kind", "label", "observation_count", "created_at",
                  "last_seen_at", "placement", "placement_uncertainty_m",
                  "placement_map_session", "last_map_session", "ranging",
-                 "exemplar_count")
+                 "exemplar_count", "same_object_suspects")
+
+
+def claimed_m(entity: dict[str, Any]) -> float | None:
+    """How well a thing is placed, as the rover claims it.
+
+    `stated_uncertainty_m` where the placement carries it -- the figure a look
+    aimed at the thing and ranged it improves (world_state/aimed.py) -- and the
+    tolerance the resolver matches with otherwise. Goals used to predict and
+    measure their gain on the tolerance, which by construction never falls below
+    its best crossing's own, so a look that helped could seldom show it
+    (docs/progress/2026-10-08-aimed-looks.md).
+    """
+    placement = entity.get("placement") or {}
+    for key in ("stated_uncertainty_m", "error_major_m", "uncertainty_m"):
+        if placement.get(key) is not None:
+            return float(placement[key])
+    value = entity.get("placement_uncertainty_m")
+    return None if value is None else float(value)
 
 
 class Situation:

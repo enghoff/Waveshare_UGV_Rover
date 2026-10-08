@@ -85,6 +85,20 @@ def test_the_world_state_calls_reach_the_store():
             check("...so the entity list is empty and the observation is not",
                   (entities["entities"], len(entities["recent"])), ([], 1))
             observation = entities["recent"][0]
+            # 2026-10-08: a look aimed at one thing whose region also fitted
+            # another says the two are probably one object, and the list says
+            # so on both, for a run to put them aside together.
+            store = rover._world_store()
+            session = store.map_session()
+            first, second = store.create_entity(), store.create_entity()
+            for entity_id, x_m in ((first, 1.0), (second, 1.1)):
+                store.place(entity_id, {"x_m": x_m, "y_m": 0.0, "uncertainty_m": 0.3},
+                            session)
+            store.record_aimed(observation["id"], first, session, [second])
+            listed = {one["id"]: one.get("same_object_suspects")
+                      for one in rover.call("world_state_entities", {})["entities"]}
+            check("things an aimed look found to be one object say so on both",
+                  (listed.get(first), listed.get(second)), ([second], [first]))
             check("the gimbal angles it was taken at are on the observation",
                   (observation["observer_pan_deg"], observation["observer_tilt_deg"]),
                   (25.0, -8.0))

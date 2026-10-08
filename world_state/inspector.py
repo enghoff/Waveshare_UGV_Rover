@@ -31,6 +31,7 @@ import threading
 import time
 from typing import Any, Callable
 
+from . import aimed
 from . import headingcheck
 from . import locate
 from . import oak
@@ -497,7 +498,7 @@ class Inspector(InspectionRanges):
 
     def inspect(self, settle: bool = True, fresh: bool = False,
                 keep_depth: bool = False, wait_s: float = 0.0,
-                before=None) -> dict[str, Any]:
+                before=None, target: str | None = None) -> dict[str, Any]:
         """Look once, and answer with what happened rather than with what was found.
 
         A second request while one is running is refused rather than queued. An
@@ -524,6 +525,11 @@ class Inspector(InspectionRanges):
         `before` is called once the camera is held and before the shutter: it is
         where the gimbal is set to another tilt, so that no other look is ever
         taken while it moves.
+
+        `target` names the thing the look was aimed at. Once the look is recorded
+        the region at the aim is filed to it (`aimed.file_by_aim`), inside this
+        lock so that no settling pass can take the region first, and the reply
+        carries what was filed as `aimed_filing`.
         """
         held = (self._lock.acquire(timeout=wait_s) if wait_s > 0
                 else self._lock.acquire(blocking=False))
@@ -543,6 +549,9 @@ class Inspector(InspectionRanges):
             if before is not None:
                 before()
             result = self._inspect(settle=settle, fresh=fresh, keep_depth=keep_depth)
+            if target and result.get("frame_id"):
+                result["aimed_filing"] = aimed.file_by_aim(
+                    self.store, str(target), str(result["frame_id"]), reach=self.reach)
             if recorder is not None:
                 recorder.boundary('inspect_end', self.store, result=result)
             return result

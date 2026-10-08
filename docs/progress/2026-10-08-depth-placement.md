@@ -6,8 +6,10 @@ uncertainty covers the tape about as often as a one-sigma figure should.** That
 holds for looks matched to a target by eye. Across a whole replayed session it
 holds only when matching is tight enough to keep records pure, and tight matching
 splits more objects. With matching left as it is, mixed views' depth readings
-pull the positions off again. Nothing was deployed. R-WS-10 stays failing;
-R-WS-17 and R-WS-18 stay proposed.
+pull the positions off again. Nothing was deployed. R-WS-17 and R-WS-18 stay
+proposed; R-WS-10 is retired in favour of
+[claims measured honestly](../decisions/bearings-are-measured-not-required.md),
+which is what the coverage figures below measure.
 
 ## Against the tape
 
