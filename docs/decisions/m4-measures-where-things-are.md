@@ -1,6 +1,6 @@
 # M4 measures where things are, against a re-look, on average
 
-Status: proposed 2026-10-09, at the owner's request that M4 be made achievable
+Status: agreed 2026-10-09 by the owner, who asked that M4 be made achievable
 with the rover's present hardware, vision models and approach. Changes Phase 4
 and M4 in the [plan](../plans/autonomous-curiosity.md), and supersedes the M4
 item of [trials-are-sized-by-what-they-show.md](trials-are-sized-by-what-they-show.md).
