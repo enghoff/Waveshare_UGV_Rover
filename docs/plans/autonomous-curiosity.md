@@ -727,8 +727,10 @@ conditions are:
   [blocking trials](../progress/2026-10-08-blocking-trials.md) the owner stood
   still in front of a 1.2 m goal and it waited and went round them: met. On a
   4.4 m goal it stopped and waited but the way round failed twice, its last leg
-  drifting towards the owner until Nav2 stopped it; owed again once the way
-  round is driven closed-loop;
+  drifting towards the owner until Nav2 stopped it. With the planner's
+  [live layer](../progress/2026-10-08-live-layer.md) the same 4.4 m leg was
+  driven round the owner standing still, without a stop: met for a person with
+  room to pass. Standing where there is no way round, a doorway, is still owed;
 - **furniture moved since the map was made**: something standing in a mapped
   gap, or a door open that the map has shut;
 - **the depth camera unavailable**, its service stopped for the run, which is

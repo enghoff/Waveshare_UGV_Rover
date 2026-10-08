@@ -161,6 +161,29 @@ straight drive that stops for anything in its way. With no such way the goal is
 handed back as blocked, and one stopped three times is handed back too. It
 never swings on the spot over a curve it will not follow.
 
+A goal further away is one Nav2 goal, and the planner sees a person too. Its
+costmap has a live layer (`behaviors/`, `LiveObstacleLayer`) that lays the
+latest scan within 3 m onto the map at every update, twice a second, using the
+map's position as it is at that moment, and keeps nothing between updates. The
+planner, replanning once a second, draws its route round whoever stands in the
+way, and nothing they leave behind can turn into a ghost wall, because nothing
+is remembered. Scan points within 10 cm of a wall the map already has are left
+to the map. On the rover a person standing on a 4.4 m leg was driven round
+without a stop, the rover's centre passing about half a metre from them
+([2026-10-08](../docs/progress/2026-10-08-live-layer.md)). The bridge's
+`{"op": "live_layer", "enabled": false}` switches it off at run time and its
+marks go at the next update; removing it from the plugin list in
+`config/nav2.yaml` takes it out for good.
+
+Longer goals also check the next metre of Nav2's route on the live scan every
+second. Something on it that is not a wall on the map stops the goal, and the
+rover goes on as a near goal to a point 1.4 m further along the route, waiting
+and going round as above, then on to the goal, at most three times. With the
+live layer on, this is for what the planner has not routed round: someone
+stepping in close, or standing where there is no way round. Whether something
+is a wall is asked of slam_toolbox's map, not the planner's costmap, which has
+the person on it as well.
+
 No goal turns on the spot for ever. A drive that has not got 0.5 m further on
 in 25 s while Nav2 attempts no recovery is ended and says so. Nav2's own
 progress check counts a 20-degree swing as progress, so it cannot see this.
@@ -197,6 +220,12 @@ answered once.
   manual reverse can be required before replanning.
 - Long routes may legitimately detour because this differential-drive chassis
   cannot follow every geometric shortcut.
+- With the live layer on, a person standing where there is no way round, in a
+  doorway, leaves the planner with no route at all. Nav2's own recoveries for
+  that (clearing the costmaps, a quarter turn on the spot, a 5 s wait, a short
+  reverse) can then start while the person is still more than a metre off,
+  before the route watch is close enough to stop the goal. This is predicted
+  from Nav2's default behaviour tree and has not been tried on the rover.
 
 These are hardware/navigation issues. Reproduce them with a recording or the
 provided simulator before changing configuration.
