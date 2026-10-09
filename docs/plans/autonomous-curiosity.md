@@ -797,27 +797,19 @@ criteria 3, 5, 6 and 8 ([experiments/m4/README.md](../../experiments/m4/README.m
 On the rover's own store it reproduces what the rover recorded for its 2026-10-08
 looks. What is left:
 
-1. **Labelling the six old targets' records**, for the development attempts. Their
-   records are many: on 2026-10-09 two that each held one 2026-10-03 look at the
-   cabinet or a painting stood 2.0 and 1.7 m from its tape. A record is labelled
-   from its photographs and its position, not from a look it happens to hold.
-2. **Development attempts** on those six, to measure how often chosen viewpoints
-   and re-looks each improve placement, and to set the size of the acceptance set
-   from those rates (criterion 4). With chosen looks improving one time in six,
-   as on 2026-10-08, the comparison needs about 23 pairs if a re-look never
-   improves anything, 49 if it does one time in fifty, 99 at one in twenty and
-   about 235 at half the chosen looks' rate (`score_attempts.py plan`); past a
-   hundred, the comparison is to be revisited before the rover spends them.
-   Recorded looks cannot stand in for these: of the 157 aimed looks of 10-02 to
-   10-06 and the 208 of 10-08, 15 were aimed at a record of a taped thing.
-3. **A new taped set.** The six things taped on 2026-10-03
-   (`captures/2026-10-03-targets/TARGETS.txt`) fixed the depth placement rule
-   ([2026-10-08](../progress/2026-10-08-depth-placement.md)), so they are
-   development evidence now. Acceptance needs about a dozen new things in at
-   least two rooms, picked from the rooms as they are, each one the rover can
-   range from somewhere it can stand. The owner gives tape readings. Which of the
-   store's records belong to each thing is labelled from their pictures before
-   any acceptance attempt, and both stay frozen through the comparison.
+1. **The owner's decision on the comparison.** Seventeen development attempts on
+   the 2026-10-03 things ([2026-10-09](../progress/2026-10-09-m4-development-attempts.md))
+   found re-looks improving their thing as often as chosen viewpoints, 4 against 3,
+   none worse: inside a room, the thing is usually in reach of where the rover
+   already stands. At those rates no count of pairs shows the chosen viewpoint
+   better, which is the case [the decision](../decisions/m4-measures-where-things-are.md)
+   names for reopening it. Either the baseline becomes the nearest reachable
+   viewpoint, at well over a hundred pairs, or turning to look from where the
+   rover stands comes first and M4 asks its question of things out of reach.
+2. **Labelling the new set's records.** Eleven things in three rooms were taped on
+   2026-10-09 (`captures/2026-10-09-m4-targets/truth-acceptance-draft.json`); the
+   records named there are the ones the things were chosen by. They are labelled
+   from their photographs just before the acceptance attempts, and then frozen.
 
 Also ahead, though M4 does not need it: proposing things seen once and never
 placed, which are a third of the observations and one of the questions the
