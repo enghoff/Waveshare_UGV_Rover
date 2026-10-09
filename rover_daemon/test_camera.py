@@ -572,6 +572,43 @@ def test_centring_the_gimbal_arrives_from_below_on_purpose() -> None:
         rover.APPROACH_SETTLE_S = was
 
 
+def test_a_long_swing_finishes_before_the_final_step_up() -> None:
+    """A swing still going when the step up is sent arrives from above.
+
+    Measured on 2026-10-09: centring from +180 with the fixed 0.6 s wait landed
+    2.1 degrees right of rest three times in three -- the servo was still coming
+    down at about +110 when told to stop at zero -- while every swing of 135
+    degrees or less landed within a quarter of a degree. The wait now grows with
+    the swing, and a short move keeps the half-second it always had.
+    """
+    import rover
+    import rover_daemon
+
+    check("a short move keeps the old wait",
+          rover.approach_settle_s(15.0, -5.0), rover.APPROACH_SETTLE_S)
+    check("the measured 179-degree swing (1.20 s) is waited out",
+          rover.approach_settle_s(174.0, -5.0) >= 1.20 + 0.15, True)
+    check("...and so is the 95-degree one (0.95 s)",
+          rover.approach_settle_s(90.0, -5.0) >= 0.95, True)
+    check("a servo never sent anywhere is assumed to be at the far end",
+          rover.approach_settle_s(None, -5.0), rover.approach_settle_s(180.0, -5.0))
+
+    slept = []
+    was = rover.time.sleep
+    rover.time.sleep = slept.append
+    try:
+        link = FakeLink()
+        machine = rover_daemon.Rover(link, "unused", device=None)
+        machine.call("look_at", {"pan": 180, "tilt": 20})
+        slept.clear()
+        machine.call("center_camera", {})
+        check("centring from +180 waits for the swing to -5",
+              slept[:1], [rover.approach_settle_s(180.0, -5.0)])
+        check("...and still ends at rest, from below", machine.gimbal_at_rest(), True)
+    finally:
+        rover.time.sleep = was
+
+
 TESTS = (
     test_no_camera,
     test_default_camera,
@@ -585,4 +622,5 @@ TESTS = (
     test_what_the_camera_does_with_nobody_in_view,
     test_the_gimbal_remembers_which_way_it_last_travelled,
     test_centring_the_gimbal_arrives_from_below_on_purpose,
+    test_a_long_swing_finishes_before_the_final_step_up,
 )

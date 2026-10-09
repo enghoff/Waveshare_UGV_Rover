@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Any
 
-from aiming import REST_TILT_DEG
+from aiming import PAN_LIMIT, REST_TILT_DEG
 from board_link import (
     BATTERY_CELLS, BATTERY_MAX_AGE_S, CMD_LIGHTS, CMD_PROBE, PROBE_WAIT_S,
     _battery_percent, _battery_state, _battery_summary,
@@ -37,11 +37,32 @@ from tool_schemas import (
 #: calibration therefore still describes where the camera ends up, and every move
 #: is a 5-degree flick rather than a 30-degree swing.
 APPROACH_UNDERSHOOT_DEG = 5
-#: How long to let the servo get there. The bench waits 2.5 s before it
+#: How long to let the servo get there, at least. The bench waits 2.5 s before it
 #: photographs anything, most of which is for the picture rather than the servo;
-#: nothing is measured here, so this only has to be longer than a 30-degree
-#: move, which on these serial servos at full speed is well under a tenth of it.
+#: nothing is measured here, so this only has to be longer than the move.
 APPROACH_SETTLE_S = 0.6
+#: **And longer for a longer swing, because a swing still going when the final
+#: step is sent arrives from above.** Measured with the OAK's gyro on 2026-10-09
+#: (`usb_cameras/capture_pan_sweep.py`): a single pan command lands within 0.2
+#: degrees of its target in 0.49 s for 24 degrees, 0.89 for 86, 1.13 for 141 and
+#: 1.20 for 179. Centring from +180 took the fixed 0.6 s, the servo was still
+#: coming down at about +110 when told to stop at zero, and it landed there from
+#: above -- 2.1 degrees right of rest on three returns in three, the far side of
+#: the backlash, with `gimbal_at_rest` saying otherwise. From 135 it happened to
+#: overshoot past the undershoot and come back up, which is luck rather than
+#: design. A second per this many degrees on top of the half-second floor covers
+#: every swing measured, with 0.2 s to spare at 95 degrees and more beyond.
+APPROACH_SWING_DPS = 200.0
+APPROACH_SWING_FLOOR_S = 0.5
+
+
+def approach_settle_s(was: float | None, below: float) -> float:
+    """How long to wait after sending the gimbal from `was` to `below` before
+    the final step up. Nothing sent yet means the servo could be anywhere, so the
+    longest swing its limits allow is assumed."""
+    swing = (PAN_LIMIT + abs(below)) if was is None else abs(below - was)
+    return max(APPROACH_SETTLE_S,
+               APPROACH_SWING_FLOOR_S + swing / APPROACH_SWING_DPS)
 
 
 class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDepth,
@@ -368,10 +389,11 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         pan = float(round(pan_deg))
         with self._lock:
             below = pan - APPROACH_UNDERSHOOT_DEG
+            was = self._pan_sent
             if self.link.send({"T": 133, "X": below,
                                "Y": round(tilt), "SPD": 0, "ACC": 0}):
                 self._pan_sent = float(below)
-                time.sleep(APPROACH_SETTLE_S)
+                time.sleep(approach_settle_s(was, below))
             self.pan, self.tilt = pan, tilt
             return self._send_gimbal()
 
