@@ -23,6 +23,14 @@ namespace live_layer
 int mark_fresh(nav2_costmap_2d::Costmap2D & grid, const std::vector<Point> & points,
                int wall_cells)
 {
+  const double margin = wall_cells * grid.getResolution();
+  return mark_fresh(grid, points, std::vector<double>(points.size(), 0.0),
+                    margin - 1e-9, 0.0);
+}
+
+int mark_fresh(nav2_costmap_2d::Costmap2D & grid, const std::vector<Point> & points,
+               const std::vector<double> & ranges, double margin_m, double per_m)
+{
   // **Decided against the map as it stands before any of them is marked.**
   // Marking as it went, the first point on a person would make every point
   // beside it look like "near something already lethal" and the rest of the
@@ -31,12 +39,17 @@ int mark_fresh(nav2_costmap_2d::Costmap2D & grid, const std::vector<Point> & poi
   const int height = static_cast<int>(grid.getSizeInCellsY());
   std::vector<std::pair<unsigned int, unsigned int>> fresh;
   fresh.reserve(points.size());
-  for (const auto & point : points) {
+  const double resolution = grid.getResolution();
+  for (std::size_t i = 0; i < points.size(); ++i) {
+    const auto & point = points[i];
     unsigned int mx = 0;
     unsigned int my = 0;
     if (!grid.worldToMap(point.first, point.second, mx, my)) {
       continue;
     }
+    const double range = i < ranges.size() ? ranges[i] : 0.0;
+    const int wall_cells = static_cast<int>(
+      std::ceil((margin_m + per_m * range) / resolution));
     bool mapped = false;
     for (int dy = -wall_cells; dy <= wall_cells && !mapped; ++dy) {
       for (int dx = -wall_cells; dx <= wall_cells; ++dx) {
@@ -99,12 +112,14 @@ void LiveObstacleLayer::onInitialize()
   declareParameter("min_range_m", rclcpp::ParameterValue(min_range_m_));
   declareParameter("max_age_s", rclcpp::ParameterValue(max_age_s_));
   declareParameter("wall_margin_m", rclcpp::ParameterValue(wall_margin_m_));
+  declareParameter("wall_margin_per_m", rclcpp::ParameterValue(wall_margin_per_m_));
   node->get_parameter(getFullName("enabled"), active_);
   node->get_parameter(getFullName("scan_topic"), topic_);
   node->get_parameter(getFullName("max_range_m"), max_range_m_);
   node->get_parameter(getFullName("min_range_m"), min_range_m_);
   node->get_parameter(getFullName("max_age_s"), max_age_s_);
   node->get_parameter(getFullName("wall_margin_m"), wall_margin_m_);
+  node->get_parameter(getFullName("wall_margin_per_m"), wall_margin_per_m_);
 
   // The layer as the costmap sees it is always on, and the switch is ours:
   // a layer the costmap thinks is off is never asked for its bounds again, so
@@ -156,6 +171,8 @@ rcl_interfaces::msg::SetParametersResult LiveObstacleLayer::onParameters(
         max_age_s_ = parameter.as_double();
       } else if (name == getFullName("wall_margin_m")) {
         wall_margin_m_ = parameter.as_double();
+      } else if (name == getFullName("wall_margin_per_m")) {
+        wall_margin_per_m_ = parameter.as_double();
       }
     }
   }
@@ -181,6 +198,7 @@ void LiveObstacleLayer::updateBounds(
   }
 
   std::vector<Point> points;
+  std::vector<double> ranges;
   if (active && scan) {
     const double age = (clock_->now() - rclcpp::Time(scan->header.stamp, clock_->get_clock_type()))
       .seconds();
@@ -204,6 +222,7 @@ void LiveObstacleLayer::updateBounds(
         const double nearest = std::max(min_range, static_cast<double>(scan->range_min));
         const double furthest = std::min(max_range, static_cast<double>(scan->range_max));
         points.reserve(scan->ranges.size());
+        ranges.reserve(scan->ranges.size());
         for (std::size_t i = 0; i < scan->ranges.size(); ++i) {
           const double range = scan->ranges[i];
           if (!std::isfinite(range) || range < nearest || range > furthest) {
@@ -213,10 +232,12 @@ void LiveObstacleLayer::updateBounds(
           const double lx = range * std::cos(angle);
           const double ly = range * std::sin(angle);
           points.emplace_back(tx + c * lx - s * ly, ty + s * lx + c * ly);
+          ranges.push_back(range);
         }
       } catch (const tf2::TransformException & error) {
         RCLCPP_DEBUG(logger_, "%s: no transform for the scan (%s)", name_.c_str(), error.what());
         points.clear();
+        ranges.clear();
       }
     }
   }
@@ -244,6 +265,7 @@ void LiveObstacleLayer::updateBounds(
   before_max_y_ = y1;
   std::lock_guard<std::mutex> lock(mutex_);
   points_ = std::move(points);
+  ranges_ = std::move(ranges);
 }
 
 void LiveObstacleLayer::updateCosts(
@@ -251,17 +273,20 @@ void LiveObstacleLayer::updateCosts(
   int /*min_i*/, int /*min_j*/, int /*max_i*/, int /*max_j*/)
 {
   std::vector<Point> points;
+  std::vector<double> ranges;
   double margin = 0.0;
+  double per_m = 0.0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     points = points_;
+    ranges = ranges_;
     margin = wall_margin_m_;
+    per_m = wall_margin_per_m_;
   }
   if (points.empty()) {
     return;
   }
-  const int wall_cells = static_cast<int>(std::ceil(margin / master_grid.getResolution()));
-  live_layer::mark_fresh(master_grid, points, wall_cells);
+  live_layer::mark_fresh(master_grid, points, ranges, margin, per_m);
 }
 
 }  // namespace ugv_behaviors

@@ -42,6 +42,25 @@ int main()
   check("a point off the grid is ignored, not a crash",
         live::mark_fresh(grid, {{5.0, 5.0}}, 2) == 0);
 
+  // **The margin grows with range** (2026-10-09). Four metres square, a wall
+  // along y = 2.0 m, the default 0.10 m plus 0.087 m a metre (5 degrees).
+  {
+    nav2_costmap_2d::Costmap2D room(80, 80, 0.05, 0.0, 0.0, FREE_SPACE);
+    for (unsigned int x = 0; x < 80; ++x) {
+      room.setCost(x, 40, LETHAL_OBSTACLE);
+    }
+    const std::vector<ugv_behaviors::Point> far_wall = {{1.0, 2.22}};
+    check("the old fixed margin marks a wall seen 0.2 m off",
+          live::mark_fresh(room, far_wall, 2) == 1);
+    room.setCost(20, 44, FREE_SPACE);
+    check("...and the margin for 3 m of range leaves it alone",
+          live::mark_fresh(room, far_wall, {3.0}, 0.10, 0.087) == 0);
+    check("a person half a metre from that wall at 3 m is still marked",
+          live::mark_fresh(room, {{2.0, 1.47}}, {3.0}, 0.10, 0.087) == 1);
+    check("a point 0.2 m from the wall at 0.5 m range is still marked",
+          live::mark_fresh(room, {{3.0, 1.82}}, {0.5}, 0.10, 0.087) == 1);
+  }
+
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
   check("no points, no bounds", !live::bounds_of({}, x0, y0, x1, y1));
   live::bounds_of(points, x0, y0, x1, y1);

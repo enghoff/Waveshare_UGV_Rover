@@ -724,6 +724,12 @@ global_costmap:
         min_range_m: 0.15
         max_age_s: 0.5
         wall_margin_m: 0.10
+        # Grows the margin by this much per metre of range: tan(5 deg). The
+        # rover's heading on the map wanders a few degrees, so a wall at 2-3 m
+        # lands 10-30 cm off and was marked as new (2026-10-09; the orange
+        # marks along walls on the console). 5 degrees is the 10-90% spread of
+        # the scanned wall's angle against the map's on that day's drive.
+        wall_margin_per_m: 0.087
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         # slam_toolbox's live map, not a saved one. It republishes the whole grid

@@ -17,7 +17,13 @@
 // wipes the old marks before the static layer repaints the map under them.
 // A point within `wall_margin_m` of a cell the map already holds as lethal is
 // left alone: that is the map's wall, seen a few centimetres off, not something
-// new, and marking it would narrow every doorway.
+// new, and marking it would narrow every doorway. The margin grows by
+// `wall_margin_per_m` with the point's range, because the rover's heading on the
+// map is a few degrees out from one moment to the next and an error of angle
+// lands further off the further away it is: on 2026-10-09, 7% of the returns
+// within a metre lay more than 10 cm from a mapped wall, 47% of those at two to
+// three metres, and those are the orange marks seen along the walls on the
+// console (docs/progress/2026-10-09-live-layer-marks.md).
 //
 // `<name>.enabled` can be set while the planner runs, and is the way to take
 // the layer back out without a redeploy: switched off, it clears its marks on
@@ -52,6 +58,11 @@ namespace live_layer
 int mark_fresh(nav2_costmap_2d::Costmap2D & grid, const std::vector<Point> & points,
                int wall_cells);
 
+// The same, with each point's own margin: `margin_m` plus `per_m` for every metre
+// of its range, `ranges[i]` being the range of `points[i]`.
+int mark_fresh(nav2_costmap_2d::Costmap2D & grid, const std::vector<Point> & points,
+               const std::vector<double> & ranges, double margin_m, double per_m);
+
 // The box round `points`, as (min_x, min_y, max_x, max_y); false when empty.
 bool bounds_of(const std::vector<Point> & points, double & min_x, double & min_y,
                double & max_x, double & max_y);
@@ -85,6 +96,7 @@ private:
 
   // What this update will mark, and the box it was marked in last time.
   std::vector<Point> points_;
+  std::vector<double> ranges_;
   bool marked_before_ = false;
   double before_min_x_ = 0.0, before_min_y_ = 0.0, before_max_x_ = 0.0, before_max_y_ = 0.0;
 
@@ -94,6 +106,7 @@ private:
   double min_range_m_ = 0.15;
   double max_age_s_ = 0.5;
   double wall_margin_m_ = 0.10;
+  double wall_margin_per_m_ = 0.087;
 };
 
 }  // namespace ugv_behaviors
