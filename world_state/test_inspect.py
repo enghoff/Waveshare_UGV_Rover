@@ -6,6 +6,7 @@ cut across one, and the vectors must never reach the wire by accident.
 """
 from __future__ import annotations
 
+import math
 import tempfile
 import time
 
@@ -688,16 +689,15 @@ def test_a_picture_that_cannot_be_compared_is_recorded() -> None:
 def test_a_pan_beyond_the_calibration_keeps_the_picture_and_no_bearing() -> None:
     """M0 criterion 10: the deployed capture path refuses unsupported conditions.
 
-    The campaign of 2026-09-07 validated commanded pan -20 to +20 and nothing
-    outside it. The store already holds looks taken at pan 145, where the
-    servo's gain error is not known at all -- so this is the same answer a pose
+    The whole travel was measured on 2026-10-09 out to ±150, where the rover's
+    own antenna starts to fill the picture. Past that, this is the answer a pose
     in a map with no name gets, for the same reason: keep everything that was
     measured, record no direction, and say which it was.
     """
     with tempfile.TemporaryDirectory() as directory:
         store, _eyes, inspecting = a_seeing_inspector(
             directory, [[a_sighting()]],
-            capture=a_capture(pan=35.0, tilt=0.0, approach=1),
+            capture=a_capture(pan=160.0, tilt=0.0, approach=1),
             pose=a_pose())
         answer = inspecting.inspect()
         check("the look still happened", answer["ok"], True)
@@ -708,7 +708,7 @@ def test_a_pan_beyond_the_calibration_keeps_the_picture_and_no_bearing() -> None
         check("...nor a precision claimed for a direction there is not",
               row["bearing_sigma_deg"], None)
         check("...and the reason named, which is the one an operator can fix",
-              "outside the 20 its calibration covers" in (answer["detail"] or ""),
+              "outside the 150 its calibration covers" in (answer["detail"] or ""),
               True)
         store.close()
 
@@ -719,9 +719,42 @@ def test_a_pan_beyond_the_calibration_keeps_the_picture_and_no_bearing() -> None
             pose=a_pose())
         answer = inspecting.inspect()
         row = dict(store.db.execute("SELECT * FROM observations").fetchone())
-        check("the edge of the calibrated range is inside it, not outside",
+        check("the edge of the board's range is inside it, not outside",
               row["bearing_deg"] is not None, True)
+        check("...and claims nothing extra for the pan", row["bearing_sigma_deg"], None)
         store.close()
+
+
+def test_a_wide_pan_keeps_its_bearing_at_what_it_was_measured_to_be_worth() -> None:
+    """Between the board's ±20 and the sweep's ±150 the bearing is kept and
+    widened by what the whole-travel sweep of 2026-10-09 measured it to be worth:
+    0.7 degrees in quadrature, on top of the floor every bearing is spent at."""
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspecting = a_seeing_inspector(
+            directory, [[a_sighting()]],
+            capture=a_capture(pan=35.0, tilt=0.0, approach=1),
+            pose=a_pose())
+        answer = inspecting.inspect()
+        row = dict(store.db.execute("SELECT * FROM observations").fetchone())
+        check("a look panned 35 degrees keeps its direction",
+              row["bearing_deg"] is not None, True)
+        check("...at the floor and the wide-pan term together",
+              row["bearing_sigma_deg"],
+              round(math.hypot(locate.BEARING_SIGMA_DEG,
+                               inspector.WIDE_PAN_SIGMA_DEG), 2))
+        check("...and says why it is wider",
+              "beyond the board's 20" in (answer["detail"] or ""), True)
+        store.close()
+
+    where = {"x_m": 1.0, "y_m": 2.0, "heading_deg": 30.0}
+    _, seated, _ = inspector.aimed_where_it_was_calibrated(150.0, 1, where, None)
+    _, unseated, _ = inspector.aimed_where_it_was_calibrated(150.0, -1, where, None)
+    check("the edge of the sweep is inside it", seated is not None, True)
+    check("a wide pan reached from above carries the backlash as well",
+          unseated, round(math.hypot(inspector.UNSEATED_APPROACH_SIGMA_DEG,
+                                     inspector.WIDE_PAN_SIGMA_DEG), 2))
+    check("a pan to the left is judged the same as one to the right",
+          inspector.aimed_where_it_was_calibrated(-150.0, 1, where, None)[1], seated)
 
 
 def test_an_angle_reached_from_above_is_a_wider_bearing_not_a_lost_one() -> None:
@@ -814,6 +847,7 @@ TESTS = (
     test_clearing_the_store_makes_the_rover_record_the_room_again,
     test_a_picture_that_cannot_be_compared_is_recorded,
     test_a_pan_beyond_the_calibration_keeps_the_picture_and_no_bearing,
+    test_a_wide_pan_keeps_its_bearing_at_what_it_was_measured_to_be_worth,
     test_an_angle_reached_from_above_is_a_wider_bearing_not_a_lost_one,
     test_the_aim_gate_leaves_alone_what_it_cannot_judge,
 )

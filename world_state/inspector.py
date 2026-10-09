@@ -146,20 +146,27 @@ MAX_BEARING_SIGMA_DEG = 6.0
 
 #: How far off straight ahead the gimbal's pan calibration reaches, in degrees.
 #:
-#: **The envelope is this narrow because that is what was measured, and the
-#: rover spends most of its time inside it anyway.** The campaign of 2026-09-07
-#: sampled commanded pan -20 to +20 at tilt zero, from both directions, and
-#: passed there. Of the 2162 observations this rover had recorded by that date,
-#: about 92% were taken at a pan inside it and 1952 of them at pan zero exactly,
-#: so holding the line here costs the recording under a tenth of its looks.
-#: Beyond it the servo's gain error is unmeasured -- one to two degrees by pan
-#: 30 on the only sweep that reached that far, and nothing at all is known about
-#: the pan 145 the store contains eleven looks at.
-#:
-#: Widening this is a measurement rather than an edit: run the campaign at the
-#: angles wanted, then move the number. See
-#: `docs/runbooks/p0-gimbal-calibration.md`.
-DEMONSTRATED_PAN_DEG = 20.0
+#: **150, from a sweep of the whole travel against the OAK's gyro on
+#: 2026-10-09**, adopted by the owner's decision rather than by that sweep's own
+#: rule (see `docs/decisions/the-gimbal-aims-across-its-measured-travel.md`).
+#: Arriving from below, the camera landed within 0.59 degrees of the commanded
+#: pan everywhere inside ±150 in both sessions, gain 0.9985. Beyond 150 the
+#: rover's own antenna comes into the picture, at the top corner first and over
+#: a quarter of it by 170, so a look there would mostly record the rover itself.
+#: Past this the direction is still withheld.
+DEMONSTRATED_PAN_DEG = 150.0
+
+#: Where the printed-board calibration of 2026-09-07 reaches, in degrees. Inside
+#: it a bearing claims nothing extra for the pan; between this and
+#: `DEMONSTRATED_PAN_DEG` it claims `WIDE_PAN_SIGMA_DEG` more.
+BOARD_PAN_DEG = 20.0
+
+#: What a pan beyond the board calibration adds to a bearing, in degrees, in
+#: quadrature. The worst ascending miss inside ±150 across both sessions was
+#: 0.59, and the gyro the sweep measured with disagreed with the camera's own
+#: pictures by up to 0.34; together, 0.68. It sits outside the 1.5 floor
+#: (`locate.BEARING_SIGMA_DEG`) rather than inside it, so it is visible.
+WIDE_PAN_SIGMA_DEG = 0.7
 
 #: What a pan reached from the wrong side of the servo's backlash is worth, in
 #: degrees. The two approaches differed by 1.19 to 2.23 degrees across the
@@ -317,15 +324,14 @@ def aimed_where_it_was_calibrated(pan_deg, approach, where, sigma_deg):
     rover's camera has a state its calibration does not cover.** Two separate
     faults, and they deserve different answers.
 
-    *Beyond the calibrated pan range the direction is withheld.* The pan
-    campaign of 2026-09-07 validated commanded pan -20 to +20 degrees and
-    nothing outside it; past that the servo's gain error is not merely larger
-    but unmeasured, reaching one to two degrees by pan 30 on the one sweep that
-    went that far and unknown at the pan 145 this rover has actually recorded
-    looks at. That is the same situation as a pose in a map with no name, so it
-    gets the same answer: keep the picture, keep the regions, keep the vectors,
-    and record no direction. Widening the cone instead would be inventing a
-    number for something nobody measured.
+    *Beyond the calibrated pan range the direction is withheld.* The board
+    calibrated ±20 and the gyro sweep of 2026-10-09 measured out to ±150, where
+    the rover's own antenna starts to fill the picture. Past that there is
+    nothing worth a direction. That is the same situation as a pose in a map
+    with no name, so it gets the same answer: keep the picture, keep the
+    regions, keep the vectors, and record no direction. Between the board's
+    range and the sweep's, the bearing is kept and widened by
+    `WIDE_PAN_SIGMA_DEG`, which is what that sweep measured it to be worth.
 
     *Reached from the wrong side of the backlash the direction is widened.* The
     pan servo carries about a degree and a half of backlash at every angle, and
@@ -355,12 +361,21 @@ def aimed_where_it_was_calibrated(pan_deg, approach, where, sigma_deg):
         return None, None, (
             f"the camera was panned {pan:.0f} deg, outside the "
             f"{DEMONSTRATED_PAN_DEG:.0f} its calibration covers")
+    wide = WIDE_PAN_SIGMA_DEG if pan > BOARD_PAN_DEG else 0.0
     if approach == 1:
-        return where, sigma_deg, None
+        if not wide:
+            return where, sigma_deg, None
+        # Against the floor rather than against nothing: a still look carries
+        # no sigma of its own and is spent at `locate.BEARING_SIGMA_DEG`, and
+        # 0.7 on its own would vanish inside that.
+        floor = max(float(sigma_deg or 0.0), locate.BEARING_SIGMA_DEG)
+        return where, round(math.hypot(floor, wide), 2), (
+            f"the camera was panned {pan:.0f} deg, beyond the board's "
+            f"{BOARD_PAN_DEG:.0f}, so {wide:.1f} deg is added")
     # In quadrature with whatever the turn already cost, because the two are
     # independent: how far the servo is from where it was told is not affected
     # by how fast the rover was spinning underneath it.
-    widened = math.hypot(float(sigma_deg or 0.0), UNSEATED_APPROACH_SIGMA_DEG)
+    widened = math.hypot(float(sigma_deg or 0.0), UNSEATED_APPROACH_SIGMA_DEG, wide)
     return where, round(widened, 2), (
         "the camera reached that angle from above" if approach == -1 else
         "the camera has not been moved since the daemon started")

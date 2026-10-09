@@ -173,10 +173,11 @@ measured well enough to keep:
   [R-WS-16](../docs/requirements/world-state.md#r-ws-16);
 - more travel during the shutter bracket than `MOVED_WHILE_LOOKING_M`, or a turn
   that widens the bearing past `MAX_BEARING_SIGMA_DEG`;
-- a commanded pan outside `inspector.DEMONSTRATED_PAN_DEG`, which is the range
-  the gimbal's pan campaign actually validated. Past it the servo's gain error
-  is unmeasured rather than merely larger, and the store holds looks taken at
-  pan 145.
+- a commanded pan outside `inspector.DEMONSTRATED_PAN_DEG` (±150), the range the
+  whole-travel sweep of 2026-10-09 measured. Past it the rover's own antenna
+  fills the picture. Between the board's ±20 (`BOARD_PAN_DEG`) and ±150 the
+  bearing is kept with `WIDE_PAN_SIGMA_DEG` added; see
+  [the decision](../docs/decisions/the-gimbal-aims-across-its-measured-travel.md).
 - a scan that fits the map nowhere near where the rover believes it is
   ([headingcheck.py](headingcheck.py)), which is what a carried rover looks like
   ([R-WS-16](../docs/requirements/world-state.md#r-ws-16)). Turning on the spot

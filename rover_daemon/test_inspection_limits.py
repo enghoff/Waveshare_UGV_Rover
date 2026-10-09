@@ -186,7 +186,7 @@ def test_a_check_look_is_aimed_from_the_measured_heading():
     The navigator called a turn arrived 17 degrees short, and its heading was
     17.5 degrees out besides, so the place was outside the depth camera's view.
     The pan is now worked out from where one scan says the rover faces, held to
-    the twenty degrees the pan calibration covers.
+    the 150 degrees the pan calibration covers since 2026-10-09.
     """
     from types import SimpleNamespace
 
@@ -208,8 +208,10 @@ def test_a_check_look_is_aimed_from_the_measured_heading():
           "believed", aimed(15.0, 0.0, ahead_left)["pan_deg"], -10.0)
     check("...and from the believed one when the scan cannot say",
           aimed(15.0, 0.0, ahead_left, trusted=False)["pan_deg"], 5.0)
+    check("a place a quarter turn round is aimed at with the gimbal alone",
+          aimed(0.0, 0.0, {"x_m": 0.0, "y_m": 1.0})["pan_deg"], -90.0)
     check("a place further round than the calibration is aimed at its limit",
-          aimed(0.0, 0.0, {"x_m": 0.0, "y_m": 1.0})["pan_deg"], -20.0)
+          aimed(0.0, 0.0, {"x_m": -1.0, "y_m": 0.18})["pan_deg"], -150.0)
 
 
 def test_a_look_aimed_straight_ahead_does_not_move_a_gimbal_already_there():

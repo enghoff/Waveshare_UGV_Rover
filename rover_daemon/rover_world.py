@@ -1512,9 +1512,10 @@ class RoverWorld:
         2026-10-01 those two together left a hypothesis check facing 34 degrees
         away from its place, outside the depth camera's view. So one scan is
         measured against the map first, as a still look's heading check does,
-        and the pan is worked out from that. Held to the twenty degrees either
-        way the pan calibration covers; outside that the look is taken at the
-        limit and the check says whether the place made it into view.
+        and the pan is worked out from that. Held to `DEMONSTRATED_PAN_DEG`
+        either way, 150 since the whole-travel sweep of 2026-10-09; outside that
+        the look is taken at the limit and the check says whether the place made
+        it into view.
         """
         pose = self._world_pose()
         if not pose or pose.get("heading_deg") is None:

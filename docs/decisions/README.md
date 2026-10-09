@@ -7,6 +7,7 @@ the reasoning being redone.
 
 | Record | Status | Question it settles |
 |---|---|---|
+| [the-gimbal-aims-across-its-measured-travel.md](the-gimbal-aims-across-its-measured-travel.md) | agreed 2026-10-09 | why a look panned up to ±150 degrees keeps its bearing with 0.7 degrees added, although the whole-travel sweep's own rule came back inconclusive by a tenth of a degree, and why the rover aims with the gimbal rather than turning |
 | [m4-asks-of-things-out-of-reach.md](m4-asks-of-things-out-of-reach.md) | agreed 2026-10-09 | why M4 asks only of things out of reach of where the rover stands, and a thing in reach is turned to and looked at instead of driven to: in seventeen development attempts a look from where the rover stood did as well as the chosen viewpoint |
 | [every-gate-says-what-it-is-for.md](every-gate-says-what-it-is-for.md) | agreed 2026-10-09 | why each remaining milestone gate is tied to a performance a later phase needs or to something worth knowing: M3 ends on the current code, M5 starts from false alarms against the flat's change rate, M6 and M7 wait for a skill to learn, M9 is judged by what reflection adds, M10 can follow M4; running unattended is left to the owner |
 | [m4-measures-where-things-are.md](m4-measures-where-things-are.md) | agreed 2026-10-09 | why M4 judges placement against tape, each chosen viewpoint paired with a re-look and the mean gain, instead of a majority of attempts improving any kind of knowledge; attribute claims wait for a describing model |
