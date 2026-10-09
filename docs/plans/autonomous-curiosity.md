@@ -11,7 +11,7 @@ M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
 the five conditions not yet driven, which replaced a count of twenty on 2026-10-07
 ([the decision](../decisions/trials-are-sized-by-what-they-show.md)); the charger
 room's is met ([session 8](../progress/2026-10-07-m3-session-8.md)), and so is the
-depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([proposed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Later phases remain proposed. This is the
+depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
