@@ -198,6 +198,25 @@ LANDED_S = 60.0
 LANDED_M = 0.5
 LANDED_DEG = 20.0
 
+#: How long a load waits for the mapper to act when the rover already stands
+#: within `LANDED_M` and `LANDED_DEG` of the pose it handed over, and how far the
+#: pose has to move to count as the mapper having acted.
+#:
+#: **Near is not landed when the rover started near.** The mapper puts the rover
+#: on the pose it was handed when it processes the next scan after the load, so
+#: for a moment the transform tree still answers the old pose. A fit is usually
+#: a correction of a few degrees, well inside the twenty that count as near, so
+#: the old pose passed for the new one and the load returned before anything had
+#: moved. On 2026-10-09 by the charger that reported a 15.5-degree fit as "kept
+#: the rover where it was", left the wrong heading in the note for the next boot,
+#: and the rover was standing on the fitted pose a few minutes later. A parked
+#: rover's pose does not move at all until the mapper moves it, so a centimetre
+#: or a tenth of a degree is the mapper. If nothing moves in five seconds the
+#: mapper has kept the rover where it was, and that is what is reported.
+MOVED_S = 5.0
+MOVED_M = 0.01
+MOVED_DEG = 0.1
+
 #: How long to leave between attempts at a saved map that has not loaded yet.
 #:
 #: **A restore that produced nothing is asked again rather than replaced**, and
@@ -691,6 +710,10 @@ class NavMap:
             if drop_trail:
                 with self._lock:
                     self.trail.cleared(self.correction(), self.dead_reckoned())
+            # Where the rover stood before the load, so that a rover already
+            # near the pose asked for waits for the mapper to move it rather
+            # than passing for landed -- see `MOVED_S`.
+            before = self.pose_deg()
             request = DeserializePoseGraph.Request()
             request.filename = self.saved.stem
             request.match_type = request.START_AT_GIVEN_POSE
@@ -710,11 +733,16 @@ class NavMap:
             # refusal and the reason this check exists. So the last pose seen is
             # kept, and it decides which of the two is reported.
             deadline = time.monotonic() + LANDED_S
+            unmoved_until = (time.monotonic() + MOVED_S
+                             if before is not None and _near(before, pose)
+                             else None)
             last = None
             while time.monotonic() < deadline:
                 where = self.pose_deg()
                 if where is not None:
-                    if _near(where, pose):
+                    if _near(where, pose) and (
+                            unmoved_until is None or _moved(where, before)
+                            or time.monotonic() >= unmoved_until):
                         return True, "the map is loaded", where
                     last = where
                 time.sleep(0.1)
@@ -1046,9 +1074,11 @@ class NavMap:
         # Where the rover actually ended up, which is the mapper's answer and not
         # this one. It matches the next scan against the graph near the pose it
         # was handed and keeps its own result, so what is reported is what
-        # happened rather than what was asked for -- measured on the rover, a
-        # 2.5-degree correction handed over came back as no move at all, because
-        # the mapper matched the scan against the node it had just made from it.
+        # happened rather than what was asked for. A 2.5-degree correction once
+        # came back as no move at all, put down then to the mapper matching the
+        # scan against the node it had just made from it; until 2026-10-09 the
+        # load returned before the mapper had moved anything when the fit was
+        # inside `LANDED_DEG`, which reads the same way (see `MOVED_S`).
         landed = self.pose_deg() or (fit.x_m, fit.y_m, fit.heading_deg)
         answer["pose"] = {"x_m": round(landed[0], 3), "y_m": round(landed[1], 3),
                           "heading_deg": round(landed[2], 1)}
@@ -1085,3 +1115,8 @@ class NavMap:
 def _near(where, pose):
     return (math.hypot(where[0] - pose[0], where[1] - pose[1]) <= LANDED_M
             and abs((where[2] - pose[2] + 180.0) % 360.0 - 180.0) <= LANDED_DEG)
+
+
+def _moved(where, before):
+    return (math.hypot(where[0] - before[0], where[1] - before[1]) >= MOVED_M
+            or abs((where[2] - before[2] + 180.0) % 360.0 - 180.0) >= MOVED_DEG)

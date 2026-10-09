@@ -428,7 +428,9 @@ def test_a_restore_that_failed_is_asked_again_rather_than_replaced() -> None:
     that would be competing with the thing it is waiting for.
     """
     section("asking again")
-    slow = [None] * int(nav_map.LANDED_S / 0.1) + [LANDED]
+    # One look before the load, which is where the rover stood, and then one a
+    # tenth of a second for the whole wait: silent past the end of the wait.
+    slow = [None] * (1 + int(nav_map.LANDED_S / 0.1)) + [LANDED]
     node = _restorer(slow)
     _restore_map(node)
     check("an attempt that timed out claims nothing", node.map_id, None)
@@ -763,6 +765,108 @@ def test_the_lidar_is_asked_at_once_and_then_rarely() -> None:
           nav_map.DRIFT_EVERY_S >= 60.0, True)
 
 
+#: By the charger on 2026-10-09: where the rover believed it stood after the
+#: drive back's last turn, and where the scan fitted the map -- 98.7% of it on a
+#: wall there against 57.6% at the belief.
+BELIEVED = (-17.192, -15.535, 108.1)
+FITTED = (-17.192, -15.555, 123.6)
+
+
+class Refitted(Mapper):
+    """A rover a refit is asked to move, with a mapper that takes a moment.
+
+    The mapper puts the rover on the pose it was handed when it processes the
+    next scan after the graph is loaded, so the transform tree goes on answering
+    the old pose for `after_s` once the load has returned. `lands` False is a
+    mapper that matched the scan and kept the rover where it was.
+    """
+
+    def __init__(self, after_s=0.3, lands=True):
+        super().__init__([BELIEVED])
+        self.after_s, self.lands = after_s, lands
+        self.landing = None
+        self.map_settled = False
+        self.kept = []
+        self.deserialize_client = types.SimpleNamespace(
+            wait_for_service=lambda timeout_sec=None: True,
+            call_async=self._load)
+
+    def _load(self, _request):
+        self.landing = self.clock + self.after_s
+        return object()
+
+    def pose_deg(self):
+        if self.lands and self.landing is not None and self.clock >= self.landing:
+            return FITTED
+        return BELIEVED
+
+    def map_measure(self, *_a, **_k):
+        fit = types.SimpleNamespace(
+            ok=True, settled=False, x_m=FITTED[0], y_m=FITTED[1],
+            heading_deg=FITTED[2], moved_m=0.02, turned_deg=15.5,
+            score=0.987, guess_score=0.576)
+        return ({"moved_m": 0.02, "turned_deg": 15.5, "score": 0.987,
+                 "guess_score": 0.576}, fit, BELIEVED)
+
+    def save_graph(self):
+        return True, "the map is saved"
+
+    def keep_pose(self, _odom=None):
+        self.kept.append(self.pose_deg())
+
+
+def _refit(node):
+    """`map_fit_now` run against that stand-in, with time made to pass."""
+    real_monotonic, real_sleep = nav_map.time.monotonic, nav_map.time.sleep
+
+    def sleep(seconds):
+        node.clock += seconds
+
+    nav_map.time.monotonic = lambda: node.clock
+    nav_map.time.sleep = sleep
+    try:
+        return nav_map.NavMap.map_fit_now(node, None, None, None, None)
+    finally:
+        nav_map.time.monotonic, nav_map.time.sleep = real_monotonic, real_sleep
+
+
+def test_a_refit_reports_where_the_mapper_put_the_rover() -> None:
+    """**The fault of 2026-10-09: a refit that worked, reported as one that had not.**
+
+    Parked by the charger 15.5 degrees out, "refit to map" was pressed. It
+    answered "the mapper matched it against its own graph and kept the rover
+    where it was"; within four minutes the rover read 123.8 degrees and the
+    lidar agreed with it to 0.0. The load waited for the rover to stand near the
+    pose it had asked for, and a rover 15.5 degrees out already stands within
+    the 20 degrees that counts as near, so it stopped waiting before the mapper
+    had moved anything. The fit was then read as no move: the pose on disk was
+    left at the wrong heading for the next boot, and a person was told the fit
+    had failed.
+    """
+    section("a refit the mapper applies a moment after the load")
+    node = Refitted()
+    answer = _refit(node)
+    check("a fit the mapper applied is reported as fitted",
+          answer["fitted"], True)
+    check("...by the turn it actually made",
+          answer["turned_deg"], 15.5)
+    check("...and the pose it landed on is the one written down for the next "
+          "boot", node.kept, [FITTED])
+    check("...and the rover's place on the map counts as confirmed",
+          node.map_settled, True)
+
+    node = Refitted(lands=False)
+    began = node.clock
+    answer = _refit(node)
+    check("a fit the mapper did not apply is still reported as not fitted",
+          answer["fitted"], False)
+    check("...saying the mapper kept the rover where it was",
+          "kept the rover where it was" in answer["why"], True)
+    check("...after seconds of waiting, not the minute a boot is given",
+          node.clock - began <= nav_map.MOVED_S + 1.0, True)
+    check("...and nothing is written down", node.kept, [])
+
+
 TESTS = (
     test_a_restore_that_lands_is_a_restore,
     test_a_cold_boot_is_not_a_map_that_could_not_be_read,
@@ -780,4 +884,5 @@ TESTS = (
     test_a_mapper_that_never_answers_is_reported_as_itself,
     test_the_lidar_says_when_the_rover_is_wrong_without_moving_it,
     test_the_lidar_is_asked_at_once_and_then_rarely,
+    test_a_refit_reports_where_the_mapper_put_the_rover,
 )
