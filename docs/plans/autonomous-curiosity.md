@@ -11,7 +11,7 @@ M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
 the five conditions not yet driven, which replaced a count of twenty on 2026-10-07
 ([the decision](../decisions/trials-are-sized-by-what-they-show.md)); the charger
 room's is met ([session 8](../progress/2026-10-07-m3-session-8.md)), and so is the
-depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Later phases remain proposed. This is the
+depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Thirteen development attempts out of reach then found the chosen viewpoint improving its thing five times against the re-look's once ([2026-10-09](../progress/2026-10-09-m4-out-of-reach.md)). Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -797,15 +797,14 @@ criteria 3, 5, 6 and 8 ([experiments/m4/README.md](../../experiments/m4/README.m
 On the rover's own store it reproduces what the rover recorded for its 2026-10-08
 looks. What is left:
 
-1. **Development attempts out of reach.** Seventeen on 2026-10-09
-   ([the attempts](../progress/2026-10-09-m4-development-attempts.md)) were all at
-   things in reach, where a look from where the rover stood did as well as the
-   chosen viewpoint, so since then a thing in reach is turned to and looked at,
-   not attempted, and M4 asks only of things out of reach
-   ([the decision](../decisions/m4-asks-of-things-out-of-reach.md)). How often a
-   chosen viewpoint and a re-look each improve a thing out of reach is not yet
-   measured, and it sizes the acceptance set (criterion 4). Runs on the six
-   2026-10-03 things, opened from another room so that they start out of reach.
+1. **The gimbal aiming instead of the rover turning**, which the owner asked for
+   on 2026-10-09 and which was held until the development attempts were done. It
+   changes what both the re-look and the chosen look do, so it lands before the
+   acceptance attempts, and the count below is re-read from the first acceptance
+   runs. Out of reach, thirteen development attempts found the chosen viewpoint
+   improving its thing 5 times and the re-look once
+   ([the attempts](../progress/2026-10-09-m4-out-of-reach.md)), which puts the
+   acceptance set at 42 pairs (criterion 4).
 2. **Labelling the new set's records.** Eleven things in three rooms were taped on
    2026-10-09 (`captures/2026-10-09-m4-targets/truth-acceptance-draft.json`); the
    records named there are the ones the things were chosen by. They are labelled
