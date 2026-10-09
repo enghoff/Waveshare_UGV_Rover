@@ -6,7 +6,9 @@ and M4 in the [plan](../plans/autonomous-curiosity.md), and supersedes the M4
 item of [trials-are-sized-by-what-they-show.md](trials-are-sized-by-what-they-show.md).
 No code has changed. A reported figure, whether the rover's own gain agrees with
 the tape, is added by
-[every-gate-says-what-it-is-for.md](every-gate-says-what-it-is-for.md).
+[every-gate-says-what-it-is-for.md](every-gate-says-what-it-is-for.md). Narrowed the same day by
+[m4-asks-of-things-out-of-reach.md](m4-asks-of-things-out-of-reach.md): its
+reopening condition was met, and M4 now asks only of things out of reach.
 
 M4 asked that additional viewpoints measurably improve knowledge, and judged it
 by a bar no change of viewpoint can meet on this rover: more than half of a set

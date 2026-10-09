@@ -11,7 +11,7 @@ M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
 the five conditions not yet driven, which replaced a count of twenty on 2026-10-07
 ([the decision](../decisions/trials-are-sized-by-what-they-show.md)); the charger
 room's is met ([session 8](../progress/2026-10-07-m3-session-8.md)), and so is the
-depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Later phases remain proposed. This is the
+depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -797,19 +797,20 @@ criteria 3, 5, 6 and 8 ([experiments/m4/README.md](../../experiments/m4/README.m
 On the rover's own store it reproduces what the rover recorded for its 2026-10-08
 looks. What is left:
 
-1. **The owner's decision on the comparison.** Seventeen development attempts on
-   the 2026-10-03 things ([2026-10-09](../progress/2026-10-09-m4-development-attempts.md))
-   found re-looks improving their thing as often as chosen viewpoints, 4 against 3,
-   none worse: inside a room, the thing is usually in reach of where the rover
-   already stands. At those rates no count of pairs shows the chosen viewpoint
-   better, which is the case [the decision](../decisions/m4-measures-where-things-are.md)
-   names for reopening it. Either the baseline becomes the nearest reachable
-   viewpoint, at well over a hundred pairs, or turning to look from where the
-   rover stands comes first and M4 asks its question of things out of reach.
+1. **Development attempts out of reach.** Seventeen on 2026-10-09
+   ([the attempts](../progress/2026-10-09-m4-development-attempts.md)) were all at
+   things in reach, where a look from where the rover stood did as well as the
+   chosen viewpoint, so since then a thing in reach is turned to and looked at,
+   not attempted, and M4 asks only of things out of reach
+   ([the decision](../decisions/m4-asks-of-things-out-of-reach.md)). How often a
+   chosen viewpoint and a re-look each improve a thing out of reach is not yet
+   measured, and it sizes the acceptance set (criterion 4). Runs on the six
+   2026-10-03 things, opened from another room so that they start out of reach.
 2. **Labelling the new set's records.** Eleven things in three rooms were taped on
    2026-10-09 (`captures/2026-10-09-m4-targets/truth-acceptance-draft.json`); the
    records named there are the ones the things were chosen by. They are labelled
    from their photographs just before the acceptance attempts, and then frozen.
+   Acceptance runs are opened away from their things, for the same reason.
 
 Also ahead, though M4 does not need it: proposing things seen once and never
 placed, which are a third of the observations and one of the questions the
@@ -871,8 +872,11 @@ Pass when all are true:
 4. the acceptance attempts are predeclared: the things, the score, the count and
    the analysis, with the count set from the development rates so that criterion
    3's comparison can be told apart. Whether an attempt applies is decided from
-   what the rover knew before it, a reachable viewpoint with the thing inside the
-   depth camera's view, and a refused thing is counted as a refusal, not dropped;
+   what the rover knew before it: the thing out of reach of where the rover stood
+   (beyond the depth camera's 4 m, outside its view or behind something on the
+   map), and a reachable viewpoint with the thing inside the depth camera's view
+   ([2026-10-09](../decisions/m4-asks-of-things-out-of-reach.md)). A refused thing
+   is counted as a refusal, not dropped;
 5. across the full attempt set the mean realised gain of chosen-viewpoint looks is
    positive, its 95% interval above zero. A look that finds nothing counts as
    zero; one that moves a placement away from the tape, or files to a record of
