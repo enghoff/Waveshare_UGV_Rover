@@ -198,6 +198,18 @@ never been measured is the other case: there the gain is not from crossing but
 from a range landing on it, which the depth camera can only do from inside the
 band the geometry was accepted in.
 
+**A thing in reach is looked at from where the rover stands.** When it is within
+the depth camera's 4 m and in its view from the rover's own spot, with nothing on
+the map in the way, it gets one candidate: a turn to face it and a look, no
+drive, carrying the gain the best viewpoint would have predicted. That is the
+measurement overruling the arithmetic above: on 2026-10-09, seventeen
+development attempts found such a look improving its thing as often as driving
+to the chosen viewpoint, 4 times against 3
+([the attempts](../docs/progress/2026-10-09-m4-development-attempts.md)). Only a
+thing out of reach is driven to, and an M4 trial refuses one in reach as `in
+reach`, since its re-look would be the same look
+([the decision](../docs/decisions/m4-asks-of-things-out-of-reach.md)).
+
 Nothing is predicted better than **0.10 m**, whatever the arithmetic says. The
 model knows about bearings and not about the rover's own pose, the width of the
 thing, or the box drawn round it moving between frames — and a tenth of a metre
@@ -538,7 +550,9 @@ leaves two accounts of the running system with one of them maintained.
   exploring does. It means the pool of unplaced sightings — a third of this
   rover's observations — is invisible to the choosing.
 - **Line of sight is only as good as the lidar's plane.** A viewpoint is refused
-  when the map has a wall between it and the thing, and the map is built at
+  when the map has a wall between it and the thing -- not counting the run of
+  occupied cells straight back from the thing, up to half a metre, which is the
+  wall or cabinet it is on -- and the map is built at
   20 cm off the floor: a table top, a sofa back or anything else the scanner
   passes under hides nothing here and everything in the picture. So a viewpoint
   that gets past this check is one worth trying, not one shown to work.

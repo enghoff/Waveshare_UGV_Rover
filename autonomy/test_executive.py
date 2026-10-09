@@ -18,6 +18,7 @@ and no-candidate idle, plus a stop in each state of the machine.
 """
 from __future__ import annotations
 
+import contextlib
 import tempfile
 from typing import Any
 
@@ -27,6 +28,7 @@ import client
 import cooling
 import decide as decide_mod
 import executive as executive_mod
+import goals
 import permission
 import scoring
 import scenarios
@@ -57,6 +59,20 @@ def a_thing(**fields: Any) -> dict[str, Any]:
     these checks the way it reaches the curated rooms."""
     return scenarios.thing("object:19", 1.2, -0.4, uncertainty_m=1.4,
                            looks=5, ranged=0, **fields)
+
+
+@contextlib.contextmanager
+def nothing_in_reach():
+    """For a trial's own mechanics. Since 2026-10-09 an M4 trial asks only of
+    things out of reach of where the rover stands, and this room is two metres
+    across, so everything in it is in reach; the reach rule has its own checks
+    in test_goals.py."""
+    was = goals.REACH_FAR_M
+    goals.REACH_FAR_M = 0.0
+    try:
+        yield
+    finally:
+        goals.REACH_FAR_M = was
 
 
 def a_rover(**fields: Any) -> test_fakes.ActingRover:
@@ -207,36 +223,37 @@ def test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands():
     the rover stood when it chose, both scored against a copy of the store taken
     before either. The copy comes first, then the re-look -- a turn on the spot
     and an aimed look -- then the drive and the chosen viewpoint's look."""
-    rover = a_rover()
-    rover.trial = {"targets": ["object:19"], "relook": True, "snapshot": True}
-    session = Session(rover)
-    _arriving(session)
-    here = session.rover._nav_status({})["pose"]
-    got = session.executive.once()
-    check("the attempt finished", got["outcome"], "succeeded")
-    episode = got["episode"]
-    calls = session.calls(episode)
-    check("a copy of the store, then a turn and a look, then the drive and the "
-          "look", [(one["call"], (one.get("result") or {}).get("role"))
-                   for one in calls],
-          [("world_snapshot", None), ("drive_to", "relook"),
-           ("world_inspect", "relook"), ("drive_to", None),
-           ("world_inspect", None)])
-    check("...the copy named after the episode", session.rover.snapshots,
-          [episode])
-    turn, relook = calls[1]["params"], calls[2]["params"]
-    check("the re-look's turn is to the spot the rover is on",
-          (turn["x_m"], turn["y_m"]), (round(here["x_m"], 3), round(here["y_m"], 3)))
-    facing = math.degrees(math.atan2(-0.4 - here["y_m"], 1.2 - here["x_m"]))
-    check("...facing the thing", abs(turn["heading_deg"] - facing) < 0.1, True)
-    check("...and its look is aimed at the thing and names it",
-          (relook.get("aim_at"), relook.get("target")),
-          ({"x_m": 1.2, "y_m": -0.4}, "object:19"))
-    measured = [one["body"] for one in session.events(episode)
-                if one["kind"] == "measured" and one["body"].get("with_relook")]
-    check("...and the measurement says it holds both looks' change",
-          len(measured), 1)
-    session.close()
+    with nothing_in_reach():
+        rover = a_rover()
+        rover.trial = {"targets": ["object:19"], "relook": True, "snapshot": True}
+        session = Session(rover)
+        _arriving(session)
+        here = session.rover._nav_status({})["pose"]
+        got = session.executive.once()
+        check("the attempt finished", got["outcome"], "succeeded")
+        episode = got["episode"]
+        calls = session.calls(episode)
+        check("a copy of the store, then a turn and a look, then the drive and the "
+              "look", [(one["call"], (one.get("result") or {}).get("role"))
+                       for one in calls],
+              [("world_snapshot", None), ("drive_to", "relook"),
+               ("world_inspect", "relook"), ("drive_to", None),
+               ("world_inspect", None)])
+        check("...the copy named after the episode", session.rover.snapshots,
+              [episode])
+        turn, relook = calls[1]["params"], calls[2]["params"]
+        check("the re-look's turn is to the spot the rover is on",
+              (turn["x_m"], turn["y_m"]), (round(here["x_m"], 3), round(here["y_m"], 3)))
+        facing = math.degrees(math.atan2(-0.4 - here["y_m"], 1.2 - here["x_m"]))
+        check("...facing the thing", abs(turn["heading_deg"] - facing) < 0.1, True)
+        check("...and its look is aimed at the thing and names it",
+              (relook.get("aim_at"), relook.get("target")),
+              ({"x_m": 1.2, "y_m": -0.4}, "object:19"))
+        measured = [one["body"] for one in session.events(episode)
+                    if one["kind"] == "measured" and one["body"].get("with_relook")]
+        check("...and the measurement says it holds both looks' change",
+              len(measured), 1)
+        session.close()
 
 
 def test_an_m4_trial_looks_only_at_its_targets():
@@ -260,28 +277,29 @@ def test_an_m4_trial_looks_only_at_its_targets():
 def test_a_relook_that_fails_does_not_end_the_attempt():
     """The re-look is the baseline. One that saw nothing gained nothing, and the
     chosen viewpoint is still worth its drive."""
-    rover = a_rover()
-    rover.trial = {"targets": ["object:19"], "relook": True, "snapshot": True}
-    original = rover._perform
+    with nothing_in_reach():
+        rover = a_rover()
+        rover.trial = {"targets": ["object:19"], "relook": True, "snapshot": True}
+        original = rover._perform
 
-    def perform(action, params):
-        if action == "world_inspect" and rover.looks == 0:
-            rover.looks += 1
-            return {"ok": False, "error": "the camera was busy"}
-        return original(action, params)
+        def perform(action, params):
+            if action == "world_inspect" and rover.looks == 0:
+                rover.looks += 1
+                return {"ok": False, "error": "the camera was busy"}
+            return original(action, params)
 
-    rover._perform = perform
-    session = Session(rover)
-    _arriving(session)
-    got = session.executive.once()
-    check("the attempt went on to its chosen viewpoint and finished",
-          (got["outcome"], session.rover.looks, len(session.rover.moves)),
-          ("succeeded", 2, 2))
-    failed = [one for one in session.calls(got["episode"]) if not one["ok"]]
-    check("...with the re-look that failed recorded as such",
-          [(one["call"], one["result"].get("role")) for one in failed],
-          [("world_inspect", "relook")])
-    session.close()
+        rover._perform = perform
+        session = Session(rover)
+        _arriving(session)
+        got = session.executive.once()
+        check("the attempt went on to its chosen viewpoint and finished",
+              (got["outcome"], session.rover.looks, len(session.rover.moves)),
+              ("succeeded", 2, 2))
+        failed = [one for one in session.calls(got["episode"]) if not one["ok"]]
+        check("...with the re-look that failed recorded as such",
+              [(one["call"], one["result"].get("role")) for one in failed],
+              [("world_inspect", "relook")])
+        session.close()
 
 
 def test_an_ordinary_run_neither_copies_the_store_nor_looks_again():

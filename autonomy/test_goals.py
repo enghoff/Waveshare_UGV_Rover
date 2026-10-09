@@ -549,6 +549,53 @@ def test_a_thing_on_its_own_wall_can_still_be_looked_at() -> None:
           [True])
 
 
+#: A room eight metres long, the rover near its left end.
+LONG = [
+    "#" * 80,
+    *(["#" + "." * 78 + "#"] * 14),
+    "#" + "." * 9 + "R" + "." * 68 + "#",
+    *(["#" + "." * 78 + "#"] * 13),
+    "#" * 80,
+]
+
+
+def _in_long_room(*things):
+    return _situation(LONG, entities=list(things))
+
+
+def test_a_thing_in_reach_is_looked_at_from_where_the_rover_stands() -> None:
+    """2026-10-09: seventeen development attempts, and a look from where the
+    rover stood improved its thing as often as driving to the viewpoint it chose
+    (docs/decisions/m4-asks-of-things-out-of-reach.md). A thing in the depth
+    camera's range and view with nothing in the way is turned to, not driven to."""
+    near = a_thing("object:80", 3.0, 1.45, uncertainty_m=0.6, major_deg=90.0)
+    here = _in_long_room(near)
+    found = [one for one in goals.improve_geometry(here) if one.target == "object:80"]
+    check("one look, from where the rover stands",
+          [(one.constraints.get("in_reach"), one.travel_m,
+            one.constraints["needs_movement"]) for one in found],
+          [(True, 0.0, False)])
+    goal = found[0].constraints["goal"]
+    check("...the rover's own spot, facing the thing",
+          (goal["x_m"], goal["y_m"], round(goal["heading_deg"])), (1.05, 1.45, 0))
+
+
+def test_a_thing_out_of_reach_is_still_driven_to() -> None:
+    far = a_thing("object:81", 7.0, 1.45, uncertainty_m=0.6, major_deg=90.0)
+    found = [one for one in goals.improve_geometry(_in_long_room(far))
+             if one.target == "object:81"]
+    check("a thing six metres off, beyond the depth camera's reach, gets viewpoints to drive to",
+          bool(found) and not any(one.constraints.get("in_reach") for one in found)
+          and all(one.travel_m > 0 for one in found), True)
+    high = a_thing("object:82", 2.5, 1.45, uncertainty_m=0.6, major_deg=90.0)
+    high["placement"]["height_m"] = 1.4
+    found = [one for one in goals.improve_geometry(_in_long_room(high))
+             if one.target == "object:82"]
+    check("...and so does one 1.5 m off but 44 degrees up, above the depth camera's view",
+          bool(found) and not any(one.constraints.get("in_reach") for one in found)
+          and all(one.travel_m > 0 for one in found), True)
+
+
 def test_the_height_it_cannot_predict_is_declared_rather_than_assumed() -> None:
     here, _thing = _thing_and_room(90.0, height_sigma_m=1.2)
     found = goals.improve_geometry(here)
@@ -609,6 +656,8 @@ TESTS = (test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands,
     test_a_viewpoint_faces_the_thing_it_is_for,
     test_things_put_aside_do_not_crowd_out_the_rest_of_the_house,
     test_a_thing_on_its_own_wall_can_still_be_looked_at,
+    test_a_thing_in_reach_is_looked_at_from_where_the_rover_stands,
+    test_a_thing_out_of_reach_is_still_driven_to,
     test_the_height_it_cannot_predict_is_declared_rather_than_assumed,
     test_the_same_situation_produces_the_same_list_twice,
 )

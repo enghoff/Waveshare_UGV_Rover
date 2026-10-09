@@ -286,6 +286,12 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
         out.append({"veto": "not a trial target",
                     "why": "this run is an M4 trial, which looks only at the "
                            "things it was given"})
+    if weights.trial_targets is not None and facts.get("in_reach"):
+        out.append({"veto": "in reach",
+                    "why": "this run is an M4 trial, which asks only of things "
+                           "out of reach of where the rover stands; this one it "
+                           "can turn and look at from here "
+                           "(docs/decisions/m4-asks-of-things-out-of-reach.md)"})
     if facts.get("needs_movement") and facts.get("reachable_m") is None:
         walked_with_body = (situation.reach is not None
                             and bool(situation.reach.inscribed_m))

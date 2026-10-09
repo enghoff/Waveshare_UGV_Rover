@@ -313,6 +313,25 @@ def test_an_m4_trial_considers_its_targets_however_well_they_are_placed() -> Non
           (got["preferred"] or {}).get("candidate", {}).get("target"), "object:50")
 
 
+def test_an_m4_trial_does_not_attempt_a_thing_in_reach() -> None:
+    """Since 2026-10-09 M4 asks only of things out of reach of where the rover
+    stands: a thing it can turn and look at needs no viewpoint to be chosen, and
+    its re-look would be the same look."""
+    from test_goals import LONG
+    near = a_thing("object:80", 3.0, 1.45, uncertainty_m=0.6, major_deg=90.0)
+    here = _situation(LONG, entities=[near])
+    plain = scoring.consider(here)
+    check("outside a trial it is looked at from where the rover stands",
+          ((plain["preferred"] or {}).get("candidate", {}).get("constraints", {})
+           .get("in_reach")), True)
+    trial = scoring.Weights.from_dict({**scoring.DEFAULT.as_dict(),
+                                       "trial_targets": ["object:80"]})
+    got = scoring.consider(here, trial)
+    check("...and a trial refuses it as in reach, and says so",
+          [v["veto"] for one in got["considered"] for v in one["vetoes"]
+           if one["candidate"]["target"] == "object:80"], ["in reach"])
+
+
 def test_the_decision_carries_the_whole_configuration_not_a_name_for_it() -> None:
     got = scoring.consider(_situation(entities=[_a_thing_worth_looking_at()]))
     check("the weights are in the decision",
@@ -351,6 +370,7 @@ TESTS = (
     test_two_equal_candidates_break_the_same_way_twice,
     test_the_weights_can_be_changed_without_changing_the_code,
     test_an_m4_trial_considers_its_targets_however_well_they_are_placed,
+    test_an_m4_trial_does_not_attempt_a_thing_in_reach,
     test_the_decision_carries_the_whole_configuration_not_a_name_for_it,
     test_a_purpose_makes_one_kind_of_goal_matter_more,
 )

@@ -99,6 +99,15 @@ SEARCH_FAR_M = 4.0
 #: that behind a wall is still refused.
 SURFACE_M = 0.5
 
+#: How far the depth camera ranges a thing: what a hypothesis check accepts as
+#: a range (`world_state.hypothesis_check.DEPTH_FAR_M`). A thing within this of
+#: where the rover stands, in the depth camera's view and with nothing in the
+#: way, is in reach: it is looked at from there, with a turn and no drive. On
+#: 2026-10-09 such a look improved its thing as often as driving to the viewpoint
+#: the rover chose, 4 times in 17 against 3, from 1.7 to 3.3 m
+#: (docs/decisions/m4-asks-of-things-out-of-reach.md).
+REACH_FAR_M = 4.0
+
 #: What one bearing is worth believing to, in degrees. The resolver is told 1.5
 #: and R-WS-10 is `failing` because a driven recording put half of them outside
 #: that; 2.3 is what the same bench measured for a look reached from the
@@ -454,6 +463,13 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
 
     best = max(predicted, key=lambda one: (round(one[0]["gain_m"], 4),
                                            -round(one[3], 3)))
+    # **In reach, it is looked at from where the rover stands.** Offered with
+    # the gain the best viewpoint predicts, because that is what such a look
+    # delivered on 2026-10-09; driving to the viewpoint did no better.
+    here = _in_reach(situation, reach, placement, entity, x, y)
+    if here is not None:
+        return [_look_from_here(here, best[0], entity, entity_id, generation,
+                                ranging, x, y, situation, reach)]
     cheap = min(predicted, key=lambda one: (round(one[3], 3),
                                             -round(one[0]["gain_m"], 4)))
     keep = [best] if cheap is best else [best, cheap]
@@ -553,6 +569,70 @@ def _nowhere_to_stand(entity: dict[str, Any], entity_id: str,
         constraints={"reachable_m": None, "on_free_floor": False,
                      "needs_movement": True,
                      "goal": {"x_m": round(x, 3), "y_m": round(y, 3)}})]
+
+
+def _in_reach(situation: Situation, reach: mapgrid.Reach,
+              placement: dict[str, Any], entity: dict[str, Any],
+              x: float, y: float) -> dict[str, Any] | None:
+    """What a look from where the rover stands would be, when the thing is in
+    reach of it: in the depth camera's range and view, nothing mapped in the way.
+    None otherwise, or when the rover does not know where it is."""
+    where = situation.where
+    if where is None:
+        return None
+    hx, hy = where
+    got = _from_viewpoint(placement, entity, hx, hy)
+    if not BAND_NEAR_M <= got["range_m"] <= REACH_FAR_M:
+        return None
+    if got["in_depth_view"] is False:
+        return None
+    if not reach.clear_line(hx, hy, x, y, ignore_within_m=SURFACE_M):
+        return None
+    return {**got, "x_m": hx, "y_m": hy}
+
+
+def _look_from_here(here: dict[str, Any], best: dict[str, Any],
+                    entity: dict[str, Any], entity_id: str,
+                    generation: str | None, ranging: dict[str, Any],
+                    x: float, y: float, situation: Situation,
+                    reach: mapgrid.Reach) -> Candidate:
+    """A turn to face the thing and a look, from where the rover stands."""
+    view_x, view_y = here["x_m"], here["y_m"]
+    heading = math.degrees(math.atan2(y - view_y, x - view_x))
+    time_s = GOAL_OVERHEAD_S + LOOK_S
+    why = (f"{entity_id} is in reach, {here['range_m']:.1f} m from where the "
+           f"rover stands: turning to look from here, which did as well as "
+           f"driving to a chosen viewpoint on 2026-10-09; {best['why']}")
+    return Candidate(
+        id=f"improve_geometry:{entity_id}@{view_x:.2f},{view_y:.2f}",
+        type="improve_geometry", target=entity_id,
+        refs=[refs.world(generation, entity_id)] if entity_id else (),
+        why=why,
+        expects=(f"a turn to face {heading:.0f} degrees and a look, "
+                 f"{here['range_m']:.1f} m from the thing, without driving"),
+        action=[{"call": "drive_to", "params": {"x_m": round(view_x, 3),
+                                                "y_m": round(view_y, 3),
+                                                "heading_deg": round(heading, 1)}},
+                {"call": "look_at", "params": {"entity": entity_id}}],
+        travel_m=0.0, time_s=time_s,
+        energy_wh=time_s * NOMINAL_DRAW_W / 3600.0,
+        risk="drives_on_mapped_floor",
+        gain_kind="placement_uncertainty_m", gain_value=best["gain_m"],
+        gain_detail={**best, "from_here": here},
+        constraints={"reachable_m": 0.0,
+                     "on_free_floor": reach.is_free(view_x, view_y),
+                     "needs_movement": False,
+                     "needs_depth_camera": bool(ranging.get("never_ranged")),
+                     "range_m": here["range_m"],
+                     "in_certified_band": BAND_NEAR_M <= here["range_m"] <= BAND_FAR_M,
+                     "tilt_unknown": here["tilt_unknown"],
+                     "in_depth_view": here["in_depth_view"],
+                     "elevation_deg": here["elevation_deg"],
+                     "look_tilt_deg": here["look_tilt_deg"],
+                     "in_reach": True,
+                     "goal": {"x_m": round(view_x, 3), "y_m": round(view_y, 3),
+                              "heading_deg": round(heading, 1)},
+                     "look_at": {"x_m": round(x, 3), "y_m": round(y, 3)}})
 
 
 def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
