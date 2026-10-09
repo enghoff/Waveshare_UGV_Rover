@@ -884,9 +884,14 @@ Pass when all are true:
    away, are no more common after chosen-viewpoint looks than after re-looks;
 7. failing to find a useful safe viewpoint, or finding nothing there, leaves the
    gap open and says so; no placement is invented;
-8. each attempt reports whether the gain the rover recorded for itself has the
-   sign of the tape's score, and the agreement rate is reported with its
-   interval. It is not a bar here. After M4 there is no tape: M7 would judge a
+8. each attempt reports whether the chosen viewpoint's look, on its own, changed
+   the target's claim the way the tape's score says it changed the placement:
+   the claim change worked out as the executive works it out in an ordinary run,
+   on the same copy of the store as the tape score. Over the looks whose claim
+   changed, the share where the tape's score has the same sign is reported with
+   its interval. Looks that changed neither are counted apart, since agreeing on
+   nothing says nothing. Re-looks are reported the same way, separately. It is
+   not a bar here. After M4 there is no tape: M7 would judge a
    skill's success, and M10 predict a goal's gain, from the rover's own account,
    so M10's entry uses this figure
    ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).
