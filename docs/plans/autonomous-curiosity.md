@@ -797,7 +797,7 @@ criteria 3, 5, 6 and 8 ([experiments/m4/README.md](../../experiments/m4/README.m
 On the rover's own store it reproduces what the rover recorded for its 2026-10-08
 looks. What is left:
 
-1. **How a placement is scored, for the owner.** The first eleven acceptance
+1. **How a placement is scored, agreed.** The first eleven acceptance
    attempts, on the gimbal aiming and 51 labelled, frozen records of the eleven
    things taped on 2026-10-09, scored three chosen looks worse against one point
    per thing ([the block](../progress/2026-10-09-m4-acceptance-first-block.md)).
@@ -805,8 +805,8 @@ looks. What is left:
    front. Scored by distance to the thing itself, the block has the chosen
    viewpoint improving its thing 5 times and the re-look 3
    ([the re-scoring](../progress/2026-10-09-m4-scored-from-the-thing.md)), and
-   [the proposal](../decisions/m4-scores-from-the-thing.md) makes that M4's
-   scoring.
+   [the decision](../decisions/m4-scores-from-the-thing.md) makes that M4's
+   scoring, with the first block counted.
 2. **The rest of the acceptance attempts**, to 43 pairs (criterion 4), from runs
    opened away from their things.
 

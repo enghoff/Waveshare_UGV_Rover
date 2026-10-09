@@ -1,6 +1,6 @@
 # M4 scores a placement by its distance to the thing, not to one taped point on it
 
-Status: proposed 2026-10-09, for the owner. Changes how
+Status: agreed 2026-10-09 by the owner ("yes, I absolutely agree"). Changes how
 [m4-measures-where-things-are.md](m4-measures-where-things-are.md) scores a
 placement against the tape; its comparison, its re-look and its other criteria
 stand, as does [m4-asks-of-things-out-of-reach.md](m4-asks-of-things-out-of-reach.md).
