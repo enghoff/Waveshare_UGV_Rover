@@ -11,7 +11,7 @@ M3's criteria 6, 7, 9, 10 and 12 are met. What remains is a session in each of
 the five conditions not yet driven, which replaced a count of twenty on 2026-10-07
 ([the decision](../decisions/trials-are-sized-by-what-they-show.md)); the charger
 room's is met ([session 8](../progress/2026-10-07-m3-session-8.md)), and so is the
-depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. Later phases remain proposed. This is the
+depth camera's ([session 9](../progress/2026-10-07-m3-session-9.md)). M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([proposed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -670,13 +670,20 @@ Pass when all are true:
    already fully validated and model-independent;
 3. manual stop during each executive state results in an abort and the stop latch
    prevents automatic restart;
-4. a supervised hardware session has run in each condition listed below, no
-   fault a session found is left unfixed, and the last three sessions turned up
-   nothing new. A session that finds a fault is followed by its fix and by that
-   condition again. Each session reports its autonomy time, and there is no
-   total;
-5. no session produces an unexpected physical contact or movement outside its
-   configured boundary;
+4. a supervised hardware session has run in each condition listed below, and
+   no fault a session found is left unfixed. A session that finds a fault is
+   followed by its fix and by that condition again. Then the charger room,
+   another room and the whole flat are each driven once more on the code M3
+   accepts, because the planner's live layer and route watch changed every
+   route there after those conditions had passed, and those drives find
+   nothing new. M4's development attempts can be those drives. Each session
+   reports its autonomy time, and there is no total
+   ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md));
+5. no session produces a physical contact with something the scan could see, or
+   movement outside its configured boundary. A contact with something below the
+   lidar's plane, such as shoes or a rug, is a failure of the clearing
+   [R-SAFE-6](../requirements/safety.md#r-safe-6) makes a precondition; it is
+   recorded and its cause removed;
 6. every movement is attributable to one episode/goal ID;
 7. after any action failure, the next action is either an explicitly recorded
    recovery candidate or idle -- never an unlogged implicit retry loop;
@@ -876,7 +883,17 @@ Pass when all are true:
    cover, and overconfident claims, the tape more than twice the stated figure
    away, are no more common after chosen-viewpoint looks than after re-looks;
 7. failing to find a useful safe viewpoint, or finding nothing there, leaves the
-   gap open and says so; no placement is invented.
+   gap open and says so; no placement is invented;
+8. each attempt reports whether the gain the rover recorded for itself has the
+   sign of the tape's score, and the agreement rate is reported with its
+   interval. It is not a bar here. After M4 there is no tape: M7 would judge a
+   skill's success, and M10 predict a goal's gain, from the rover's own account,
+   so M10's entry uses this figure
+   ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).
+
+Honesty (criterion 6) is pass/fail for the same reason: every later phase scores
+itself by the rover's claims, and a claim that narrows past the truth would teach
+it to.
 
 Gain is never the rover becoming more confident alone. The score rewards a
 placement for coming closer to the tape and for an uncertainty that narrows
@@ -913,18 +930,43 @@ Use scripted changes that can be independently recorded, for example:
 - change contents on a surface;
 - leave an unchanged control area.
 
+### Before any scripted scene
+
+A change the rover reports is worth having only if it is right more often than
+wrong, and that depends on how often things here really change. If things in the
+flat move in one visit in ten, it needs false alarms on fewer than about one
+unchanged revisit in eleven at 80% detection. The store as it stands would fail
+long before that: 20 of the 32 aimed looks that filed nothing on 2026-10-08 were
+aimed at records not where their thing is
+([the measurement](../progress/2026-10-08-why-aimed-looks-miss.md)), and an
+unchanged revisit would read each of those as missing. So M5 begins with two
+measurements ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)):
+
+- **how often things in the flat change between visits**, from the owner and the
+  archived looks. The false-alarm budget is set from it, so that a reported change
+  is right more often than wrong;
+- **how many change hypotheses replayed revisits of unchanged scenes raise**, on
+  the recordings already held. Scripted scenes wait until replay meets the budget.
+
+The same budget is what [R-WS-17](../requirements/world-state.md#r-ws-17) and
+[R-WS-18](../requirements/world-state.md#r-ws-18)'s proposed tolerances are to be
+checked against.
+
 ### Milestone M5: the rover notices useful changes without filling the world with duplicates
 
 Pass when all are true:
 
-1. at least 10 scripted changed scenes and 10 unchanged control revisits are
-   recorded as an acceptance set;
-2. at least 8/10 changed scenes generate the intended change/missing/moved
-   hypothesis;
-3. no more than 1/10 unchanged controls generates a high-confidence change alarm;
-4. on at least 10 predeclared applicable moved-entity trials, at least 80% correctly
-   retain identity/history; unresolved outcomes are reported but do not count as
-   successes, and any incorrect confident merge fails this criterion;
+1. scripted changed scenes and unchanged control revisits are recorded as an
+   acceptance set, their counts set so that criterion 3's budget can be told
+   apart from what it rules out. Ten controls with at most one alarm show only
+   that the rate is under 39%;
+2. how often changed scenes generate the intended change, missing or moved
+   hypothesis is reported with its interval, not held to a bar;
+3. confident change alarms on unchanged controls stay within the budget set
+   before any scripted scene;
+4. on predeclared applicable moved-entity trials, how often identity and history
+   are kept is reported with its interval; unresolved outcomes are reported but
+   do not count as kept, and any incorrect confident merge fails this criterion;
 5. the revisit scorer demonstrably ranks a recently changed/stale area above an
    equally distant recently-confirmed static area under the configured policy;
 6. repeated revisits reduce utility after the knowledge has been refreshed, so the
@@ -948,6 +990,12 @@ equal time/travel budgets, and independent annotations. Counterbalance compariso
 order or reset matched scenes so one policy does not inherit another's observations.
 Keep acceptance objects/runs separate from tuning data.
 
+State its budget in charges and owner hours before planning it. R-SAFE-6 is open
+and nothing docks the rover, so every minute of it is supervised and every charge
+is plugged in by hand, at 20 to 25 minutes of driving a charge. Its questions and
+minimum improvement are sized by the comparison
+([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).
+
 Include a process/rover restart and a controlled map reset with retained historical
 evidence. Predeclare question sets such as "what moved?", "where was this last
 seen?" and "what remains uncertain?", plus a useful minimum improvement before the
@@ -962,6 +1010,16 @@ multi-day usefulness claim unproven. Repeat the relevant comparison with M7
 learning enabled against frozen skills/parameters to show the benefit of learning.
 
 ## Phase 6 -- restricted procedural skill library
+
+Phases 6 and 7 are entered once the episode record holds a repeated multi-step
+behaviour that the executive does not already perform as one goal, and that
+succeeds in some contexts and not others
+([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)). An autonomous run
+has three operations, drive, look and stop, and one way of using them, which is
+the reference skill below. A learner over that record could only rediscover it or
+propose something trivial, and either would pass M7 without the rover knowing
+anything new. Until then the learning asked for first is the viewpoint planner's
+bounded parameters (*Viewpoint choice*, under Phase 4) and M10's outcome model.
 
 ### Purpose
 
@@ -1083,8 +1141,11 @@ Pass when all are true:
    unabstracted baseline on held-out applicable cases whose action outcomes are
    covered by recordings or a hardware-validated simulator; uncovered alternatives
    remain unknown and require supervised evidence before performance is claimed;
-5. supervised physical trials meet a pre-declared promotion threshold, initially
-   suggested as at least 18/20 successes when preconditions hold;
+5. in supervised physical trials the candidate does at least as well as the
+   executive without it on the same applicable cases, paired, with the count
+   sized for that comparison and every attempt counted. A promoted skill replaces
+   what the executive would have done, so that is the bar it has to clear
+   ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md));
 6. promotion is performed by evaluator policy, not by the model that proposed the
    skill;
 7. after promotion, the executive retrieves and uses the skill on at least five new
@@ -1202,10 +1263,15 @@ Pass when all are true:
 1. all model references to stored objects resolve by ID before a proposal is
    accepted into the candidate queue;
 2. hallucinated IDs and unsupported operations are rejected in automated tests;
-3. at least 50 fixed reflection cases are available, with a held-out subset for
-   prompt/model selection;
-4. at least one model produces useful grounded proposals on a clear majority of the
-   held-out cases under documented human review criteria;
+3. fixed reflection cases are drawn from real episodes, with a held-out subset for
+   prompt/model selection, their count sized for criterion 4's comparison;
+4. reflection finds what the scorer would not. On recordings, a held-out proposal
+   counts when it names a gap the scorer's own choices missed and a later look
+   resolved it; if that shows any, supervised runs compare reflected experiments
+   with the scorer's choices at the same budget. Nothing later depends on
+   reflection, so this is the only thing it is for; whether proposals sound
+   sensible to a reviewer is not evidence of it
+   ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md));
 5. disabling network/model access leaves mapping, safety, current verified skills
    and model-independent curiosity operation functional;
 6. a reflected experiment must still pass ordinary goal scoring, safety veto and
@@ -1238,6 +1304,20 @@ it.
 
 Predictions can influence **ranking** among already safe candidate goals/skills.
 They do not remove hard constraints.
+
+### Entered after M4, for the goal types that exist
+
+The scorer's predicted gain was right for about one geometry goal in ten
+([2026-10-06](../progress/2026-10-06-looks-seldom-reach-their-thing.md)), so a run
+spends most of its charge on looks it expected to pay. Every later phase that
+chooses trades a predicted gain against battery, and that trade means little while
+the prediction is off by that much. An outcome model for the goal types that exist
+needs only M4's attempts, so this phase is entered for them once M4 has run,
+without waiting for Phases 6 to 9, provided M4's criterion 8 shows the rover's own
+gain agreeing in sign with the tape more often than chance. Below that the model
+would learn the rover's own noise
+([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)). Calibration
+(criterion 5) is the threshold the later phases need.
 
 ### Milestone M10: learned outcome prediction improves planning on held-out experience
 
@@ -1456,25 +1536,26 @@ the problem.
 | M0b (retired 2026-10-01) | actions relying on persistent identity | no single gate: each such action's case is decided under R-WS-13 before an autonomous run may take it |
 | M1 | episodic memory | durable reconstruction across resets/merges, no authority |
 | M2 | curiosity shadow mode | fixed scenarios + a no-action rover shadow run |
-| M3 | bounded autonomous loop | a supervised session in each listed condition, measured stops, permission expiry and failure tests |
-| M4 | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it |
-| M5 | temporal curiosity | scripted changed/unchanged scene benchmark |
-| M1-M5 usefulness | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted |
-| M6 | restricted skill substrate | malicious/invalid rejection + reference skill equal to the executive in replay and stopping on the rover |
-| M7 | autonomous skill acquisition | proposed -> replayed -> physically verified -> reused skill |
+| M3 | bounded autonomous loop | a supervised session in each listed condition, then the current code over the conditions its changes touched; measured stops, permission expiry and failure tests |
+| M4 | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it; the rover's own gain checked against the tape |
+| M5 | temporal curiosity | false alarms on replayed unchanged revisits within a budget set from the flat's change rate, then scripted changed/unchanged scenes |
+| M1-M5 usefulness | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted; budget stated in charges and owner hours |
+| M6 (on evidence) | restricted skill substrate | malicious/invalid rejection + reference skill equal to the executive in replay and stopping on the rover |
+| M7 (on evidence) | autonomous skill acquisition | proposed -> replayed -> at least as good as the executive on the rover, paired -> reused skill |
 | M8 (optional) | self-generated curriculum | competence-progress beats random baseline |
-| M9 | model reflection | grounded fixed benchmark; outage-safe architecture |
-| M10 | empirical world model | held-out prediction and planning improvement |
+| M9 | model reflection | finds gaps the scorer missed; outage-safe architecture |
+| M10 (after M4) | empirical world model | held-out prediction and planning improvement, calibrated |
 | M11 | optional neural policy | offline win + shadow gate before bounded hardware trial |
 
 ## What comes next
 
 M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
 
-1. **Finish M3 on the rover.** One session in each condition not yet driven,
-   until criterion 4's
-   stopping rule is met. Each session needs the owner, a charge and a cleared
-   area, so each is chosen to try something not tried before.
+1. **Finish M3 on the rover.** The conditions not yet driven, then the current
+   code over the charger room, another room and the whole flat (criterion 4).
+   M4's development attempts can be those last drives, and moved furniture can be
+   a chair set in a mapped gap during one of them. Each session needs the owner, a
+   charge and a cleared area, so each is chosen to try something not tried before.
 2. **Prepare M4's acceptance attempts**: a new taped set with its records
    labelled, the script that scores one attempt against the tape, and the
    re-look before each chosen viewpoint (*What is ahead before the acceptance
@@ -1482,7 +1563,13 @@ M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
    the attempts themselves.
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). M4 no longer waits on it, but it sets how many attempts
-   improve anything, about one in six with the thing in view on 2026-10-08.
+   improve anything, about one in six with the thing in view on 2026-10-08, and
+   M5 does wait on it: its first measurement is how many false alarms the store
+   raises on unchanged scenes.
+4. **M10's outcome model for the goal types that exist**, once M4 has run.
+5. **The owner's choice on running unattended.** No milestone reaches the
+   design's goal of a rover left to occupy itself: R-SAFE-6 is open and nothing
+   docks the rover ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).
 
 The question the programme now turns on is: **given what the rover actually
 knows, does choosing where to look make it know more?** M3 shows that it can

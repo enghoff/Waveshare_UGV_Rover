@@ -4,7 +4,9 @@ Status: agreed 2026-10-09 by the owner, who asked that M4 be made achievable
 with the rover's present hardware, vision models and approach. Changes Phase 4
 and M4 in the [plan](../plans/autonomous-curiosity.md), and supersedes the M4
 item of [trials-are-sized-by-what-they-show.md](trials-are-sized-by-what-they-show.md).
-No code has changed.
+No code has changed. A reported figure, whether the rover's own gain agrees with
+the tape, is added by
+[every-gate-says-what-it-is-for.md](every-gate-says-what-it-is-for.md).
 
 M4 asked that additional viewpoints measurably improve knowledge, and judged it
 by a bar no change of viewpoint can meet on this rover: more than half of a set
