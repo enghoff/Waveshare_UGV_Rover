@@ -290,6 +290,29 @@ def test_the_weights_can_be_changed_without_changing_the_code() -> None:
         check("...and it says where it came from", weights.source, path)
 
 
+def test_an_m4_trial_considers_its_targets_however_well_they_are_placed() -> None:
+    """Found on the rover on 2026-10-09: the first development trial ended at
+    once with nothing to do. Only the twelve worst-placed things in the whole
+    house were ever generated, the trial refused all twelve as not its targets,
+    and the 57 records it was given -- better placed than those twelve -- were
+    never offered at all."""
+    worst = [a_thing(f"object:{n}", 1.0 + 0.1 * n, 1.0, uncertainty_m=0.9)
+             for n in range(goals.ENTITY_LIMIT)]
+    target = a_thing("object:50", 1.6, 0.4, uncertainty_m=0.6, major_deg=90.0)
+    here = _situation(entities=[*worst, target])
+    weights = scoring.Weights.from_dict({**scoring.DEFAULT.as_dict(),
+                                         "trial_targets": ["object:50"]})
+    got = scoring.consider(here, weights)
+    offered = [one for one in got["considered"]
+               if one["candidate"]["target"] == "object:50"]
+    check("the trial's target is offered", bool(offered), True)
+    check("...and not refused as outside the trial",
+          any(not any(v["veto"] == "not a trial target" for v in one["vetoes"])
+              for one in offered), True)
+    check("...so the trial has something to do",
+          (got["preferred"] or {}).get("candidate", {}).get("target"), "object:50")
+
+
 def test_the_decision_carries_the_whole_configuration_not_a_name_for_it() -> None:
     got = scoring.consider(_situation(entities=[_a_thing_worth_looking_at()]))
     check("the weights are in the decision",
@@ -327,6 +350,7 @@ TESTS = (
     test_a_marked_place_is_not_chosen_as_a_drive_target,
     test_two_equal_candidates_break_the_same_way_twice,
     test_the_weights_can_be_changed_without_changing_the_code,
+    test_an_m4_trial_considers_its_targets_however_well_they_are_placed,
     test_the_decision_carries_the_whole_configuration_not_a_name_for_it,
     test_a_purpose_makes_one_kind_of_goal_matter_more,
 )

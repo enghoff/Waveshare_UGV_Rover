@@ -221,15 +221,16 @@ class Candidate:
         return f"<Candidate {self.id} {self.gain_kind}={self.gain_value:.3f}>"
 
 
-def generate(situation: Situation) -> list[Candidate]:
+def generate(situation: Situation,
+             only: frozenset[str] | None = None) -> list[Candidate]:
     """Everything worth considering, in a fixed order.
 
     Order is by type and then by the generator's own ranking, and it is fixed so
     that two runs over one situation produce the same list -- the scorer sorts by
     score afterwards, and a stable input is what makes a tie break the same way
-    twice.
+    twice. `only` is an M4 trial's targets: see `improve_geometry`.
     """
-    return [*explore_frontier(situation), *improve_geometry(situation)]
+    return [*explore_frontier(situation), *improve_geometry(situation, only)]
 
 
 # --- going where the map stops ----------------------------------------------
@@ -306,8 +307,16 @@ def explore_frontier(situation: Situation) -> list[Candidate]:
 
 # --- going where a thing would come out better ------------------------------
 
-def improve_geometry(situation: Situation) -> list[Candidate]:
-    """Viewpoints that would sharpen where a thing the rover knows actually is."""
+def improve_geometry(situation: Situation,
+                     only: frozenset[str] | None = None) -> list[Candidate]:
+    """Viewpoints that would sharpen where a thing the rover knows actually is.
+
+    `only`, when given, is the records an M4 trial may look at, and the others
+    are not generated at all. Refusing them afterwards is not the same: on
+    2026-10-09 the twelve worst-placed things in the house filled
+    `ENTITY_LIMIT`, every one was refused as outside the trial, and the trial's
+    own 57 records, all better placed, were never offered.
+    """
     reach = situation.reach
     if reach is None:
         return []
@@ -316,6 +325,8 @@ def improve_geometry(situation: Situation) -> list[Candidate]:
     out: list[Candidate] = []
     counted = 0
     for entity in _worth_looking_at(situation):
+        if only is not None and str(entity.get("id") or "") not in only:
+            continue
         if counted >= ENTITY_LIMIT:
             break
         found = _viewpoints(situation, reach, entity, generation)

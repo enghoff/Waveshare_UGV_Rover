@@ -569,7 +569,12 @@ def consider(situation: Situation, weights: Weights = DEFAULT, *,
     # is the only thing allowed to carry one out before M0a passes; outside it
     # they would be a dozen refusals in every shadow decision saying nothing.
     if candidates is None:
-        candidates = goals_mod.generate(situation)
+        # An M4 trial's targets are chosen among before the generator's own
+        # limit, not refused after it (goals.improve_geometry says why); the
+        # veto below still names anything else that reaches it.
+        only = (frozenset(str(one) for one in weights.trial_targets)
+                if weights.trial_targets is not None else None)
+        candidates = goals_mod.generate(situation, only)
         if weights.m0a_protocol:
             candidates = [*candidates, *hypotheses.generate(situation)]
     found = list(candidates)
