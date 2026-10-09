@@ -149,6 +149,15 @@ so the envelope costs the recording under a tenth of its looks. The tilt gap
 that stood here on the morning of 2026-09-07 is closed: tilt 20 was measured the
 same day and passed.
 
+**Beyond ±20 the whole travel has been measured, without a board, and not
+adopted.** On 2026-10-09 the OAK's gyro, which rides the gimbal, measured
+ascending arrivals from -170 to +180 within 0.6 degrees of commanded and within
+0.38 of each other across two sessions. Its own pre-registered reference gate
+failed by a tenth of a degree, so the envelope above is unchanged. To repeat it,
+use `usb_cameras/capture_pan_sweep.py` and `fit_pan_sweep.py`. The procedure,
+the numbers and what a third session would need are in
+[the entry](../progress/2026-10-09-gimbal-whole-pan-travel.md).
+
 The camera's advertised maximum is 2592 x 1944 MJPEG at 30 fps, but this campaign
 stays at 1280 x 960. A live comparison found the same field of view and more corner
 detections at the maximum mode, but 1280 x 960 already passed the reference and
