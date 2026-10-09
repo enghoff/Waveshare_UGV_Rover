@@ -238,7 +238,8 @@ class Reach:
         return found * grid.resolution * grid.resolution
 
     def clear_line(self, from_x: float, from_y: float,
-                   to_x: float, to_y: float) -> bool:
+                   to_x: float, to_y: float, *,
+                   ignore_within_m: float = 0.0) -> bool:
         """Is there a wall between these two points, as far as the map knows?
 
         A cell-by-cell walk refusing anything the mapper calls occupied, which is
@@ -249,6 +250,14 @@ class Reach:
         that has been shown to work. Unknown cells are allowed through: the thing
         being looked at is usually on ground the scanner has not painted, and
         refusing on unknown would refuse nearly every real viewpoint.
+
+        `ignore_within_m` lets through the thing's own surface: a thing on a
+        wall or a piece of furniture is itself on cells the map calls occupied,
+        and so is the wall or cabinet it is on. Only the cells running straight
+        back from the thing that are not free floor, and no further than that,
+        are let through. Once the line has crossed free floor on its way to the
+        thing, a wall before it is a wall in the way: a thing shut in a cupboard
+        is still behind the cupboard's wall.
         """
         grid = self.grid
         col, row = grid.cell_of(from_x, from_y)
@@ -256,14 +265,22 @@ class Reach:
         steps = max(abs(last_col - col), abs(last_row - row))
         if steps == 0:
             return True
+        cells = []
         for step in range(1, steps + 1):
             here_col = col + int(round((last_col - col) * step / steps))
             here_row = row + int(round((last_row - row) * step / steps))
             if (here_col, here_row) == (last_col, last_row):
                 break
-            if grid.at(here_col, here_row) >= frontier.OCCUPIED_AT:
-                return False
-        return True
+            cells.append((here_col, here_row))
+        while cells and ignore_within_m > 0.0:
+            here_col, here_row = cells[-1]
+            if (math.hypot(here_col - last_col, here_row - last_row)
+                    * grid.resolution > ignore_within_m
+                    or 0 <= grid.at(here_col, here_row) <= frontier.FREE_AT):
+                break
+            cells.pop()
+        return all(grid.at(here_col, here_row) < frontier.OCCUPIED_AT
+                   for here_col, here_row in cells)
 
     def ring(self, x: float, y: float, near_m: float, far_m: float
              ) -> list[tuple[float, float, float]]:

@@ -90,6 +90,15 @@ BAND_FAR_M = 2.5
 SEARCH_NEAR_M = 0.3
 SEARCH_FAR_M = 4.0
 
+#: How far short of a thing its line of sight stops being checked against the
+#: map. A thing on a wall or a cabinet is on cells the map calls occupied, and
+#: so is what it hangs from or stands against: on 2026-10-09 a cabinet's records
+#: lay 0.3 m inside its mapped front and the paintings' up to 0.4 m behind the
+#: wall's face, and every viewpoint on all 57 of a trial's records was refused
+#: for the wall in the way. Half a metre covers those. A thing further than
+#: that behind a wall is still refused.
+SURFACE_M = 0.5
+
 #: What one bearing is worth believing to, in degrees. The resolver is told 1.5
 #: and R-WS-10 is `failing` because a driven recording put half of them outside
 #: that; 2.3 is what the same bench measured for a look reached from the
@@ -411,7 +420,7 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
     predicted, outside = [], []
     usable = blocked = 0
     for view_x, view_y, walk_m in ring:
-        if not reach.clear_line(view_x, view_y, x, y):
+        if not reach.clear_line(view_x, view_y, x, y, ignore_within_m=SURFACE_M):
             blocked += 1
             continue
         usable += 1

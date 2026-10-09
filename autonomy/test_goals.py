@@ -513,6 +513,42 @@ def test_things_put_aside_do_not_crowd_out_the_rest_of_the_house() -> None:
           {one["id"] for one in worst} <= found, True)
 
 
+#: A room with a wall three cells thick along its top, and on the far side of it
+#: a strip the scanner has seen into: what a painting's wall, or a cabinet
+#: against one, is on the map, and the room next door.
+WALLED = [
+    *(["." * 40] * 6),
+    "#" * 40,
+    "#" * 40,
+    "#" * 40,
+    *(["#" + "." * 38 + "#"] * 10),
+    "#" + "." * 18 + "R" + "." * 19 + "#",
+    *(["#" + "." * 38 + "#"] * 10),
+    "#" * 40,
+]
+
+
+def test_a_thing_on_its_own_wall_can_still_be_looked_at() -> None:
+    """Found on the rover on 2026-10-09: every one of a trial's 57 records had
+    'every place ... blocked'. A thing on a wall or a piece of furniture sits on
+    cells the map calls occupied -- the cabinet's records 0.3 m inside its front,
+    the paintings' up to 0.4 m behind the wall's face -- and the line of sight
+    was refused at the first of them. The last half metre before the thing is
+    the thing, or what it stands on or hangs from."""
+    painting = a_thing("object:70", 2.0, 2.45, uncertainty_m=0.6, major_deg=90.0)
+    here = _situation(WALLED, entities=[painting])
+    found = goals.improve_geometry(here)
+    check("a thing placed 0.25 m into its wall has somewhere to be seen from",
+          [one.id.endswith("@nowhere") for one in found if one.target == "object:70"][:1],
+          [False])
+    next_door = a_thing("object:71", 2.0, 3.05, uncertainty_m=0.6, major_deg=90.0)
+    here = _situation(WALLED, entities=[next_door])
+    found = goals.improve_geometry(here)
+    check("...but one in the room behind the wall still has nowhere",
+          [one.id.endswith("@nowhere") for one in found if one.target == "object:71"],
+          [True])
+
+
 def test_the_height_it_cannot_predict_is_declared_rather_than_assumed() -> None:
     here, _thing = _thing_and_room(90.0, height_sigma_m=1.2)
     found = goals.improve_geometry(here)
@@ -572,6 +608,7 @@ TESTS = (test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands,
     test_two_viewpoints_are_offered_when_they_are_a_real_choice,
     test_a_viewpoint_faces_the_thing_it_is_for,
     test_things_put_aside_do_not_crowd_out_the_rest_of_the_house,
+    test_a_thing_on_its_own_wall_can_still_be_looked_at,
     test_the_height_it_cannot_predict_is_declared_rather_than_assumed,
     test_the_same_situation_produces_the_same_list_twice,
 )
