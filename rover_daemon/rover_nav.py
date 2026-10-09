@@ -6,6 +6,7 @@ import math
 import time
 from typing import Any
 
+import permission as permission_mod
 import scripting
 from rover_util import _flag, _number, _optional
 
@@ -619,10 +620,16 @@ class RoverNav:
         # kind of number as `lidar_resets` beside it and is read the same way: not
         # a fault on its own, but a count that has climbed over an afternoon is a
         # connector working loose, and nothing else on this rover would say so.
-        return {"ok": True, **self.nav.status(
-            since_seq=None if since is None else int(since)),
+        status = self.nav.status(since_seq=None if since is None else int(since))
+        return {"ok": True, **status,
             "board_reopens": getattr(self.link, "reopens", 0),
             "board_reopen_note": getattr(self.link, "reopen_note", None),
+            # Why the rover cannot measure its own turning, or "". The same verdict
+            # that refuses an autonomous drive (R-SAFE-17), said here because the
+            # fault arrives with a boot and lasts until the power is cut, and the
+            # person at the console is the one who has to cut it.
+            "rotation_fault": permission_mod.rotation_fault(
+                status.get("gyro_bias_dps")),
             # The open autonomous run, or None: what the console's run button
             # is drawn from, so that it shows a run an agent started too.
             "autonomy": self.autonomy_brief()}

@@ -88,6 +88,12 @@ When the last tab has been gone for the orphan grace, the console stops a run th
 was started from it, as it stops a move of its own; a run an agent started is left
 alone.
 
+A red line under the header stays up for as long as `nav_status` carries a
+`rotation_fault`: the daemon's reason why the gyro cannot be trusted to measure a
+turn ([R-SAFE-17](../docs/requirements/safety.md#r-safe-17)), in the daemon's own
+words. Unlike a notice it does not fade, because the fault comes with a boot and
+lasts until the power is cut.
+
 ## World-state popup
 
 The popup has entity, map and observation views over one read-only data source.

@@ -536,6 +536,12 @@
     margin: 0 12px 8px; padding: 6px 10px; border-radius: 6px;
     background: var(--sunken); border: 1px solid var(--line); font-size: 13px;
   }
+  /* A fault that stays until the power is cut, so it does not fade like a notice. */
+  #fault {
+    margin: 0 12px 8px; padding: 6px 10px; border-radius: 6px;
+    background: var(--sunken); border: 1px solid var(--bad); font-size: 13px;
+    color: var(--bad);
+  }
   #notice.good { color: var(--good); }
   #notice.bad { color: var(--bad); }
   #notice.quiet { color: var(--dim); }

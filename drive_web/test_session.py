@@ -76,6 +76,26 @@ def test_web_console() -> None:
     check("a scan that fits nowhere is not an accusation",
           (rows["vs lidar"][1], rows["vs lidar"][2]), ("cannot say", False))
 
+    # The gyro, which has come up broken with a boot six times since 2026-10-03
+    # and stays broken until the power is cut (R-SAFE-17). The daemon decides and
+    # words it; the console only has to keep it on screen while it lasts.
+    said = ("the gyro's bias reads -1845.6 deg/s against about +0.4 when it is "
+            "healthy, so the rover cannot measure its own turning; a full power "
+            "cycle has cleared this before")
+    check("a healthy gyro puts nothing on screen",
+          session.snapshot()["rotation_fault"], "")
+    session.show_status(dict(base, rotation_fault=said))
+    check("a faulted gyro is shown in the daemon's words",
+          session.snapshot()["rotation_fault"], said)
+    session.show_status(dict(base, rotation_fault=said))
+    check("...and stays while the rover keeps saying it",
+          session.snapshot()["rotation_fault"], said)
+    session.show_status(dict(base, rotation_fault=""))
+    check("...and goes when it stops", session.snapshot()["rotation_fault"], "")
+    session.show_status(dict(base))
+    check("a daemon that does not say is not a fault",
+          session.snapshot()["rotation_fault"], "")
+
     # A status the rover could not answer must blank the numbers rather than leave
     # the last good ones on screen looking current.
     session.show_status({"ok": False, "error": "no navigator"})

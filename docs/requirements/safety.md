@@ -292,7 +292,9 @@ autonomous leg stood for 27 s wanting a turn it never made.
 So an autonomous run is not opened, a drive is not dispatched, and a run that
 is open is ended, while the bias the base reports is exactly zero or beyond
 5 deg/s either way (`permission.rotation_fault`). A look is still allowed,
-because it turns nothing. What would make this false is an autonomous drive
+because it turns nothing. The same reason is carried in `nav_status` as
+`rotation_fault`, and the drive console shows it under its header for as long
+as it lasts, since only a person can cut the power. What would make this false is an autonomous drive
 dispatched while the base reports such a bias.
 
 Proposed rather than settled: no fault has happened since the rule was

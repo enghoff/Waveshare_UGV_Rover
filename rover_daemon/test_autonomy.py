@@ -416,6 +416,11 @@ def test_a_rover_that_cannot_feel_itself_turn_does_not_drive():
     check("...and says why", "-2062.9 deg/s" in refused["error"], True)
     check("...leaving nothing open",
           rover.call("autonomy_status", {})["enabled"], False)
+    check("...and nav_status gives the console the same reason",
+          rover.call("nav_status", {})["rotation_fault"],
+          permission_mod.rotation_fault(-2062.868))
+    check("...which is empty on a healthy gyro",
+          a_rover(Clock()).call("nav_status", {})["rotation_fault"], "")
 
     clock = Clock()
     nav = FakeNav()

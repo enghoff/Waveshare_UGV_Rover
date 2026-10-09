@@ -73,6 +73,8 @@ function render(next) {
   // when it would not.
   $("resetLidar").disabled = !next.lidar.offer;
   $("lidarNote").textContent = next.lidar.note;
+  $("fault").textContent = next.rotation_fault;
+  $("fault").hidden = !next.rotation_fault;
   $("plan").textContent = next.plan;
 
   if (next.map.gen && next.map.gen !== mapGen) mapArrivedAt = Date.now();

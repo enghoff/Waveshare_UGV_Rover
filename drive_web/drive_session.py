@@ -153,6 +153,10 @@ class Session(SessionActions, SessionShow, SessionWorld):
         # dead-reckoned turn, so `lidar_ok` goes false on a sensor that is fine.
         self.lidar_live: bool | None = None
         self.lidar_note = ""
+        # Why the rover cannot measure its own turning, in the daemon's words, or
+        # "". It comes with a boot and stays until the power is cut, so unlike a
+        # notice it is drawn for as long as the rover keeps saying it.
+        self.rotation_fault = ""
         self.pose_text = "-"
         self.plan_text = "-"
         self.heading_deg = 0.0
@@ -312,6 +316,7 @@ class Session(SessionActions, SessionShow, SessionWorld):
             "status": {"rows": self.status_rows, "pose": self.pose_text,
                        "error": self.status_error},
             "lidar": {"offer": self.lidar_live is False, "note": self.lidar_note},
+            "rotation_fault": self.rotation_fault,
             "plan": self.plan_text,
             "map": {"gen": self.tag(self.map_gen), "width": self.map_shape[0],
                     "height": self.map_shape[1], "note": self.map_note,

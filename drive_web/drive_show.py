@@ -67,6 +67,7 @@ class SessionShow:
             # be a button that cannot do anything.
             self.lidar_live = None
             self.lidar_note = ""
+            self.rotation_fault = ""
             # Not "it has stopped exploring" -- a rover that is not answering is
             # a rover nobody can say anything about, and a toggle that snapped
             # itself off during a two-second outage would invite a second press
@@ -84,6 +85,7 @@ class SessionShow:
                      or (key in ALARM_WHEN and ALARM_WHEN[key](value)))
             rows.append([label, fmt(value), bool(alarm)])
         self.status_rows = rows
+        self.rotation_fault = str(body.get("rotation_fault") or "")
         pose = body.get("pose") or {}
         self.heading_deg = float(pose.get("heading_deg", 0.0))
         self.pose_text = "x {:+.2f}  y {:+.2f}  {:+.1f} deg".format(
