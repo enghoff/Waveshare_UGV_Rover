@@ -2,6 +2,8 @@
 """Where the gimbal's pan really goes, from a `capture_pan_sweep.py` recording.
 
     python usb_cameras/fit_pan_sweep.py captures/2026-10-09-pan-sweep
+    python usb_cameras/fit_pan_sweep.py captures/2026-10-09-pan-sweep-held-out \
+        --held-out usb_cameras/pan_candidate_2026-10-09.json
 
 Applies the pass rule fixed in `capture_pan_sweep.py` before the capture and
 prints the verdict, the table of commanded against actual pan, the backlash, and
@@ -32,6 +34,9 @@ import lens as flown                                               # noqa: E402
 
 #: The pass rule, as `capture_pan_sweep.py` fixed it.
 HELD_OUT_DEG = 0.5
+SCALE_AGREE = 0.003
+BACKLASH_P95_DEG = 0.25
+RETURN_DEG = 0.3
 CLOSURE_AGREE = 0.003
 CAMERA_STEP_P95_DEG = 0.3
 REST_AGREE_DEG = 0.2
@@ -168,11 +173,119 @@ def integrate(imu, stops):
 # --- the verdict --------------------------------------------------------------------
 
 
+def judge_held_out(folder: Path, candidate_path: Path) -> int:
+    """The held-out session against the frozen candidate, by the rule
+    `capture_pan_sweep.py` fixed before it ran."""
+    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    imu = np.load(folder / "imu.npy")
+    stops = meta["stops"]
+    gyro, *_ = integrate(imu, stops)
+    sift = cv2.SIFT_create(nfeatures=8000)
+
+    def of(label, pan=None):
+        return [s for s in stops if s["label"] == label
+                and (pan is None or s["pan"] == pan)]
+
+    def picture(stop):
+        return folder / stop["picture"]
+
+    skipped = [f"{s['label']} {s['pan']:+d}" for s in stops if gyro[s["index"]] is None]
+    print(f"stops not still, and left out: {', '.join(skipped) or 'none'}")
+
+    start, end = of("H", -180)[0], of("H", 180)[0]
+    scale, scale_gate = float(candidate["gyro_scale"]), "not taken"
+    rot = (rotation_between(picture(start), picture(end), sift)
+           if gyro[start["index"]] and gyro[end["index"]] else None)
+    if rot is not None:
+        turned = -(gyro[end["index"]]["angle"] - gyro[start["index"]]["angle"])
+        here = turned / (360.0 + pan_of(rot[0], 20))
+        scale_gate = "pass" if abs(here - scale) <= SCALE_AGREE else "FAIL"
+        print(f"closure: gyro {turned:+.3f}, pictures {360 + pan_of(rot[0], 20):+.3f} "
+              f"({rot[1]} features), scale {here:.5f} against {scale:.5f} "
+              f"(rule {SCALE_AGREE}): {scale_gate}")
+        scale = here if scale_gate == "pass" else scale
+    else:
+        print("closure: the end pictures do not match here; the first session's "
+              "scale is used and the gate is not taken")
+
+    zero = of("H", 0)[0]
+
+    def actual(stop):
+        if gyro[stop["index"]] is None:
+            return None
+        return -(gyro[stop["index"]]["angle"] - gyro[zero["index"]]["angle"]) / scale
+
+    rows = []
+    for pan in range(-170, 171, 10):
+        up, down = of("H", pan), of("K", pan)
+        if not up or not down or None in (actual(up[0]), actual(down[0])):
+            continue
+        rot = rotation_between(picture(up[0]), picture(down[0]), sift)
+        if rot is None:
+            continue
+        rows.append((pan, actual(down[0]) - actual(up[0]), pan_of(rot[0], 20)))
+    differ = np.abs([g - c for _, g, c in rows])
+    back_p95 = float(np.percentile(differ, 95)) if len(differ) else float("nan")
+    back_gate = ("pass" if len(rows) >= 30 and back_p95 <= BACKLASH_P95_DEG
+                 else "FAIL")
+    print(f"backlash by gyro against pictures, {len(rows)} stops: p95 "
+          f"{back_p95:.3f} (rule {BACKLASH_P95_DEG}): {back_gate}")
+    print("  " + ", ".join(f"{p:+d}: {g:+.2f}/{c:+.2f}" for p, g, c in rows))
+
+    table = np.array(candidate["tilt_20"], float)
+    low, high = table[:, 0].min(), table[:, 0].max()
+    held = []
+    print("\nheld out, commanded: actual, residual against the candidate (raw)")
+    for s in of("H"):
+        a = actual(s)
+        if a is None or not low <= s["pan"] <= high:
+            continue
+        r = a - float(np.interp(s["pan"], table[:, 0], table[:, 1]))
+        held.append((s["pan"], r))
+        print(f"  {s['pan']:+5d}  {a:+8.2f}  {r:+.2f}  ({a - s['pan']:+.2f})")
+    reach = {}
+    for side in (1, -1):
+        reach[side] = 0
+        for pan, r in sorted((h for h in held if h[0] * side > 0),
+                             key=lambda h: abs(h[0])):
+            if abs(r) > HELD_OUT_DEG:
+                break
+            reach[side] = abs(pan)
+    print(f"within {HELD_OUT_DEG} deg of the candidate out to -{reach[-1]} and "
+          f"+{reach[1]}; residual p95 "
+          f"{np.percentile(np.abs([h[1] for h in held]), 95):.2f}, "
+          f"max {np.max(np.abs([h[1] for h in held])):.2f}")
+
+    backs = of("R-back")
+    outs = of("R-out")
+    first = backs[0]
+    print("\nreturns to rest, against the first (from 30), by the pictures:")
+    worst = 0.0
+    for came, back in zip(outs, backs):
+        rot = rotation_between(picture(first), picture(back), sift)
+        shift = float("nan") if rot is None else pan_of(rot[0], 20)
+        worst = max(worst, abs(shift)) if rot is not None else float("inf")
+        print(f"  from {came['pan']:+5d}: {shift:+.3f}")
+    return_gate = "pass" if worst <= RETURN_DEG else "FAIL"
+    print(f"worst {worst:.3f} (rule {RETURN_DEG}): {return_gate}")
+
+    reference = back_gate == "pass" and scale_gate != "FAIL"
+    print(f"\nreference: {'PASS' if reference else 'INCONCLUSIVE'}; "
+          f"envelope validated: {'±%d' % min(reach.values()) if reference else 'none'}; "
+          f"return to rest: {return_gate}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("folder")
+    parser.add_argument("--held-out", metavar="CANDIDATE",
+                        help="judge a held-out session against this frozen candidate")
     args = parser.parse_args()
     folder = Path(args.folder)
+    if args.held_out:
+        return judge_held_out(folder, Path(args.held_out))
     meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
     imu = np.load(folder / "imu.npy")
     stops = meta["stops"]
