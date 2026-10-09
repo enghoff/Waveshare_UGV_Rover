@@ -65,6 +65,14 @@ ACTING = frozenset({
     "autonomy_act",              # do this one thing, under this permission
 })
 
+#: What an executive running an M4 trial adds: a copy of the world store taken
+#: just before each attempt, which M4's scoring files the attempt's looks into
+#: (experiments/m4/score_attempts.py). It writes a file beside the store and
+#: changes nothing the rover knows or does.
+TRIAL = frozenset({
+    "world_snapshot",            # copy the world store and the map, as they are now
+})
+
 #: Named so that the error a mistake produces says what is wrong rather than
 #: "not allowed". These are the calls somebody would most plausibly reach for.
 MOVES = frozenset({
@@ -177,4 +185,4 @@ class Acting(ReadOnly):
     a movement call is refused is the same check for both.
     """
 
-    allowed = ALLOWED | ACTING
+    allowed = ALLOWED | ACTING | TRIAL

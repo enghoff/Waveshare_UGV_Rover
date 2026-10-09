@@ -183,6 +183,11 @@ class FakeRover(client.ReadOnly):
         #: How the world state's last look went, when a test wants it to have
         #: failed; None leaves it out, as a store that has never looked does.
         self.world_status: str | None = None
+        #: What the open run was started for, if it is an M4 trial, as the
+        #: daemon says it in `autonomy_status`; None for an ordinary run.
+        self.trial: dict | None = None
+        #: Every world store copy asked for, by name.
+        self.snapshots: list[str] = []
 
     def _ask(self, name, arguments):
         self.asked.append(name)
@@ -304,7 +309,17 @@ class FakeRover(client.ReadOnly):
                 "where": (float(pose["x_m"]), float(pose["y_m"]))}
 
     def _autonomy_status(self, _arguments):
-        return {"ok": True, **self.permission.status()}
+        status = {"ok": True, **self.permission.status()}
+        if self.trial is not None and status.get("enabled"):
+            status["trial"] = dict(self.trial)
+        return status
+
+    def _world_snapshot(self, arguments):
+        name = str(arguments.get("name") or "")
+        self.snapshots.append(name)
+        return {"ok": True, "path": f"/snapshots/{name}.db",
+                "map_path": f"/snapshots/{name}.map.json", "bytes": 1,
+                "took_s": 0.6}
 
     def _autonomy_permit(self, arguments):
         return self.permission.grant(str(arguments.get("run") or ""),

@@ -310,6 +310,23 @@ ringed by unmapped floor retires the whole rim on arriving without having moved.
 So the executive drives to one frontier viewpoint at a time and decides again
 when it gets there.
 
+**An M4 trial run does three things more** (docs/plans/autonomous-curiosity.md,
+M4). A run opened with a `trial` (`experiments/m4/start_trial.py`) carries it in
+the daemon's `autonomy_status`, and the executive reads it when it attaches;
+nothing on this side can make a run a trial. Its `targets` are the only records a
+goal may be at: every other candidate, frontiers included, is refused as "not a
+trial target", and the weights recorded with each decision say so
+(`trial_targets`). With `snapshot`, each geometry attempt first asks the daemon
+for a copy of the world store (`world_snapshot`, about 0.6 s, before anything
+moves), named after the episode. With `relook`, the attempt then turns on the spot
+to face the thing and takes one aimed look at it from where the rover stands,
+tilted for the thing's height from there, before it drives to the viewpoint it
+chose. Those steps carry the role `relook` in the record. A re-look that fails
+does not end the attempt, since it is the baseline and one that saw nothing
+gained nothing; a stop, a run that ended, a move still going or a lost daemon
+still does. The attempt's measured change then holds both looks', and says
+`with_relook`; M4's scoring separates them against the snapshot.
+
 **There is no model in this loop**, and that is not an omission. Nothing here
 asks anything to be curious on its behalf, so a model outage cannot start a
 physical action, cannot stop one and cannot change what is chosen. The check for

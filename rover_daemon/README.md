@@ -49,6 +49,13 @@ The exact schemas live in [`tool_schemas.py`](tool_schemas.py) and are the sourc
 of truth. `list_tools` returns the current set so clients do not maintain their
 own copies.
 
+`world_snapshot {"name"}` copies the world store, with sqlite's own backup, to
+`~/.ugv/world/snapshots/<name>.db`, and the occupancy map beside it as
+`<name>.map.json`. It is served on the rover itself only (`LOCAL_ONLY`) and is how
+an M4 trial's executive keeps the store as it stood before each attempt, for
+`experiments/m4/score_attempts.py`. About 0.6 s and 200 MB on 2026-10-09; a name
+already used is refused rather than overwritten.
+
 `world_state_groups {}` is a diagnostic control call, excluded from model tools.
 It returns candidate groups from a disposable snapshot without applying them;
 the response identifies the snapshot and flags concurrent changes. See
@@ -308,6 +315,12 @@ fifteen minutes, sixty metres and forty actions. The safe area is the mapped flo
 unless `budget.geofence` narrows it, to a circle `{x_m, y_m, radius_m}` or a box of
 `min_x_m`/`max_x_m`/`min_y_m`/`max_y_m` in map coordinates. There is no battery
 reserve ([the decision](../docs/decisions/autonomous-runs-have-no-battery-floor.md)).
+
+A run may also carry a `trial`, for M4: `targets`, the record identifiers it may
+look at; `relook` and `snapshot`, true or false; and a `name`. None of it is a
+limit on what the rover may do. The daemon keeps it with the run and says it in
+`autonomy_status` while that run is open, which is where the executive reads it,
+and refuses a run whose trial has anything else in it.
 
 Opening a run is the only thing that clears a stop, including straight after a
 person's stop. `autonomy_enable` opens a run the same way and starts nothing, for

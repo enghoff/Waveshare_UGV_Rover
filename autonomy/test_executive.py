@@ -202,6 +202,123 @@ def test_a_geometry_look_tilts_level_only_when_the_thing_needs_it():
     session.close()
 
 
+def test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands():
+    """M4 (agreed 2026-10-09): each attempt is paired with a re-look from where
+    the rover stood when it chose, both scored against a copy of the store taken
+    before either. The copy comes first, then the re-look -- a turn on the spot
+    and an aimed look -- then the drive and the chosen viewpoint's look."""
+    rover = a_rover()
+    rover.trial = {"targets": ["object:19"], "relook": True, "snapshot": True}
+    session = Session(rover)
+    _arriving(session)
+    here = session.rover._nav_status({})["pose"]
+    got = session.executive.once()
+    check("the attempt finished", got["outcome"], "succeeded")
+    episode = got["episode"]
+    calls = session.calls(episode)
+    check("a copy of the store, then a turn and a look, then the drive and the "
+          "look", [(one["call"], (one.get("result") or {}).get("role"))
+                   for one in calls],
+          [("world_snapshot", None), ("drive_to", "relook"),
+           ("world_inspect", "relook"), ("drive_to", None),
+           ("world_inspect", None)])
+    check("...the copy named after the episode", session.rover.snapshots,
+          [episode])
+    turn, relook = calls[1]["params"], calls[2]["params"]
+    check("the re-look's turn is to the spot the rover is on",
+          (turn["x_m"], turn["y_m"]), (round(here["x_m"], 3), round(here["y_m"], 3)))
+    facing = math.degrees(math.atan2(-0.4 - here["y_m"], 1.2 - here["x_m"]))
+    check("...facing the thing", abs(turn["heading_deg"] - facing) < 0.1, True)
+    check("...and its look is aimed at the thing and names it",
+          (relook.get("aim_at"), relook.get("target")),
+          ({"x_m": 1.2, "y_m": -0.4}, "object:19"))
+    measured = [one["body"] for one in session.events(episode)
+                if one["kind"] == "measured" and one["body"].get("with_relook")]
+    check("...and the measurement says it holds both looks' change",
+          len(measured), 1)
+    session.close()
+
+
+def test_an_m4_trial_looks_only_at_its_targets():
+    """A trial's attempts are predeclared: a run given other records does not
+    wander off to this one, or to a frontier."""
+    rover = a_rover()
+    rover.trial = {"targets": ["object:99"], "relook": True, "snapshot": True}
+    session = Session(rover)
+    _arriving(session)
+    got = session.executive.once()
+    check("nothing outside the trial is attempted", got["acted"], False)
+    check("...no look was taken and no copy made",
+          (session.rover.looks, session.rover.snapshots), (0, []))
+    decided = [one["body"] for one in session.events(got["episode"])
+               if one["kind"] == "candidate"]
+    check("...and every candidate says why",
+          all("not a trial target" in str(one) for one in decided), True)
+    session.close()
+
+
+def test_a_relook_that_fails_does_not_end_the_attempt():
+    """The re-look is the baseline. One that saw nothing gained nothing, and the
+    chosen viewpoint is still worth its drive."""
+    rover = a_rover()
+    rover.trial = {"targets": ["object:19"], "relook": True, "snapshot": True}
+    original = rover._perform
+
+    def perform(action, params):
+        if action == "world_inspect" and rover.looks == 0:
+            rover.looks += 1
+            return {"ok": False, "error": "the camera was busy"}
+        return original(action, params)
+
+    rover._perform = perform
+    session = Session(rover)
+    _arriving(session)
+    got = session.executive.once()
+    check("the attempt went on to its chosen viewpoint and finished",
+          (got["outcome"], session.rover.looks, len(session.rover.moves)),
+          ("succeeded", 2, 2))
+    failed = [one for one in session.calls(got["episode"]) if not one["ok"]]
+    check("...with the re-look that failed recorded as such",
+          [(one["call"], one["result"].get("role")) for one in failed],
+          [("world_inspect", "relook")])
+    session.close()
+
+
+def test_an_ordinary_run_neither_copies_the_store_nor_looks_again():
+    session = Session()
+    _arriving(session)
+    got = session.executive.once()
+    check("two calls, as before",
+          [one["call"] for one in session.calls(got["episode"])],
+          ["drive_to", "world_inspect"])
+    check("...and no copy of the store", "world_snapshot" in session.rover.asked,
+          False)
+    session.close()
+
+
+def test_a_relook_is_tilted_for_the_things_elevation_from_where_it_stands():
+    """A thing low enough to need the level tilt from its viewpoint may need the
+    resting tilt from further away, and the other way about."""
+    import situation as situation_mod
+    session = Session()
+    session.executive.trial = {"relook": True}
+    # The floor rug of goals.LOOK_TILTS_DEG, seen 1 m away at -13 degrees.
+    candidate = {"id": "improve_geometry:object:9@1.00,0.00",
+                 "type": "improve_geometry", "target": "object:9", "expects": "",
+                 "constraints": {"goal": {"x_m": 1.0, "y_m": 0.0, "heading_deg": 0.0},
+                                 "look_at": {"x_m": 2.0, "y_m": 0.0},
+                                 "elevation_deg": -13.0, "range_m": 1.0,
+                                 "look_tilt_deg": 0.0}}
+    near = situation_mod.Situation({"nav": {"pose": {"x_m": 1.0, "y_m": 0.0,
+                                                    "heading_deg": 90.0}}})
+    steps = session.executive.plan(candidate, near)
+    check("from the same distance, the re-look tilts level as the chosen look does",
+          (steps[1]["params"].get("tilt_deg"), steps[3]["params"].get("tilt_deg")),
+          (0.0, 0.0))
+    check("...and its turn faces the thing", steps[0]["params"]["heading_deg"], 0.0)
+    session.close()
+
+
 def test_a_look_that_could_see_the_place_and_found_nothing_sets_it_aside_longer():
     """A record whose aimed look, taken with its place in the depth camera's
     view, filed nothing is probably not where it claims (2026-10-08)."""
@@ -747,7 +864,12 @@ def test_a_goal_that_got_nowhere_is_not_chosen_again():
     session.close()
 
 
-TESTS = (test_a_look_that_could_see_the_place_and_found_nothing_sets_it_aside_longer,
+TESTS = (test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands,
+         test_an_m4_trial_looks_only_at_its_targets,
+         test_a_relook_that_fails_does_not_end_the_attempt,
+         test_an_ordinary_run_neither_copies_the_store_nor_looks_again,
+         test_a_relook_is_tilted_for_the_things_elevation_from_where_it_stands,
+         test_a_look_that_could_see_the_place_and_found_nothing_sets_it_aside_longer,
          test_a_geometry_look_tilts_level_only_when_the_thing_needs_it,
          
     test_a_place_navigation_could_not_reach_is_not_driven_to_again,

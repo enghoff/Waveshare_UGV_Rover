@@ -787,7 +787,30 @@ M4 reports it and no longer waits for it.
 
 ### What is ahead before the acceptance attempts
 
-1. **A new taped set.** The six things taped on 2026-10-03
+Since 2026-10-09 a trial run can be opened (`experiments/m4/start_trial.py`) that
+looks only at the records it is given, copies the world store before each attempt
+and takes the re-look before each drive (described in
+[autonomy/README.md](../../autonomy/README.md) and
+[rover_daemon/README.md](../../rover_daemon/README.md)), and
+`experiments/m4/score_attempts.py` scores the attempts against the tape for
+criteria 3, 5, 6 and 8 ([experiments/m4/README.md](../../experiments/m4/README.md)).
+On the rover's own store it reproduces what the rover recorded for its 2026-10-08
+looks. What is left:
+
+1. **Labelling the six old targets' records**, for the development attempts. Their
+   records are many: on 2026-10-09 two that each held one 2026-10-03 look at the
+   cabinet or a painting stood 2.0 and 1.7 m from its tape. A record is labelled
+   from its photographs and its position, not from a look it happens to hold.
+2. **Development attempts** on those six, to measure how often chosen viewpoints
+   and re-looks each improve placement, and to set the size of the acceptance set
+   from those rates (criterion 4). With chosen looks improving one time in six,
+   as on 2026-10-08, the comparison needs about 23 pairs if a re-look never
+   improves anything, 49 if it does one time in fifty, 99 at one in twenty and
+   about 235 at half the chosen looks' rate (`score_attempts.py plan`); past a
+   hundred, the comparison is to be revisited before the rover spends them.
+   Recorded looks cannot stand in for these: of the 157 aimed looks of 10-02 to
+   10-06 and the 208 of 10-08, 15 were aimed at a record of a taped thing.
+3. **A new taped set.** The six things taped on 2026-10-03
    (`captures/2026-10-03-targets/TARGETS.txt`) fixed the depth placement rule
    ([2026-10-08](../progress/2026-10-08-depth-placement.md)), so they are
    development evidence now. Acceptance needs about a dozen new things in at
@@ -795,19 +818,6 @@ M4 reports it and no longer waits for it.
    range from somewhere it can stand. The owner gives tape readings. Which of the
    store's records belong to each thing is labelled from their pictures before
    any acceptance attempt, and both stay frozen through the comparison.
-2. **Scoring one attempt on its own.** A script files one attempt's looks into a
-   copy of the store as it stood just before the attempt, and scores the target's
-   placement against the tape before and after. Every attempt and its re-look
-   then start from the same knowledge, whatever else the run did.
-3. **The re-look.** Before driving to the viewpoint it chose, the executive aims
-   at the target from where it stands and takes one look, recorded in the same
-   decision. It costs seconds, not a drive.
-4. **Development attempts** on the six old targets, to measure how often chosen
-   viewpoints and re-looks each improve placement, and to set the size of the
-   acceptance set from those rates (criterion 4). On 2026-10-08's rates, with a
-   re-look that seldom improves anything, that is about 40 pairs; if re-looks
-   improve their target half as often as chosen viewpoints, it is well over a
-   hundred, and the comparison is to be revisited before the rover spends them.
 
 Also ahead, though M4 does not need it: proposing things seen once and never
 placed, which are a third of the observations and one of the questions the
@@ -1561,11 +1571,10 @@ M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
    M4's development attempts can be those last drives, and moved furniture can be
    a chair set in a mapped gap during one of them. Each session needs the owner, a
    charge and a cleared area, so each is chosen to try something not tried before.
-2. **Prepare M4's acceptance attempts**: a new taped set with its records
-   labelled, the script that scores one attempt against the tape, and the
-   re-look before each chosen viewpoint (*What is ahead before the acceptance
-   attempts*, under Phase 4). Then development attempts to size the set, then
-   the attempts themselves.
+2. **Run M4's attempts.** The trial run, its re-look and the scoring exist;
+   what is left is labelling the six old targets' records, development attempts
+   on them to size the set, a new taped set, and then the acceptance attempts
+   (*What is ahead before the acceptance attempts*, under Phase 4).
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). M4 no longer waits on it, but it sets how many attempts
    improve anything, about one in six with the thing in view on 2026-10-08, and

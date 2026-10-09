@@ -143,6 +143,47 @@ def launch_executive(run_id: str) -> dict[str, Any]:
             "process": process}
 
 
+#: What a run opened for an M4 trial may say about itself, beside its budget
+#: (docs/plans/autonomous-curiosity.md, M4). Not a budget: none of it limits
+#: what the rover may do, and the executive is what reads it.
+TRIAL_KEYS = ("targets", "relook", "snapshot", "name")
+TRIAL_TARGETS_MAX = 64
+
+
+def trial_of(asked: Any) -> tuple[dict[str, Any] | None, str]:
+    """A run's `trial` as given, checked, or (None, why it is refused).
+
+    `targets` are the record identifiers the run may look at, `relook` asks for
+    a re-look from where the rover stands before each attempt, `snapshot` for a
+    copy of the world store before each, and `name` labels the trial. None, or
+    nothing given, is an ordinary run.
+    """
+    if asked is None:
+        return None, ""
+    if not isinstance(asked, dict):
+        return None, "a trial is an object"
+    unknown = sorted(set(asked) - set(TRIAL_KEYS))
+    if unknown:
+        return None, f"no such trial setting: {', '.join(unknown)}"
+    trial: dict[str, Any] = {}
+    targets = asked.get("targets")
+    if targets is not None:
+        if (not isinstance(targets, list) or not targets
+                or len(targets) > TRIAL_TARGETS_MAX
+                or not all(isinstance(one, str) and one.strip() for one in targets)):
+            return None, (f"a trial's targets are a list of 1 to "
+                          f"{TRIAL_TARGETS_MAX} record identifiers")
+        trial["targets"] = [one.strip() for one in targets]
+    for flag in ("relook", "snapshot"):
+        if flag in asked:
+            if not isinstance(asked[flag], bool):
+                return None, f"a trial's {flag} is true or false"
+            trial[flag] = asked[flag]
+    if "name" in asked:
+        trial["name"] = str(asked["name"])[:120]
+    return trial, ""
+
+
 class RoverAutonomy:
     """Autonomous permission, mixed into Rover."""
 
@@ -180,11 +221,19 @@ class RoverAutonomy:
                  {"x_m": where[0], "y_m": where[1],
                   "heading_deg": facts.get("heading_deg"),
                   "map_id": facts.get("map_id")})
+        trial, wrong = trial_of(arguments.get("trial"))
+        if wrong:
+            return {"ok": False, "error": wrong}
         answer = self.permission.enable(via=via, why=purpose, budget=budget,
                                         base=base, start=start)
         if answer.get("ok"):
+            self._autonomy_trial = (None if trial is None else
+                                    {"run": answer["run"]["id"], **trial})
+            if trial is not None:
+                answer["trial"] = trial
             print(f"[autonomy] started via {via}: {answer['run']['id']}, "
                   f"budget {answer['run']['budget']}"
+                  + (f", trial {trial}" if trial is not None else "")
                   + (f", for {purpose}" if purpose else ""), flush=True)
         return answer
 
@@ -452,7 +501,13 @@ class RoverAutonomy:
         the daemon enforces -- and a deliberation can say "it would go and look
         at the sofa, but a person stopped the rover" instead of guessing.
         """
-        return {"ok": True, **self.permission.status()}
+        status = {"ok": True, **self.permission.status()}
+        trial = getattr(self, "_autonomy_trial", None)
+        run = status.get("run") or {}
+        if (trial is not None and status.get("enabled")
+                and run.get("id") == trial.get("run")):
+            status["trial"] = {k: v for k, v in trial.items() if k != "run"}
+        return status
 
     # --- the parts the rest of the daemon calls -----------------------------
 

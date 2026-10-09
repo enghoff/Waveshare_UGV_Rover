@@ -99,6 +99,9 @@ def test_schemas():
                # docs/plans/semantic-world-state.md under "Authority boundaries".
                "world_building", "world_inspect",
                "world_state_clear", "world_state_rebuild", "world_state_merge", "world_state_groups",
+               # A copy of the whole store on the rover's disk, for M4's
+               # scoring; served on loopback only (`LOCAL_ONLY`).
+               "world_snapshot",
                "world_state_entities", "world_state_entity", "world_state_frame",
                "world_state_observations", "world_state_search",
                "world_state_summary",

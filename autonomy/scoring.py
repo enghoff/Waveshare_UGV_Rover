@@ -98,7 +98,8 @@ class Weights:
     __slots__ = ("version", "purpose", "w_time", "w_travel", "w_energy",
                  "switching_cost", "min_gain", "room_m2",
                  "useful_uncertainty_m", "time_scale_s", "travel_scale_m",
-                 "geofence", "m0a_protocol", "go_further", "source")
+                 "geofence", "m0a_protocol", "go_further", "trial_targets",
+                 "source")
 
     def __init__(self, **fields: Any) -> None:
         for name, value in DEFAULTS.items():
@@ -145,7 +146,7 @@ class Weights:
 DEFAULTS: dict[str, Any] = {
     # Bumped whenever anything below changes, so that two decisions scored
     # differently can be told apart in the record without diffing them.
-    "version": "3",
+    "version": "4",
 
     # Per goal type, and 1.0 everywhere until the owner declares a purpose.
     "purpose": {"default": 1.0, "explore_frontier": 1.0,
@@ -216,6 +217,13 @@ DEFAULTS: dict[str, Any] = {
     # only when there is nowhere left. Vetoes and `min_gain` still apply, so
     # it never drives across the house for nothing.
     "go_further": False,
+
+    # The things an M4 trial run may aim at, as record identifiers, or None for
+    # an ordinary run. Set from the run the daemon opened (its `trial`), never
+    # from a file: M4's attempts are predeclared, and a run allowed to wander off
+    # to records outside the set would spend the battery on attempts that cannot
+    # be scored against the tape (docs/plans/autonomous-curiosity.md, M4).
+    "trial_targets": None,
 }
 
 DEFAULT = Weights()
@@ -272,6 +280,12 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
     out: list[dict[str, str]] = []
     facts = candidate.constraints
 
+    if weights.trial_targets is not None and (
+            candidate.type != "improve_geometry"
+            or candidate.target not in set(weights.trial_targets)):
+        out.append({"veto": "not a trial target",
+                    "why": "this run is an M4 trial, which looks only at the "
+                           "things it was given"})
     if facts.get("needs_movement") and facts.get("reachable_m") is None:
         walked_with_body = (situation.reach is not None
                             and bool(situation.reach.inscribed_m))

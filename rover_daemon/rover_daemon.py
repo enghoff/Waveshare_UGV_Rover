@@ -63,7 +63,9 @@ ROS_NAV_PORT = 8773
 # Running rover-side scripts is allowed only to clients on this machine. The
 # Alibaba conversation is rover-side now, so loopback is a legitimate model
 # client; LAN callers are still refused these code-execution calls.
-LOCAL_ONLY = ("run_script", "start_script", "script_stop", "list_api")
+LOCAL_ONLY = ("run_script", "start_script", "script_stop", "list_api",
+              # Writes a 200 MB copy of the world store to the rover's disk.
+              "world_snapshot")
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
 

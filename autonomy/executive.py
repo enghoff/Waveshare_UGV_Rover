@@ -180,6 +180,17 @@ RUN_GATES = frozenset({"stopped", "autonomy not enabled",
 #: 2026-10-08: docs/decisions/aimed-looks-file-to-their-target.md.
 NAME_THE_TARGET = True
 
+#: The role an M4 trial's re-look steps carry in the record: a turn on the spot
+#: to face the thing and one aimed look at it, from where the rover stood when it
+#: chose, taken before it drives to the viewpoint it chose. M4 scores the chosen
+#: viewpoint's look against this one, each filed into the same copy of the store
+#: (docs/decisions/m4-measures-where-things-are.md).
+RELOOK = "relook"
+#: How a re-look step may end that still ends the attempt. Anything else -- a
+#: look that saw nothing, a turn navigation refused -- is a baseline that gained
+#: nothing, and the attempt goes on to its chosen viewpoint.
+RELOOK_ENDS = frozenset({"stopped", "run over", "timed out", "connection lost"})
+
 class Aborted(Exception):
     """Raised inside a turn to end it. Carries the reason the episode closes
     with, because an abort whose reason is assembled later is an abort whose
@@ -233,6 +244,11 @@ class Executive:
         self._gated_since: float | None = None
         #: Set when the run went back and ended itself; the loop is over.
         self.finished = False
+        #: What the run was opened for, if it is an M4 trial: `targets`, the
+        #: records it may look at; `relook`, whether each attempt starts with a
+        #: re-look from where the rover stands; `snapshot`, whether the world
+        #: store is copied before each attempt. Empty for an ordinary run.
+        self.trial: dict[str, Any] = {}
 
     # --- the loop -----------------------------------------------------------
 
@@ -251,6 +267,16 @@ class Executive:
                     "status": status}
         self.run = str(run["id"])
         self.start = run.get("start") or None
+        # **The trial comes from the run, not from this process.** The daemon
+        # keeps what the run was opened with and says it in its status, so a
+        # trial's targets are recorded where its run is, and an executive
+        # started by the console's button can never find itself in one.
+        self.trial = dict(status.get("trial") or {})
+        if self.trial.get("targets") is not None:
+            # A copy: the weights this executive was given may be shared.
+            self.weights = scoring.Weights.from_dict({
+                **self.weights.as_dict(),
+                "trial_targets": sorted(str(one) for one in self.trial["targets"])})
         return {"ok": True, "run": run, "status": status}
 
     def loop(self, turns: int | None = None) -> dict[str, Any]:
@@ -344,12 +370,18 @@ class Executive:
         step: dict[str, Any] = {}
         try:
             self.state = "PLAN"
-            plan = self.plan(candidate)
+            plan = self.plan(candidate, here)
             if inspecting:
                 request = self.freeze(episode, here, candidate)
             self.state = "EXECUTE"
+            if (self.trial.get("snapshot")
+                    and candidate["type"] == "improve_geometry"):
+                self.snapshot(episode)
             looked: dict[str, Any] = {}
             for step in plan:
+                if step.get("role") == RELOOK:
+                    self.relook(episode, step, candidate)
+                    continue
                 looked = self.do(episode, step, candidate)
             if inspecting:
                 self.state = "CHECK"
@@ -388,7 +420,9 @@ class Executive:
 
     # --- the states ---------------------------------------------------------
 
-    def plan(self, candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    def plan(self, candidate: dict[str, Any],
+             here: situation_mod.Situation | None = None
+             ) -> list[dict[str, Any]]:
         """The admitted operations that would carry this goal out, in order.
 
         **Two goal types, and neither of them is `explore`.** A frontier goal is
@@ -463,11 +497,86 @@ class Executive:
                                      "aim_at": limits.get("target"),
                                      "inspection": limits}})
 
+        if (self.trial.get("relook") and candidate["type"] == "improve_geometry"
+                and here is not None):
+            steps = [*self._relook_steps(candidate, here), *steps]
+
         for step in steps:
             if step["action"] not in permission.ACTIONS:
                 raise Aborted(f"{step['action']} is not an operation the rover "
                               f"admits from autonomy", "not admitted")
         return steps
+
+    def _relook_steps(self, candidate: dict[str, Any],
+                      here: situation_mod.Situation) -> list[dict[str, Any]]:
+        """An M4 trial's re-look: face the thing from where the rover stands,
+        and take one aimed look at it, as the chosen viewpoint's look is taken.
+
+        The turn is a drive to the spot the rover is on, with a heading, which
+        navigation carries out as a turn alone (a near goal closer than its
+        arrival tolerance is only its heading). The look is tilted for the
+        thing's elevation from here, worked out from its height as the goal
+        measured it, so that a re-look is not refused the depth camera's view
+        that the chosen viewpoint was given. [] when the rover's position or the
+        thing's is not known.
+        """
+        facts = candidate["constraints"]
+        aim = facts.get("look_at")
+        where = here.where
+        if not isinstance(aim, dict) or where is None or aim.get("x_m") is None:
+            return []
+        dx, dy = float(aim["x_m"]) - where[0], float(aim["y_m"]) - where[1]
+        facing = math.degrees(math.atan2(dy, dx))
+        turn = {"action": "drive_to", "role": RELOOK,
+                "params": {"x_m": round(where[0], 3), "y_m": round(where[1], 3),
+                           "heading_deg": round(facing, 1),
+                           "said": f"turning to look at {candidate['target']} "
+                                   f"again from where it stands"}}
+        look: dict[str, Any] = {"settle": False, "aim_at": aim}
+        if NAME_THE_TARGET:
+            look["target"] = candidate["target"]
+        elevation, range_m = facts.get("elevation_deg"), facts.get("range_m")
+        if elevation is not None and range_m:
+            height = math.tan(math.radians(float(elevation))) * float(range_m)
+            tilt, _ = goals._tilt_for({"height_m": height}, math.hypot(dx, dy))
+            if tilt is not None and float(tilt) != goals.LOOK_TILTS_DEG[0]:
+                look["tilt_deg"] = float(tilt)
+        return [turn, {"action": "world_inspect", "role": RELOOK, "params": look}]
+
+    def relook(self, episode: str, step: dict[str, Any],
+               candidate: dict[str, Any]) -> dict[str, Any]:
+        """Carry out one re-look step. **One that did not succeed does not end
+        the attempt**: the re-look is the baseline the chosen viewpoint is
+        compared with, and a re-look that could not turn or saw nothing is a
+        baseline that gained nothing, which the scoring counts as such. A stop,
+        a run that ended or a lost connection still ends it, like any step."""
+        try:
+            return self.do(episode, step, candidate)
+        except Aborted as stop:
+            # `do` has already recorded the call and what it answered. What
+            # still ends the attempt is what would end any step: the run over,
+            # a person's stop, a move that may still be going, or no daemon.
+            if stop.code in RELOOK_ENDS:
+                raise
+            return {"ok": False, "error": stop.why}
+
+    def snapshot(self, episode: str) -> dict[str, Any]:
+        """Copy the world store and the map as they are before the attempt, for
+        M4's scoring, and write down where they went. A copy that fails is
+        recorded and the attempt goes ahead: an attempt without one is counted
+        as unscorable rather than not made."""
+        began = self.now()
+        try:
+            got = self.rover.call("world_snapshot", {"name": episode})
+        except client_mod.Unreachable as exc:
+            raise Aborted(str(exc), "connection lost") from exc
+        self.store.append(episode, events.call(
+            "world_snapshot", {"name": episode}, ok=bool(got.get("ok")),
+            result={k: got.get(k) for k in ("path", "map_path", "bytes",
+                                            "took_s") if k in got},
+            error=str(got.get("error") or ""),
+            duration_s=round(self.now() - began, 2)))
+        return got
 
     def do(self, episode: str, step: dict[str, Any],
            candidate: dict[str, Any], busy_retries: int = LOOK_BUSY_RETRIES
@@ -489,7 +598,8 @@ class Executive:
         # Commit intent before the socket write: a kill or lost reply must not
         # erase the fact that this episode may have dispatched a physical move.
         self.store.append(episode, events.make("dispatch", {
-            "action_id": action_id, "call": step["action"], "params": params}))
+            "action_id": action_id, "call": step["action"], "params": params,
+            **({"role": step["role"]} if step.get("role") else {})}))
         try:
             answer = self.rover.call("autonomy_act", {
                 "permit": self.permit, "action": step["action"],
@@ -506,7 +616,8 @@ class Executive:
         if not answer.get("ok"):
             self.store.append(episode, events.call(
                 step["action"], params, ok=False,
-                result={"action_id": action_id},
+                result={"action_id": action_id,
+                        **({"role": step["role"]} if step.get("role") else {})},
                 error=str(answer.get("error") or "refused"),
                 duration_s=round(self.now() - began, 2)))
             if (step["action"] == "world_inspect" and busy_retries > 0
@@ -528,7 +639,9 @@ class Executive:
                 raise
         self.store.append(episode, events.call(
             step["action"], params, ok=bool(result.get("ok")),
-            result={"action_id": action_id, **{k: v for k, v in result.items()
+            result={"action_id": action_id,
+                    **({"role": step["role"]} if step.get("role") else {}),
+                    **{k: v for k, v in result.items()
                     if k in ("note", "detail", "regions", "attached",
                              "placed", "ranged", "stopped", "going",
                              "frame_id", "pose", "status", "stored",
@@ -597,6 +710,10 @@ class Executive:
             now = _uncertainty(after, candidate["target"])
             measured.update({"placement_uncertainty_before_m": was,
                              "placement_uncertainty_after_m": now})
+            if self.trial.get("relook"):
+                # What changed is the re-look's and the chosen look's together;
+                # M4's scoring separates them against the snapshot.
+                measured["with_relook"] = True
             if was is not None and now is not None:
                 measured["placement_improved_m"] = round(was - now, 3)
             what = _said_geometry(candidate["target"], was, now)

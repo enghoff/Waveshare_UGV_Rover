@@ -203,6 +203,33 @@ def test_a_run_records_where_the_rover_stood_when_it_was_started():
           rover.call("autonomy_status", {})["run"]["start"]["map_id"], "map-7")
 
 
+def test_a_run_opened_for_an_m4_trial_says_so_to_the_executive():
+    """M4 (2026-10-09): a trial's targets and its re-look travel with the run,
+    and reach the executive in `autonomy_status`, so that an executive started
+    for an ordinary run can never find itself in one."""
+    rover = a_rover(Clock())
+    trial = {"targets": ["object:5", "object:9"], "relook": True,
+             "snapshot": True, "name": "M4 development, taped six"}
+    opened = rover.call("autonomy_enable", {"via": "api", "purpose": "M4 trial",
+                                            "trial": trial})
+    check("a run opens with a trial", opened["ok"], True)
+    check("...and the executive is told it", rover.call("autonomy_status", {})
+          .get("trial"), trial)
+    rover.call("autonomy_stop", {})
+    check("...and nothing once the run is over",
+          "trial" in rover.call("autonomy_status", {}), False)
+    rover.call("autonomy_enable", {"via": "api", "purpose": "ordinary"})
+    check("the next run, opened without one, is ordinary",
+          "trial" in rover.call("autonomy_status", {}), False)
+    rover.call("autonomy_stop", {})
+    for wrong in ({"targets": "object:5"}, {"targets": []}, {"relook": "yes"},
+                  {"drive_faster": True}, ["object:5"]):
+        got = rover.call("autonomy_enable", {"via": "api", "trial": wrong})
+        check(f"a trial of {wrong} is refused, and opens no run",
+              (got["ok"], rover.call("autonomy_status", {})["enabled"]),
+              (False, False))
+
+
 def test_the_console_starts_a_run_with_no_limit_but_failures():
     launched = []
     rover = a_rover(Clock())
@@ -721,6 +748,7 @@ TESTS = (
     test_a_fresh_daemon_has_no_authority,
     test_a_run_records_how_it_was_started_and_the_budget_it_was_given,
     test_a_run_records_where_the_rover_stood_when_it_was_started,
+    test_a_run_opened_for_an_m4_trial_says_so_to_the_executive,
     test_the_console_starts_a_run_with_no_limit_but_failures,
     test_an_agent_starts_a_run_after_a_stop_and_can_bound_it,
     test_a_run_is_not_started_where_it_cannot_act,

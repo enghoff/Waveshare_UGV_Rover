@@ -10,6 +10,8 @@ import base64
 import json
 import math
 import os
+import re
+import sqlite3
 import sys
 import threading
 import time
@@ -76,6 +78,11 @@ MAP_CACHE_S = 5.0
 REACH_LIMIT_M = 12.0
 OCCUPIED_AT = 50
 MAP_ASK_S = 8.0
+
+#: Where `world_snapshot` puts its copies: beside the store, in a directory of
+#: their own. About 200 MB each on 2026-10-09, so an M4 trial of a hundred
+#: attempts wants 20 GB of the rover's 820 GB free; its scoring deletes them.
+SNAPSHOT_DIR = "snapshots"
 # A hypothesis check's look at another tilt waits this long for the servo and
 # the picture to settle; the pan approach inside `centre_gimbal` is separate.
 TILT_SETTLE_S = 1.0
@@ -1260,6 +1267,75 @@ class RoverWorld:
             built = world_state.rebuild.rebuild(store, reach=self._world_reach)
         return {"ok": True, "applied": True, "backup": backup, "rerange": ranged,
                 "rebuild": built}
+
+    def _tool_world_snapshot(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """A copy of the world store as it is now, with the occupancy map beside
+        it. A control call, served on the rover itself only.
+
+        **What M4 scores an attempt against** (docs/plans/autonomous-curiosity.md):
+        the executive of an M4 trial asks for one before each attempt, named
+        after the attempt's episode, and `experiments/m4/score_attempts.py`
+        later files the attempt's re-look and its chosen look each into a copy
+        of this one, so that both start from the same knowledge. The map is
+        kept because placing a thing from bearings needs to know how far the
+        rover could see (`_world_reach`), and the map moves on.
+
+        sqlite's own backup, not a file copy: the store keeps a write-ahead log
+        beside it, and the file alone is hours stale. About 0.6 s for 200 MB on
+        the Orin, holding the store's lock, so no look writes half-way through.
+        Nothing the rover knows or does changes.
+        """
+        why = self._world_ready()
+        if why:
+            return {"ok": False, "error": why}
+        name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(arguments.get("name") or ""))
+        name = name.strip("._")
+        if not name or len(name) > 160:
+            return {"ok": False, "error": "a snapshot needs a name of letters, "
+                                          "digits and . _ - (160 at most)"}
+        store = self._world_store()
+        directory = os.path.join(os.path.dirname(store.path), SNAPSHOT_DIR)
+        path = os.path.join(directory, name + ".db")
+        if os.path.exists(path):
+            return {"ok": False, "error": f"there is already a snapshot called {name}"}
+        began = time.monotonic()
+        os.makedirs(directory, exist_ok=True)
+        copy = sqlite3.connect(path)
+        try:
+            with store._lock:
+                store.db.backup(copy)
+        except Exception as error:
+            copy.close()
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            return {"ok": False, "error": f"the copy failed: {type(error).__name__}: {error}"}
+        copy.close()
+        answer: dict[str, Any] = {"ok": True, "path": path,
+                                  "bytes": os.path.getsize(path),
+                                  "took_s": round(time.monotonic() - began, 2)}
+        # The map, in the shape the nav bridge answers it, which is what
+        # `world_state.replay.reach_from` reads. A snapshot without one is still
+        # a snapshot: its bearings are then scored unbounded, and it says so.
+        answer["map_path"] = None
+        navigator = getattr(self, "nav", None)
+        if navigator is not None:
+            try:
+                got = navigator.ask({"op": "map"}, MAP_ASK_S)
+            except Exception as error:
+                got = {"ok": False, "error": str(error)}
+            if got.get("ok") and got.get("data"):
+                map_path = os.path.join(directory, name + ".map.json")
+                with open(map_path, "w", encoding="utf-8") as handle:
+                    json.dump({key: got.get(key) for key in (
+                        "width", "height", "resolution_m", "origin_x_m",
+                        "origin_y_m", "data", "pose")}, handle)
+                answer["map_path"] = map_path
+            else:
+                answer["map_note"] = "no map was kept: " + str(
+                    got.get("error") or "the navigator sent none")
+        return answer
 
     def _tool_world_state_groups(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Read-only grouping preview; consumers still use original entities."""

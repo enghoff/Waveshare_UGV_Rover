@@ -57,6 +57,26 @@ def test_the_world_state_calls_reach_the_store():
                   (preview["ok"], preview["preview_only"], preview["groups"]), (True, True, []))
             check("a grouping preview cannot be applied",
                   rover.call("world_state_groups", {"apply": True})["ok"], False)
+
+            # M4's copy of the store before an attempt, named after its episode.
+            import contextlib
+            import sqlite3
+            copied = rover.call("world_snapshot", {"name": "au/1234/episode:7"})
+            check("a snapshot of the store is taken", copied["ok"], True)
+            check("...under a name a file can have",
+                  os.path.basename(copied["path"]), "au_1234_episode_7.db")
+            with contextlib.closing(sqlite3.connect(copied["path"])) as kept:
+                tables = {row[0] for row in kept.execute(
+                    "select name from sqlite_master where type='table'")}
+            check("...which is the store, tables and all",
+                  {"entities", "observations", "aimed_looks"} <= tables, True)
+            check("...with no map beside it where there is no navigator",
+                  copied["map_path"], None)
+            check("the same name twice is refused rather than overwritten",
+                  rover.call("world_snapshot", {"name": "au/1234/episode:7"})["ok"],
+                  False)
+            check("...and so is no name at all",
+                  rover.call("world_snapshot", {})["ok"], False)
             check("...and says which model would answer an inspection",
                   "fake" in empty["backend"], True)
 
