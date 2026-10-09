@@ -218,6 +218,46 @@ def test_a_geometry_look_tilts_level_only_when_the_thing_needs_it():
     session.close()
 
 
+def test_a_look_from_where_the_rover_stands_turns_the_gimbal_not_the_rover():
+    """2026-10-09: the gimbal lands within 0.6 degrees anywhere in ±150, and a
+    turn on the spot leaves the heading 9 to 16 out. A look that asks for no
+    movement is now the aimed look alone, when the thing is within reach of the
+    pan; anything further round, or a rover that does not know where it faces,
+    keeps the turn."""
+    import situation as situation_mod
+    session = Session()
+
+    def from_here(facing, aim, moving=False):
+        candidate = {"id": "improve_geometry:object:9@0.00,0.00",
+                     "type": "improve_geometry", "target": "object:9", "expects": "",
+                     "constraints": {"goal": {"x_m": 0.0, "y_m": 0.0,
+                                              "heading_deg": 90.0},
+                                     "look_at": aim, "needs_movement": moving}}
+        here = situation_mod.Situation({"nav": {"pose": {
+            "x_m": 0.0, "y_m": 0.0, "heading_deg": facing}}})
+        return [step["action"] for step in session.executive.plan(candidate, here)]
+
+    check("a thing a quarter turn round is looked at without turning",
+          from_here(0.0, {"x_m": 0.0, "y_m": 2.0}), ["world_inspect"])
+    check("...and the look is still aimed at it",
+          session.executive.plan(
+              {"id": "g", "type": "improve_geometry", "target": "object:9",
+               "expects": "", "constraints": {
+                   "goal": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 90.0},
+                   "look_at": {"x_m": 0.0, "y_m": 2.0}, "needs_movement": False}},
+              situation_mod.Situation({"nav": {"pose": {
+                  "x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}}}))[0]["params"]
+          .get("aim_at"), {"x_m": 0.0, "y_m": 2.0})
+    check("a thing nearly behind the rover is still turned to",
+          from_here(0.0, {"x_m": -2.0, "y_m": 0.3}), ["drive_to", "world_inspect"])
+    check("a rover with no heading turns, as before",
+          from_here(None, {"x_m": 0.0, "y_m": 2.0}), ["drive_to", "world_inspect"])
+    check("a goal that drives somewhere still drives",
+          from_here(0.0, {"x_m": 0.0, "y_m": 2.0}, moving=True),
+          ["drive_to", "world_inspect"])
+    session.close()
+
+
 def test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands():
     """M4 (agreed 2026-10-09): each attempt is paired with a re-look from where
     the rover stood when it chose, both scored against a copy of the store taken
@@ -884,6 +924,7 @@ def test_a_goal_that_got_nowhere_is_not_chosen_again():
 
 TESTS = (test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands,
          test_an_m4_trial_looks_only_at_its_targets,
+         test_a_look_from_where_the_rover_stands_turns_the_gimbal_not_the_rover,
          test_a_relook_that_fails_does_not_end_the_attempt,
          test_an_ordinary_run_neither_copies_the_store_nor_looks_again,
          test_a_relook_is_tilted_for_the_things_elevation_from_where_it_stands,

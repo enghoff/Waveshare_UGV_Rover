@@ -186,6 +186,14 @@ NAME_THE_TARGET = True
 #: viewpoint's look against this one, each filed into the same copy of the store
 #: (docs/decisions/m4-measures-where-things-are.md).
 RELOOK = "relook"
+
+#: How far round from where the rover faces a thing may be for a look from where
+#: it stands to be aimed by the gimbal alone, without turning the rover first.
+#: The gimbal's measured travel reaches 150 degrees
+#: (`world_state.inspector.DEMONSTRATED_PAN_DEG`); fifteen are left for a
+#: heading an earlier turn left out by that much (progress, 2026-10-09
+#: arrival heading).
+PAN_INSTEAD_OF_TURN_DEG = 135.0
 #: How a re-look step may end that still ends the attempt. Anything else -- a
 #: look that saw nothing, a turn navigation refused -- is a baseline that gained
 #: nothing, and the attempt goes on to its chosen viewpoint.
@@ -447,6 +455,17 @@ class Executive:
         if heading is not None:
             drive["params"]["heading_deg"] = float(heading)
         steps = [drive]
+        if (candidate["type"] == "improve_geometry"
+                and _gimbal_faces_it(candidate["constraints"], here)):
+            # **The gimbal turns to the thing, not the rover.** A look from
+            # where the rover stands used to be a turn on the spot and then the
+            # look. The turn arrives anywhere within 15 degrees of its heading
+            # and leaves the map's heading 9 to 16 out for seconds afterwards;
+            # the pan lands within 0.6 and moves nothing the pose depends on.
+            # The look below is aimed, so the daemon pans to the place from the
+            # heading it measures. See
+            # docs/decisions/the-gimbal-aims-across-its-measured-travel.md.
+            steps = []
         if candidate["type"] == "improve_geometry":
             # **Recorded, not settled.** Settling decides identities from every
             # bearing pending, and with 2,000 pending that is the better part
@@ -1070,6 +1089,24 @@ class Executive:
 
 
 # --- the sentences a person reads --------------------------------------------
+
+def _gimbal_faces_it(facts: dict[str, Any],
+                     here: situation_mod.Situation | None) -> bool:
+    """Whether a look that asks for no movement can be aimed by the gimbal
+    alone: the rover's place and heading are known, and the thing is within
+    `PAN_INSTEAD_OF_TURN_DEG` of where it faces. Anything less certain keeps
+    the turn, which is what it did before."""
+    if facts.get("needs_movement", True) or here is None:
+        return False
+    aim, where, heading = facts.get("look_at"), here.where, here.heading_deg
+    if (not isinstance(aim, dict) or aim.get("x_m") is None or where is None
+            or heading is None):
+        return False
+    bearing = math.degrees(math.atan2(float(aim["y_m"]) - where[1],
+                                      float(aim["x_m"]) - where[0]))
+    off = abs((bearing - float(heading) + 180.0) % 360.0 - 180.0)
+    return off <= PAN_INSTEAD_OF_TURN_DEG
+
 
 def _uncertainty(here: situation_mod.Situation, target: str) -> float | None:
     """What the rover claims for the thing's placement; see `situation.claimed_m`."""
