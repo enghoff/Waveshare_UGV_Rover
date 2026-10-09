@@ -42,6 +42,29 @@ of each ten-degree step of A must agree with the gyro's to 0.3 degrees at the
 95th percentile after one common scale, and the pictures at rest before and after
 must agree within 0.2 degrees, or the rover moved. A reference that fails is
 reported as inconclusive, not as a servo result. Nothing here writes a constant.
+
+**The held-out session (passes H, K and R), and its rule, fixed before it ran.**
+The first session's verdict was inconclusive on two gates that measured
+something other than the reference: the camera's ten-degree steps carry 2.6% of
+parallax from a lens ahead of the pan axis, and the rest pictures differed
+because a return from +180 lands on the far side of the backlash. So:
+
+  H  ascending, -180 to +180 in fives, each swing waited out
+  K  descending, +170 to -180 in tens
+  R  returns to rest from 30, ±180, ±135 and 90 degrees
+
+The candidate is frozen in `pan_candidate_2026-10-09.json` (pass A of the first
+session, tilt 20). The reference must pass two gates: closing the circle from
+H's ends gives a gyro scale within 0.3% of the first session's 1.01824 (if the
+two end pictures do not match here, the first session's scale is used and the
+gate is reported as not taken); and at every ten-degree stop the gyro's
+ascending-minus-descending (H against K) agrees with the pictures' to 0.25
+degrees at the 95th percentile, which the pictures measure with no parallax
+because the lens is in nearly the same place both times. A commanded pan is
+inside the validated envelope when every H stop from zero out to it, on that
+side, lands within 0.5 degrees of the candidate; the envelope adopted is the
+smaller side. The daemon's return to rest passes when every R return lands
+within 0.3 degrees of the first one, by the pictures.
 """
 from __future__ import annotations
 
@@ -62,6 +85,16 @@ DAEMON = ("127.0.0.1", 8769)
 TENS = list(range(-180, 181, 10))
 FIVES = list(range(-175, 180, 10)) + [180]
 TIMING = (30, -30, 60, -60, 90, -90, 135, -135, 180, -180)
+#: Every five degrees, for the held-out session's ascending pass.
+EVERY_FIVE = list(range(-180, 181, 5))
+#: Where the held-out session swings to before each return to rest, the first
+#: one short enough that its return is the reference the others are judged by.
+RETURNS = (30, 180, -180, 135, -135, 90, 180, 30)
+#: A swing needs this long to land within 0.2 degrees, measured on 2026-10-09:
+#: 0.49 s for 24 degrees up to 1.20 s for 179. A stop's settle is at least this
+#: plus half a second, so no hold begins while the gimbal is still moving, which
+#: the first session's did after every swing of 180.
+SWING_FLOOR_S, SWING_DPS = 0.5, 200.0
 
 
 def call(name, arguments=None):
@@ -122,6 +155,7 @@ def open_device(built):
 class Sweep:
     def __init__(self, folder):
         self.folder, self.stops, self.moves = folder, [], []
+        self.pan, self.tilt = 0, 20
 
     def go(self, pan, tilt, label):
         sent = time.time()
@@ -129,9 +163,15 @@ class Sweep:
         self.moves.append({"label": label, "pan": pan, "tilt": tilt,
                            "sent": sent, "ok": bool(answer.get("ok"))})
 
+    def settle_s(self, pan):
+        swing = abs(pan - self.pan)
+        return max(SETTLE_S, SWING_FLOOR_S + swing / SWING_DPS + 0.5)
+
     def stop(self, pan, tilt, label, picture=True):
+        settle = self.settle_s(pan)
         self.go(pan, tilt, label)
-        time.sleep(SETTLE_S)
+        self.pan, self.tilt = pan, tilt
+        time.sleep(settle)
         hold_from = time.time()
         time.sleep(HOLD_S)
         hold_to = time.time()
@@ -148,11 +188,13 @@ class Sweep:
         print(len(self.stops) - 1, label, pan, tilt, name is not None, flush=True)
 
     def rest(self, label):
+        settle = self.settle_s(-5) + 0.6
         sent = time.time()
         call("center_camera")
         self.moves.append({"label": label, "pan": 0, "tilt": 20, "sent": sent,
                            "ok": True, "centre": True})
-        time.sleep(SETTLE_S + 0.6)
+        self.pan, self.tilt = 0, 20
+        time.sleep(settle)
         hold_from = time.time()
         time.sleep(HOLD_S)
         got = call("camera_jpeg")
@@ -192,6 +234,19 @@ def main() -> int:
                 sweep.stop(-180, 0, "D")
                 for pan in TENS[1:]:
                     sweep.stop(pan, 0, "D")
+            if "H" in passes:
+                # Held out: ascending in fives, the swing out to -180 waited
+                # for; then descending in tens for the backlash the pictures
+                # can check the gyro against with no parallax in it.
+                sweep.stop(-180, 20, "H")
+                for pan in EVERY_FIVE[1:]:
+                    sweep.stop(pan, 20, "H")
+                for pan in reversed(TENS[:-1]):
+                    sweep.stop(pan, 20, "K")
+            if "R" in passes:
+                for pan in RETURNS:
+                    sweep.stop(pan, 20, "R-out", picture=False)
+                    sweep.rest("R-back")
             sweep.rest("rest-end")
             if "T" in passes:
                 for pan in TIMING:
