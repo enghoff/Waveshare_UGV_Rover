@@ -200,8 +200,14 @@ band the geometry was accepted in.
 
 **A thing in reach is looked at from where the rover stands.** When it is within
 the depth camera's 4 m and in its view from the rover's own spot, with nothing on
-the map in the way, it gets one candidate: a turn to face it and a look, no
-drive, carrying the gain the best viewpoint would have predicted. That is the
+the map in the way, it gets one candidate: a look aimed at it, no drive,
+carrying the gain the best viewpoint would have predicted. The gimbal faces it
+when it is within 135 degrees of where the rover faces
+(`executive.PAN_INSTEAD_OF_TURN_DEG`, the gimbal's measured 150 less 15 for a
+heading that far out); further round, or with no heading, the rover turns on the
+spot first. A turn leaves the heading 6 to 16 degrees out, a pan moves nothing the
+pose depends on
+([the decision](../docs/decisions/the-gimbal-aims-across-its-measured-travel.md)). That is the
 measurement overruling the arithmetic above: on 2026-10-09, seventeen
 development attempts found such a look improving its thing as often as driving
 to the chosen viewpoint, 4 times against 3
@@ -330,8 +336,9 @@ goal may be at: every other candidate, frontiers included, is refused as "not a
 trial target", and the weights recorded with each decision say so
 (`trial_targets`). With `snapshot`, each geometry attempt first asks the daemon
 for a copy of the world store (`world_snapshot`, about 0.6 s, before anything
-moves), named after the episode. With `relook`, the attempt then turns on the spot
-to face the thing and takes one aimed look at it from where the rover stands,
+moves), named after the episode. With `relook`, the attempt then faces the thing
+from where the rover stands, by the gimbal alone when it can and by a turn on the
+spot otherwise, as above, and takes one aimed look at it,
 tilted for the thing's height from there, before it drives to the viewpoint it
 chose. Those steps carry the role `relook` in the record. A re-look that fails
 does not end the attempt, since it is the baseline and one that saw nothing

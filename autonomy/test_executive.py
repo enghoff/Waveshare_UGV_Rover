@@ -367,13 +367,46 @@ def test_a_relook_is_tilted_for_the_things_elevation_from_where_it_stands():
                                  "look_at": {"x_m": 2.0, "y_m": 0.0},
                                  "elevation_deg": -13.0, "range_m": 1.0,
                                  "look_tilt_deg": 0.0}}
+    # Facing away from it, so that the re-look still turns rather than panning.
     near = situation_mod.Situation({"nav": {"pose": {"x_m": 1.0, "y_m": 0.0,
-                                                    "heading_deg": 90.0}}})
+                                                    "heading_deg": 180.0}}})
     steps = session.executive.plan(candidate, near)
     check("from the same distance, the re-look tilts level as the chosen look does",
           (steps[1]["params"].get("tilt_deg"), steps[3]["params"].get("tilt_deg")),
           (0.0, 0.0))
     check("...and its turn faces the thing", steps[0]["params"]["heading_deg"], 0.0)
+    session.close()
+
+
+def test_a_relook_turns_the_gimbal_when_it_can():
+    """2026-10-09: the re-look's turn on the spot left the heading 6 to 16
+    degrees out for the drive to the chosen viewpoint that follows it. Within
+    the gimbal's reach of where the rover faces, the re-look is the aimed look
+    alone; nearly behind the rover, or with no heading, it still turns."""
+    import situation as situation_mod
+    session = Session()
+    session.executive.trial = {"relook": True}
+    candidate = {"id": "improve_geometry:object:9@3.00,0.00",
+                 "type": "improve_geometry", "target": "object:9", "expects": "",
+                 "constraints": {"goal": {"x_m": 3.0, "y_m": 0.0, "heading_deg": 90.0},
+                                 "look_at": {"x_m": 3.0, "y_m": 2.0},
+                                 "needs_movement": True}}
+
+    def relook(facing):
+        here = situation_mod.Situation({"nav": {"pose": {
+            "x_m": 0.0, "y_m": 0.0, "heading_deg": facing}}})
+        return [(step["action"], step.get("role"))
+                for step in session.executive.plan(candidate, here)]
+
+    check("a thing 34 degrees round is re-looked at by the gimbal alone, then "
+          "driven to",
+          relook(0.0), [("world_inspect", "relook"), ("drive_to", None),
+                        ("world_inspect", None)])
+    check("a thing behind the rover is still turned to first",
+          relook(-150.0), [("drive_to", "relook"), ("world_inspect", "relook"),
+                           ("drive_to", None), ("world_inspect", None)])
+    check("a rover with no heading turns, as before",
+          relook(None)[0], ("drive_to", "relook"))
     session.close()
 
 
@@ -928,6 +961,7 @@ TESTS = (test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands,
          test_a_relook_that_fails_does_not_end_the_attempt,
          test_an_ordinary_run_neither_copies_the_store_nor_looks_again,
          test_a_relook_is_tilted_for_the_things_elevation_from_where_it_stands,
+         test_a_relook_turns_the_gimbal_when_it_can,
          test_a_look_that_could_see_the_place_and_found_nothing_sets_it_aside_longer,
          test_a_geometry_look_tilts_level_only_when_the_thing_needs_it,
          

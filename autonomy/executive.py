@@ -531,8 +531,12 @@ class Executive:
         """An M4 trial's re-look: face the thing from where the rover stands,
         and take one aimed look at it, as the chosen viewpoint's look is taken.
 
-        The turn is a drive to the spot the rover is on, with a heading, which
-        navigation carries out as a turn alone (a near goal closer than its
+        **The gimbal faces it when it can**, as it does for a look from where
+        the rover stands (`PAN_INSTEAD_OF_TURN_DEG`): a turn on the spot leaves
+        the heading 6 to 16 degrees out for the drive that follows it, and the
+        pan moves nothing the pose depends on. Further round, or with no heading,
+        the rover turns: a drive to the spot the rover is on, with a heading,
+        which navigation carries out as a turn alone (a near goal closer than its
         arrival tolerance is only its heading). The look is tilted for the
         thing's elevation from here, worked out from its height as the goal
         measured it, so that a re-look is not refused the depth camera's view
@@ -560,7 +564,10 @@ class Executive:
             tilt, _ = goals._tilt_for({"height_m": height}, math.hypot(dx, dy))
             if tilt is not None and float(tilt) != goals.LOOK_TILTS_DEG[0]:
                 look["tilt_deg"] = float(tilt)
-        return [turn, {"action": "world_inspect", "role": RELOOK, "params": look}]
+        relook = {"action": "world_inspect", "role": RELOOK, "params": look}
+        if _within_pan(aim, here):
+            return [relook]
+        return [turn, relook]
 
     def relook(self, episode: str, step: dict[str, Any],
                candidate: dict[str, Any]) -> dict[str, Any]:
@@ -1096,9 +1103,18 @@ def _gimbal_faces_it(facts: dict[str, Any],
     alone: the rover's place and heading are known, and the thing is within
     `PAN_INSTEAD_OF_TURN_DEG` of where it faces. Anything less certain keeps
     the turn, which is what it did before."""
-    if facts.get("needs_movement", True) or here is None:
+    if facts.get("needs_movement", True):
         return False
-    aim, where, heading = facts.get("look_at"), here.where, here.heading_deg
+    return _within_pan(facts.get("look_at"), here)
+
+
+def _within_pan(aim: Any, here: situation_mod.Situation | None) -> bool:
+    """Whether a place is within `PAN_INSTEAD_OF_TURN_DEG` of where the rover
+    faces, from where it stands. False whenever the place, the rover's position
+    or its heading is not known."""
+    if here is None:
+        return False
+    where, heading = here.where, here.heading_deg
     if (not isinstance(aim, dict) or aim.get("x_m") is None or where is None
             or heading is None):
         return False
