@@ -18,6 +18,14 @@ store's records that are it, labelled from their photographs before any attempt:
     {"name": "M4 acceptance", "things": {"P1": {"x_m": -18.2, "y_m": -12.9,
       "records": ["object:248"], "where": "dining room"}}}
 
+A thing may also carry a `footprint`, and is then scored by a placement's distance
+to the thing rather than to the taped point: a disc (`radius_m`), a stretch of wall
+(`width_m` along `along_deg`), or a box `width_m` across its front and `depth_m`
+back from the taped point towards `into_deg`. On 2026-10-09 every acceptance
+attempt that scored worse against a point was a look landing on big furniture
+half a metre from the centre of its front (`distance_to`;
+[the re-scoring](../../docs/progress/2026-10-09-m4-scored-from-the-thing.md)).
+
 **After a run**, copy from the rover the episode store
 (`~/.ugv/autonomy/episodes.db`), the world store (`~/.ugv/world/world.db`), each
 through sqlite's own backup since both keep a write-ahead log, and the snapshots

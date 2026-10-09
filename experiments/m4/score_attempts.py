@@ -103,15 +103,52 @@ def _raw_score(off_m: float, stated_m: float) -> float:
 FLOOR = _raw_score(FLOOR_OFF_M, FLOOR_STATED_M)
 
 
-def score(placement: dict[str, Any] | None, truth: tuple[float, float]) -> dict[str, Any]:
+def distance_to(thing: dict[str, Any], x_m: float, y_m: float) -> float:
+    """How far a point is from a taped thing, in metres.
+
+    **From the thing, not from one point on it, when its size is known.** A tape
+    names one point -- the centre of a wardrobe's front, the middle of a
+    footboard -- and a look that lands on the wardrobe's side is still on the
+    wardrobe. On 2026-10-09 every acceptance attempt that scored worse was a
+    ranged look at big furniture landing 0.45 to 0.61 m from its taped centre
+    (docs/progress/2026-10-09-m4-acceptance-first-block.md). A `footprint` is
+    a disc (`radius_m`), a stretch of wall (`width_m` along `along_deg`), or a
+    box `width_m` across its front and `depth_m` back from the taped point
+    towards `into_deg`; the distance is zero anywhere on it.
+    """
+    dx, dy = x_m - float(thing["x_m"]), y_m - float(thing["y_m"])
+    shape = thing.get("footprint")
+    if not shape:
+        return math.hypot(dx, dy)
+    if shape.get("radius_m") is not None:
+        return max(0.0, math.hypot(dx, dy) - float(shape["radius_m"]))
+    along = math.radians(float(shape["along_deg"]))
+    a = dx * math.cos(along) + dy * math.sin(along)
+    beside = max(0.0, abs(a) - float(shape.get("width_m") or 0.0) / 2.0)
+    depth = float(shape.get("depth_m") or 0.0)
+    if depth > 0.0:
+        into = math.radians(float(shape["into_deg"]))
+        b = dx * math.cos(into) + dy * math.sin(into)
+        out = max(0.0, -b, b - depth)
+    else:
+        out = abs(-dx * math.sin(along) + dy * math.cos(along))
+    return math.hypot(beside, out)
+
+
+def score(placement: dict[str, Any] | None,
+          truth: tuple[float, float] | dict[str, Any]) -> dict[str, Any]:
     """How well a placement says where the thing is. An unplaced thing scores the
-    floor: it says nothing, which is the worst a claim is allowed to count."""
+    floor: it says nothing, which is the worst a claim is allowed to count.
+    `truth` is a taped point `(x_m, y_m)`, or a truth file's thing, whose
+    footprint is used when it has one (`distance_to`)."""
     if not placement or placement.get("x_m") is None:
         return {"placed": False, "score": FLOOR}
     stated = locate.stated_uncertainty(placement)
     if stated is None:
         return {"placed": False, "score": FLOOR}
-    off = math.hypot(float(placement["x_m"]) - truth[0], float(placement["y_m"]) - truth[1])
+    x, y = float(placement["x_m"]), float(placement["y_m"])
+    off = (distance_to(truth, x, y) if isinstance(truth, dict)
+           else math.hypot(x - truth[0], y - truth[1]))
     return {"placed": True, "off_m": round(off, 3), "stated_m": round(stated, 3),
             "inside": off <= stated, "overconfident": off > 2.0 * stated,
             "score": round(max(FLOOR, _raw_score(off, stated)), 4)}
@@ -217,7 +254,8 @@ def claimed(placement: dict[str, Any] | None) -> float | None:
     return None if not placement else situation_mod.claimed_m({"placement": placement})
 
 
-def gain_of(filed: dict[str, Any], truth: tuple[float, float]) -> dict[str, Any]:
+def gain_of(filed: dict[str, Any],
+            truth: tuple[float, float] | dict[str, Any]) -> dict[str, Any]:
     before, after = score(filed["before"], truth), score(filed["after"], truth)
     gain = round(after["score"] - before["score"], 4)
     if abs(gain) <= NO_CHANGE:
@@ -301,7 +339,7 @@ def score_attempts(attempts: list[dict[str, Any]], truth: dict[str, Any],
             continue
         map_path = os.path.splitext(snapshot)[0] + ".map.json"
         reach = replay.reach_from(map_path) if os.path.exists(map_path) else None
-        spot = (float(truth["things"][thing]["x_m"]), float(truth["things"][thing]["y_m"]))
+        spot = truth["things"][thing]
         chosen = gain_of(file_looks(snapshot, store_path, attempt["target"],
                                     attempt["chosen_frames"], reach), spot)
         again = gain_of(file_looks(snapshot, store_path, attempt["target"],

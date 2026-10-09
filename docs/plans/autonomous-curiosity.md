@@ -797,19 +797,18 @@ criteria 3, 5, 6 and 8 ([experiments/m4/README.md](../../experiments/m4/README.m
 On the rover's own store it reproduces what the rover recorded for its 2026-10-08
 looks. What is left:
 
-1. **The gimbal aiming instead of the rover turning**, which the owner asked for
-   on 2026-10-09 and which was held until the development attempts were done. It
-   changes what both the re-look and the chosen look do, so it lands before the
-   acceptance attempts, and the count below is re-read from the first acceptance
-   runs. Out of reach, thirteen development attempts found the chosen viewpoint
-   improving its thing 5 times and the re-look once
-   ([the attempts](../progress/2026-10-09-m4-out-of-reach.md)), which puts the
-   acceptance set at 42 pairs (criterion 4).
-2. **Labelling the new set's records.** Eleven things in three rooms were taped on
-   2026-10-09 (`captures/2026-10-09-m4-targets/truth-acceptance-draft.json`); the
-   records named there are the ones the things were chosen by. They are labelled
-   from their photographs just before the acceptance attempts, and then frozen.
-   Acceptance runs are opened away from their things, for the same reason.
+1. **How a placement is scored, for the owner.** The first eleven acceptance
+   attempts, on the gimbal aiming and 51 labelled, frozen records of the eleven
+   things taped on 2026-10-09, scored three chosen looks worse against one point
+   per thing ([the block](../progress/2026-10-09-m4-acceptance-first-block.md)).
+   Every one was a look on big furniture half a metre from the centre of its
+   front. Scored by distance to the thing itself, the block has the chosen
+   viewpoint improving its thing 5 times and the re-look 3
+   ([the re-scoring](../progress/2026-10-09-m4-scored-from-the-thing.md)), and
+   [the proposal](../decisions/m4-scores-from-the-thing.md) makes that M4's
+   scoring.
+2. **The rest of the acceptance attempts**, to 43 pairs (criterion 4), from runs
+   opened away from their things.
 
 Also ahead, though M4 does not need it: proposing things seen once and never
 placed, which are a third of the observations and one of the questions the

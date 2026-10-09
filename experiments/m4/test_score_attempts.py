@@ -115,6 +115,35 @@ def test_the_score():
     check("an unplaced thing scores the floor", sa.score(None, truth)["score"], sa.FLOOR)
 
 
+def test_a_thing_with_a_size_is_scored_from_itself():
+    """2026-10-09: a look that landed on a wardrobe's side scored half a metre
+    wrong against the taped centre of its front. With its size, a placement is
+    scored by how far it is from the wardrobe."""
+    print("a thing with a size")
+    # A wardrobe 1.0 m across and 0.5 m deep, its front along x, its back towards +y.
+    box = {"x_m": 0.0, "y_m": 0.0, "footprint": {"width_m": 1.0, "depth_m": 0.5,
+                                                   "along_deg": 0.0, "into_deg": 90.0}}
+    check("a point on its side is on it", round(sa.distance_to(box, 0.5, 0.3), 3), 0.0)
+    check("...inside it too", round(sa.distance_to(box, -0.2, 0.25), 3), 0.0)
+    check("a point behind it is as far as its back",
+          round(sa.distance_to(box, 0.0, 0.8), 3), 0.3)
+    check("...and in front of it, as far as its front",
+          round(sa.distance_to(box, 0.0, -0.4), 3), 0.4)
+    check("off a corner, from the corner", round(sa.distance_to(box, 0.8, -0.4), 3), 0.5)
+    picture = {"x_m": 0.0, "y_m": 0.0, "footprint": {"width_m": 0.6, "along_deg": 90.0}}
+    check("a picture is its width along its wall",
+          (round(sa.distance_to(picture, 0.0, 0.3), 3), round(sa.distance_to(picture, 0.2, 0.0), 3),
+           round(sa.distance_to(picture, 0.0, 0.5), 3)), (0.0, 0.2, 0.2))
+    lamp = {"x_m": 0.0, "y_m": 0.0, "footprint": {"radius_m": 0.2}}
+    check("a lamp is a disc", round(sa.distance_to(lamp, 0.5, 0.0), 3), 0.3)
+    check("a thing with no size is its taped point",
+          round(sa.distance_to({"x_m": 0.0, "y_m": 0.0}, 0.3, 0.4), 3), 0.5)
+    on_side = sa.score({"x_m": 0.5, "y_m": 0.3, "uncertainty_m": 0.2, "viewpoints": 2,
+                        "baseline_m": 1.0}, box)
+    check("a narrow claim on the wardrobe's side is inside, not overconfident",
+          (on_side["off_m"], on_side["inside"], on_side["overconfident"]), (0.0, True, False))
+
+
 def test_a_look_is_filed_into_its_own_copy():
     print("filing one look into a copy of the snapshot")
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
@@ -241,7 +270,8 @@ def test_the_own_account():
 
 
 if __name__ == "__main__":
-    for test in (test_the_score, test_a_look_is_filed_into_its_own_copy,
+    for test in (test_the_score, test_a_thing_with_a_size_is_scored_from_itself,
+                 test_a_look_is_filed_into_its_own_copy,
                  test_an_attempt_is_read_from_its_episode_and_scored,
                  test_the_plan_figures, test_the_own_account):
         test()
