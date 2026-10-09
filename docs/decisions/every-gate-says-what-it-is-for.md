@@ -1,6 +1,6 @@
 # Every milestone gate says what it is for
 
-Status: proposed 2026-10-09, at the owner's request that each remaining milestone
+Status: agreed 2026-10-09 by the owner, who asked that each remaining milestone
 be tied either to a performance a later feature needs or to something about the
 rover worth knowing, and that no gate be a formality. Changes M3, M5, M7, M9 and
 M10, adds a reported figure to M4, and defers M6 and M7 in the
