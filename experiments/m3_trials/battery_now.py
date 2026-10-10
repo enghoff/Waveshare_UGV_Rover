@@ -9,8 +9,9 @@ import json, socket, sys, time
 #
 # Reads every second and reports the median, the voltage's trend over the
 # window, and how long ago the wheels last moved. The percentage is the daemon's:
-# since 2026-10-10 a straight line from 8.85 V (0%) to 12.35 V (100%), so a tenth
-# of a volt of recovery is about three points.
+# since 2026-10-10 a table measured on a standing discharge, 8.89 V (0%) to
+# 12.06 V (100%), where a tenth of a volt of recovery is two to ten points --
+# most at the top, where the pack is flattest.
 SECONDS = float(sys.argv[1]) if len(sys.argv) > 1 else 10.0
 RECOVERING_S = 120.0   # the pack was still climbing two minutes after a drive
 

@@ -100,28 +100,40 @@ TELEMETRY_POLL_S = 0.25
 # Three 18650 cells in series -- the UPS in docs/reference/d500-lidar.md -- reported as
 # hundredths of a volt.
 BATTERY_CELLS = 3
-# **A straight line across the range this pack was measured over -- temporary,
-# at the owner's word on 2026-10-10.** 0% is 8.85 V, about where the rover
-# switched itself off under load that day; 100% is 12.35 V, what the pack reads
-# full off the charger. It replaces a table of volts a cell whose two ends were
-# Waveshare's (3.0 and 4.2 V a cell, 9.0 and 12.6 V) and whose shape was never
-# measured on this pack: it called about half a charge "10% or less", and a full
-# pack never reached its 100%. A line is wrong too -- lithium-ion is flat through
-# the middle -- but it is wrong by less, and it stands only until the fit from a
-# standing discharge (docs/plans/battery-charge-curve.md).
-BATTERY_EMPTY_V = 8.85
-BATTERY_FULL_V = 12.35
+# Pack volts against percentage left, measured on this pack: a standing discharge
+# on 2026-10-10, from the charger coming off at 19:17:55 to the rover switching
+# itself off at 21:13:47, 1 h 56 min with the wheels still and the Orin drawing
+# 6.8 W throughout. With the load that steady, the share of the time still to go
+# is the share of what the pack has left, so each point is the voltage (a
+# two-minute median) at that share of the time. The table is taken under the
+# rover's standing load and so are the readings it is applied to, which is what
+# makes them agree; a reading while driving sags and reads low. 0% is the last
+# minute's reading before the pack gave out, and 100% is a pack's first minute off
+# the charger -- anything higher is a pack still on it. It replaces a straight
+# line from 8.85 to 12.35 V that read up to 13 points high on this discharge, which
+# had replaced a table on Waveshare's ends that read up to 40 points low
+# (docs/plans/battery-charge-curve.md).
+BATTERY_CURVE = ((8.89, 0), (9.19, 5), (9.47, 10), (9.76, 15), (10.01, 20),
+                 (10.20, 25), (10.32, 30), (10.54, 35), (10.71, 40), (10.86, 45),
+                 (11.00, 50), (11.12, 55), (11.20, 60), (11.32, 65), (11.44, 70),
+                 (11.59, 75), (11.75, 80), (11.85, 85), (11.90, 90), (11.95, 95),
+                 (12.06, 100))
+# "Full" is the charger's plateau at the end of a charge rather than the table's
+# 100%: off the charger a pack never reads much above 12.06 V, and on it the
+# reading passed that a quarter of an hour into a two-hour charge from half, so
+# the table's top would call a pack full long before it is.
+BATTERY_FULL_V = 12.30
 # Below this there is no pack at all: the ESP32 runs from USB alone with the
 # battery out or the main switch off, and reports a few tenths of a volt. Its own
 # state rather than 0%, because a flat battery and a missing one call for
 # different things being done about them.
 BATTERY_ABSENT_V = 6.0
-# Read off the same line: low is a fifth of the range left and critical a
-# twentieth, the meanings they had on the old table (11.2 and 10.8 V there). Both
-# trip early on a rover that is driving, because a reading under load sags --
-# which is the right direction for a warning to be wrong in.
-BATTERY_LOW_V = round(BATTERY_EMPTY_V + 0.20 * (BATTERY_FULL_V - BATTERY_EMPTY_V), 2)
-BATTERY_CRITICAL_V = round(BATTERY_EMPTY_V + 0.05 * (BATTERY_FULL_V - BATTERY_EMPTY_V), 2)
+# Read off the table: low is 20% left and critical 5%, the meanings they have had
+# since the first table. Both trip early on a rover that is driving, because a
+# reading under load sags -- which is the right direction for a warning to be
+# wrong in.
+BATTERY_LOW_V = dict((pc, v) for v, pc in BATTERY_CURVE)[20]
+BATTERY_CRITICAL_V = dict((pc, v) for v, pc in BATTERY_CURVE)[5]
 # How long one reading is served for before the board is asked again.
 BATTERY_MAX_AGE_S = 5.0
 
@@ -167,12 +179,17 @@ def _newest_telemetry(chatter: bytes) -> dict[str, Any] | None:
 def _battery_percent(volts: float) -> int:
     """Roughly how much charge is left, from the pack voltage, in whole points.
 
-    A straight line from BATTERY_EMPTY_V to BATTERY_FULL_V, clamped -- see there
-    for why, and for why it is temporary. Taken under whatever the rover happens
-    to be drawing, so a reading while driving reads low.
+    Interpolated in BATTERY_CURVE and clamped at its ends -- see there for where
+    it was measured. Taken under whatever the rover happens to be drawing, so a
+    reading while driving reads low.
     """
-    share = (volts - BATTERY_EMPTY_V) / (BATTERY_FULL_V - BATTERY_EMPTY_V)
-    return int(round(100.0 * min(1.0, max(0.0, share))))
+    if volts <= BATTERY_CURVE[0][0]:
+        return 0
+    for (low_v, low_pc), (high_v, high_pc) in zip(BATTERY_CURVE, BATTERY_CURVE[1:]):
+        if volts <= high_v:
+            share = (volts - low_v) / (high_v - low_v)
+            return int(round(low_pc + share * (high_pc - low_pc)))
+    return 100
 
 
 def _battery_state(volts: float) -> str:

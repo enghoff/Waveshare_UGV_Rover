@@ -51,18 +51,20 @@ def test_battery():
     check("a line that is not telemetry is passed over",
           rover_daemon._newest_telemetry(b'{"T":1051,"v":1153}\n'), None)
 
-    # A straight line from 8.85 V to 12.35 V, the range measured on 2026-10-10,
-    # until a standing discharge gives the shape: 11.53 V is 77% of the way up it.
-    check("the reading is the share of the measured range",
-          rover_daemon._battery_percent(11.53), 77)
-    check("a pack off the charger is 100%", rover_daemon._battery_percent(12.35), 100)
-    check("...and so is one reading higher on the charger",
-          rover_daemon._battery_percent(12.6), 100)
-    check("where it switched itself off is 0%", rover_daemon._battery_percent(8.85), 0)
-    check("the percentage is in whole points", rover_daemon._battery_percent(10.5), 47)
+    # The standing discharge of 2026-10-10: 11.00 V was half-way through it in
+    # time, where the straight line before it said 61%.
+    check("the reading comes off the measured discharge",
+          rover_daemon._battery_percent(11.00), 50)
+    check("...interpolated between its points",
+          rover_daemon._battery_percent(11.53), 73)
+    check("a pack just off the charger is 100%", rover_daemon._battery_percent(12.06), 100)
+    check("...and so is one still on it", rover_daemon._battery_percent(12.3), 100)
+    check("the last minute before it gave out is 0%",
+          rover_daemon._battery_percent(8.89), 0)
+    check("the percentage is in whole points", rover_daemon._battery_percent(10.5), 34)
     check("nothing reads below zero", rover_daemon._battery_percent(6.0), 0)
-    for volts, want in ((12.4, "full"), (11.5, "ok"), (9.4, "low"),
-                        (9.0, "critical"), (0.3, "absent")):
+    for volts, want in ((12.32, "full"), (12.1, "ok"), (11.5, "ok"), (9.8, "low"),
+                        (9.1, "critical"), (0.3, "absent")):
         check(f"{volts} V is {want}", rover_daemon._battery_state(volts), want)
 
     link = FakeLink()
@@ -70,9 +72,9 @@ def test_battery():
     reading = rover.call("battery", {})
     check("the board is read", reading["ok"], True)
     check("...in volts", reading["volts"], 11.53)
-    check("...as a percentage", reading["percent"], 77)
+    check("...as a percentage", reading["percent"], 73)
     check("...and as a sentence something can say out loud",
-          "77%" in reading["summary"], True)
+          "73%" in reading["summary"], True)
     # The console polls this, and two clients may poll at once. Every poll being a
     # read of the UART the wheels are steered down is what the cache exists to
     # prevent.

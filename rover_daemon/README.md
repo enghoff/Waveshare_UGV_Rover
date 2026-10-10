@@ -259,13 +259,17 @@ The ESP32 streams `T:1001` telemetry continuously. The daemon's board link parse
 that stream and keeps recent state. Battery voltage comes from `v` in that
 telemetry and is reported with an estimated charge state rather than pretending a
 single loaded voltage is a laboratory state-of-charge measurement. The percentage
-is in whole points, on a straight line from 8.85 V (0%, where the rover switched
-itself off under load on 2026-10-10) to 12.35 V (100%, a full pack off the
-charger), with "low" below 9.55 V and "critical" below 9.03 V on the same line.
-That line is temporary, at the owner's word: it replaced a table whose shape was
-never measured on this pack and which read about half a charge as "10% or less",
-and it stands until a standing discharge gives the real shape
-([the plan to refit it](../docs/plans/battery-charge-curve.md)).
+is in whole points, read off a table of volts against charge left that was
+measured on this pack: a standing discharge on 2026-10-10 from the charger coming
+off to the rover switching itself off, 1 h 56 min at a steady load. 0% is
+8.89 V, the pack's last minute, and 100% is 12.06 V, its first minute off the
+charger. "Low" is below 10.01 V (20% left) and "critical" below 9.19 V (5%);
+"full" is 12.30 V, which a pack reaches only at the end of a charge on the
+charger. The table holds standing still; a reading taken while driving sags and
+reads low. It replaced a temporary straight line from 8.85 to 12.35 V, which read
+up to 13 points high, and before that a table on Waveshare's ends that read about
+half a charge as "10% or less"
+([the plan it came from](../docs/plans/battery-charge-curve.md)).
 
 The daemon also keeps a record of the pack voltage over time, for fitting that
 table (`battery_log.py`). Every line the board link drains goes into it. Every
