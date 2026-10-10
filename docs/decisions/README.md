@@ -7,6 +7,7 @@ the reasoning being redone.
 
 | Record | Status | Question it settles |
 |---|---|---|
+| [m4-acceptance-stops-at-35.md](m4-acceptance-stops-at-35.md) | agreed 2026-10-10 | why M4's acceptance ends at 35 pairs rather than the 43 declared: what was left was mostly repeats on records the rover had already found nothing at, and how far the last eight could move the result |
 | [m4-scores-from-the-thing.md](m4-scores-from-the-thing.md) | agreed 2026-10-09 | why M4 scores a placement by its distance to the thing's footprint rather than to one taped point on it: every acceptance attempt that scored worse was a look landing on big furniture half a metre from the centre of its front; the sizes may be estimated, the first block counts, and the comparison keeps the re-look |
 | [the-gimbal-aims-across-its-measured-travel.md](the-gimbal-aims-across-its-measured-travel.md) | agreed 2026-10-09 | why a look panned up to ±150 degrees keeps its bearing with 0.7 degrees added, although the whole-travel sweep's own rule came back inconclusive by a tenth of a degree, and why the rover aims with the gimbal rather than turning |
 | [m4-asks-of-things-out-of-reach.md](m4-asks-of-things-out-of-reach.md) | agreed 2026-10-09 | why M4 asks only of things out of reach of where the rover stands, and a thing in reach is turned to and looked at instead of driven to: in seventeen development attempts a look from where the rover stood did as well as the chosen viewpoint |

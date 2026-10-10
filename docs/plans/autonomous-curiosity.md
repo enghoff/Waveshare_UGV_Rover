@@ -785,30 +785,19 @@ the world state ([R-WS-13](../requirements/world-state.md#r-ws-13),
 [its plan](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks)).
 M4 reports it and no longer waits for it.
 
-### What is ahead before the acceptance attempts
+### What is ahead
 
-Since 2026-10-09 a trial run can be opened (`experiments/m4/start_trial.py`) that
-looks only at the records it is given, copies the world store before each attempt
-and takes the re-look before each drive (described in
-[autonomy/README.md](../../autonomy/README.md) and
-[rover_daemon/README.md](../../rover_daemon/README.md)), and
-`experiments/m4/score_attempts.py` scores the attempts against the tape for
-criteria 3, 5, 6 and 8 ([experiments/m4/README.md](../../experiments/m4/README.md)).
-On the rover's own store it reproduces what the rover recorded for its 2026-10-08
-looks. What is left:
+The acceptance attempts are done: 35 pairs over the eleven things taped on
+2026-10-09, stopped short of the 43 declared by
+[the owner's decision](../decisions/m4-acceptance-stops-at-35.md). The chosen
+viewpoint beat the re-look, +0.33 (95% interval +0.05 to +0.76), and the claims
+stayed honest. Read against the eight criteria below, M4 is met
+([the result](../progress/2026-10-10-m4-acceptance.md)). What is left:
 
-1. **How a placement is scored, agreed.** The first eleven acceptance
-   attempts, on the gimbal aiming and 51 labelled, frozen records of the eleven
-   things taped on 2026-10-09, scored three chosen looks worse against one point
-   per thing ([the block](../progress/2026-10-09-m4-acceptance-first-block.md)).
-   Every one was a look on big furniture half a metre from the centre of its
-   front. Scored by distance to the thing itself, the block has the chosen
-   viewpoint improving its thing 5 times and the re-look 3
-   ([the re-scoring](../progress/2026-10-09-m4-scored-from-the-thing.md)), and
-   [the decision](../decisions/m4-scores-from-the-thing.md) makes that M4's
-   scoring, with the first block counted.
-2. **The rest of the acceptance attempts**, to 43 pairs (criterion 4), from runs
-   opened away from their things.
+1. **The owner's sign-off.**
+2. **Two open records, if a later phase leans on criterion 3's margin:** the
+   footboard's and the portrait's, attempted from the living room. Gone badly,
+   they would bring the interval to zero.
 
 Also ahead, though M4 does not need it: proposing things seen once and never
 placed, which are a third of the observations and one of the questions the
