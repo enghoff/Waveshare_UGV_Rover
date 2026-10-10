@@ -944,6 +944,12 @@ measurements ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)):
 - **how many change hypotheses replayed revisits of unchanged scenes raise**, on
   the recordings already held. Scripted scenes wait until replay meets the budget.
 
+M3's remaining sessions are recorded for these, at the owner's request
+(2026-10-10). Its re-drives of the charger room, another room and the whole flat
+are revisits of unchanged rooms, and its furniture-moved session is a real
+change, noted by the owner as it is made. Nothing raises a change today, so these
+recordings are replayed once something does.
+
 The same budget is what [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18)'s proposed tolerances are to be
 checked against.
