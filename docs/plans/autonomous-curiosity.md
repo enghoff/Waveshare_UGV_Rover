@@ -792,12 +792,10 @@ The acceptance attempts are done: 35 pairs over the eleven things taped on
 [the owner's decision](../decisions/m4-acceptance-stops-at-35.md). The chosen
 viewpoint beat the re-look, +0.33 (95% interval +0.05 to +0.76), and the claims
 stayed honest. Read against the eight criteria below, M4 is met
-([the result](../progress/2026-10-10-m4-acceptance.md)). What is left:
-
-1. **The owner's sign-off.**
-2. **Two open records, if a later phase leans on criterion 3's margin:** the
-   footboard's and the portrait's, attempted from the living room. Gone badly,
-   they would bring the interval to zero.
+([the result](../progress/2026-10-10-m4-acceptance.md)), and the owner signed it
+off on 2026-10-10. Left open, for a later phase that leans on criterion 3's
+margin: two records, the footboard's and the portrait's, to be attempted from
+the living room. Gone badly, they would bring the interval to zero.
 
 Also ahead, though M4 does not need it: proposing things seen once and never
 placed, which are a third of the observations and one of the questions the
@@ -1535,7 +1533,7 @@ the problem.
 | M1 | episodic memory | durable reconstruction across resets/merges, no authority |
 | M2 | curiosity shadow mode | fixed scenarios + a no-action rover shadow run |
 | M3 | bounded autonomous loop | a supervised session in each listed condition, then the current code over the conditions its changes touched; measured stops, permission expiry and failure tests |
-| M4 | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it; the rover's own gain checked against the tape |
+| M4 (passed 2026-10-10) | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it; the rover's own gain checked against the tape |
 | M5 | temporal curiosity | false alarms on replayed unchanged revisits within a budget set from the flat's change rate, then scripted changed/unchanged scenes |
 | M1-M5 usefulness | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted; budget stated in charges and owner hours |
 | M6 (on evidence) | restricted skill substrate | malicious/invalid rejection + reference skill equal to the executive in replay and stopping on the rover |
