@@ -9,7 +9,7 @@ the only voltages on record were the ones the autonomy recorder happened to note
 at its decisions. This is that record. See docs/plans/battery-charge-curve.md
 for what it is for and how it gets used.
 
-One row every five seconds, appended to one file per boot under ~/.ugv/battery/:
+One row every second, appended to one file per boot under ~/.ugv/battery/:
 
     time         wall clock, seconds since the epoch. Wrong until the clock is
                  synchronised after a cold boot, which is what `uptime_s` is for
@@ -44,10 +44,14 @@ from typing import Any, Callable
 from board_link import MAX_TICK_STEP, _field_number
 
 DIRECTORY = "~/.ugv/battery"
-INTERVAL_S = 5.0
-# A row is about seventy bytes, so a year of five-second rows is half a gigabyte
-# and half a year is a quarter of one. Old discharges stop describing the pack
-# as it ages anyway.
+# A second rather than the five it was at first, because what a row cannot say
+# is what happened after it: the rover hard-reset twice on 2026-10-10 and the
+# question was whether the wheels had moved in the moments before, which a
+# five-second row left open for up to five seconds.
+INTERVAL_S = 1.0
+# A row is about seventy bytes, so a day is six megabytes and half a year about
+# one gigabyte, on a disk with eight hundred free. Old discharges stop
+# describing the pack as it ages anyway.
 KEEP_DAYS = 180
 COLUMNS = ("time", "uptime_s", "v_min", "v_mean", "v_max", "samples",
            "wheel_ticks", "host_mw", "event")

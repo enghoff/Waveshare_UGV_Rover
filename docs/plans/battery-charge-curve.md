@@ -25,7 +25,7 @@ it is the shape above it that needs fitting.
 
 ## What gets recorded
 
-The daemon writes one row every five seconds to
+The daemon writes one row every second to
 `~/.ugv/battery/boot-<id>.csv` on the rover, a new file for each boot. Each row
 holds the lowest, mean and highest pack voltage in the interval, how far the
 wheels turned, and the Orin's own input power. The columns are described in
@@ -94,6 +94,6 @@ and the next step is to find out why rather than to adjust the table by hand.
 - A reading taken while driving sags by tens of points. The console could show
   the last standing reading while the wheels turn, or correct for the measured
   sag. Recording 3 says how big the sag is at each level of charge.
-- The brownouts. The record keeps the lowest voltage in every five seconds, so
+- The brownouts. The record keeps the lowest voltage in every second, so
   the next brownout will show whether the pack dipped before it. On the evidence
   so far it did not get low: the rover has driven at 9.3 V without one.

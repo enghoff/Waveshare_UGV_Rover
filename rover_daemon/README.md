@@ -265,7 +265,7 @@ read far too low near empty
 
 The daemon also keeps a record of the pack voltage over time, for fitting that
 table (`battery_log.py`). Every line the board link drains goes into it. Every
-five seconds the link's backstop thread writes one row to
+second the link's backstop thread writes one row to
 `~/.ugv/battery/boot-<id>.csv` and syncs it to disk. The row holds the lowest,
 mean and highest voltage in the interval, the wheel encoder travel, and the
 Orin's input power from its INA3221. There is one file per boot, because the
