@@ -1,7 +1,8 @@
 # Fitting the charge reading to this pack
 
 **Status:** the voltage record has run on the rover since a435582 was deployed on
-2026-10-10, at about 14:06, writing about 100 readings a row. It has one whole
+2026-10-10, at about 14:06. It wrote a row every five seconds (about 100
+readings each) until 18:18, and a row every second (about 20) since. It has one whole
 charge (recording 1 below): from 10.95 V at 15:15 to a plateau of 12.30-12.33 V
 on the charger by about 17:15, which the owner reads as full at about 12.35 V.
 So the daemon's "full" (12.45 V) is never reached. No standing discharge has been
