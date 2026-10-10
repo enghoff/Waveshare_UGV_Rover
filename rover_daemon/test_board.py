@@ -51,18 +51,18 @@ def test_battery():
     check("a line that is not telemetry is passed over",
           rover_daemon._newest_telemetry(b'{"T":1051,"v":1153}\n'), None)
 
-    # 11.53 V is 3.84 V/cell, in the flat middle of the discharge where lithium-ion
-    # spends most of its life. A straight line from 12.6 V to 9.9 V calls that 60%;
-    # the curve calls it 55%, and that gap is the whole reason there is a table.
-    check("the flat middle is read off the table",
-          rover_daemon._battery_percent(11.53), 55)
-    check("a pack off the charger is 100%", rover_daemon._battery_percent(12.6), 100)
-    # Whole points, not steps of five: 10.5 V is 3.5 V/cell, which the table puts
-    # at 6.1%, and a five-point step would have read it as 5.
-    check("the percentage is in whole points", rover_daemon._battery_percent(10.5), 6)
+    # A straight line from 8.85 V to 12.35 V, the range measured on 2026-10-10,
+    # until a standing discharge gives the shape: 11.53 V is 77% of the way up it.
+    check("the reading is the share of the measured range",
+          rover_daemon._battery_percent(11.53), 77)
+    check("a pack off the charger is 100%", rover_daemon._battery_percent(12.35), 100)
+    check("...and so is one reading higher on the charger",
+          rover_daemon._battery_percent(12.6), 100)
+    check("where it switched itself off is 0%", rover_daemon._battery_percent(8.85), 0)
+    check("the percentage is in whole points", rover_daemon._battery_percent(10.5), 47)
     check("nothing reads below zero", rover_daemon._battery_percent(6.0), 0)
-    for volts, want in ((12.5, "full"), (11.5, "ok"), (11.0, "low"),
-                        (10.5, "critical"), (0.3, "absent")):
+    for volts, want in ((12.4, "full"), (11.5, "ok"), (9.4, "low"),
+                        (9.0, "critical"), (0.3, "absent")):
         check(f"{volts} V is {want}", rover_daemon._battery_state(volts), want)
 
     link = FakeLink()
@@ -70,9 +70,9 @@ def test_battery():
     reading = rover.call("battery", {})
     check("the board is read", reading["ok"], True)
     check("...in volts", reading["volts"], 11.53)
-    check("...as a percentage", reading["percent"], 55)
+    check("...as a percentage", reading["percent"], 77)
     check("...and as a sentence something can say out loud",
-          "55%" in reading["summary"], True)
+          "77%" in reading["summary"], True)
     # The console polls this, and two clients may poll at once. Every poll being a
     # read of the UART the wheels are steered down is what the cache exists to
     # prevent.

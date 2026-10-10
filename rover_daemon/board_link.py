@@ -100,32 +100,28 @@ TELEMETRY_POLL_S = 0.25
 # Three 18650 cells in series -- the UPS in docs/reference/d500-lidar.md -- reported as
 # hundredths of a volt.
 BATTERY_CELLS = 3
-# Volts per cell against percentage left. A table rather than a straight line
-# because lithium-ion is nearly flat through the middle of its discharge, where
-# 40% to 70% is a tenth of a volt: interpolating from full to empty would read
-# twenty points high for most of a run. Both ends of it are Waveshare's own
-# numbers rather than a guess -- the module's balancing chips start bleeding a cell
-# at 4.200 V and its published gauge calls 9.0 V empty -- and only the shape between
-# them is this table's. See the battery section of README.md for the sources.
-BATTERY_CURVE = ((3.00, 0), (3.45, 5), (3.68, 10), (3.74, 20), (3.77, 30),
-                 (3.79, 40), (3.82, 50), (3.87, 60), (3.92, 70), (3.98, 80),
-                 (4.06, 90), (4.20, 100))
+# **A straight line across the range this pack was measured over -- temporary,
+# at the owner's word on 2026-10-10.** 0% is 8.85 V, about where the rover
+# switched itself off under load that day; 100% is 12.35 V, what the pack reads
+# full off the charger. It replaces a table of volts a cell whose two ends were
+# Waveshare's (3.0 and 4.2 V a cell, 9.0 and 12.6 V) and whose shape was never
+# measured on this pack: it called about half a charge "10% or less", and a full
+# pack never reached its 100%. A line is wrong too -- lithium-ion is flat through
+# the middle -- but it is wrong by less, and it stands only until the fit from a
+# standing discharge (docs/plans/battery-charge-curve.md).
+BATTERY_EMPTY_V = 8.85
+BATTERY_FULL_V = 12.35
 # Below this there is no pack at all: the ESP32 runs from USB alone with the
 # battery out or the main switch off, and reports a few tenths of a volt. Its own
 # state rather than 0%, because a flat battery and a missing one call for
 # different things being done about them.
 BATTERY_ABSENT_V = 6.0
-# Read off the curve above rather than picked: 11.2 V is 3.73 V/cell, which is
-# about a fifth left, and 10.8 V is 3.6 V/cell, which is nearly nothing and is
-# also where the cells start to suffer. Both trip early on a rover that is
-# driving, because a reading under load sags -- which is the right direction for
-# a warning to be wrong in.
-BATTERY_LOW_V = 11.2
-BATTERY_CRITICAL_V = 10.8
-# What a full pack reads once the rover's own draw has taken the surface charge
-# off it. Not 12.6, because the host, the lidar and the OAK are always pulling
-# something and every reading here is a reading under load.
-BATTERY_FULL_V = 12.45
+# Read off the same line: low is a fifth of the range left and critical a
+# twentieth, the meanings they had on the old table (11.2 and 10.8 V there). Both
+# trip early on a rover that is driving, because a reading under load sags --
+# which is the right direction for a warning to be wrong in.
+BATTERY_LOW_V = round(BATTERY_EMPTY_V + 0.20 * (BATTERY_FULL_V - BATTERY_EMPTY_V), 2)
+BATTERY_CRITICAL_V = round(BATTERY_EMPTY_V + 0.05 * (BATTERY_FULL_V - BATTERY_EMPTY_V), 2)
 # How long one reading is served for before the board is asked again.
 BATTERY_MAX_AGE_S = 5.0
 
@@ -171,20 +167,12 @@ def _newest_telemetry(chatter: bytes) -> dict[str, Any] | None:
 def _battery_percent(volts: float) -> int:
     """Roughly how much charge is left, from the pack voltage, in whole points.
 
-    Whole points rather than the steps of five it was rounded to until 2026-10-10:
-    nothing downstream needs the steps, and they hid a floor's worth of change --
-    "5%" covered everything from 2.5 to 7.5. The reading is still only as good as
-    the table and is taken under whatever the rover happens to be drawing; the
-    table is being refitted from battery_log.py's record
-    (docs/plans/battery-charge-curve.md).
+    A straight line from BATTERY_EMPTY_V to BATTERY_FULL_V, clamped -- see there
+    for why, and for why it is temporary. Taken under whatever the rover happens
+    to be drawing, so a reading while driving reads low.
     """
-    per_cell = min(max(volts / BATTERY_CELLS, BATTERY_CURVE[0][0]),
-                   BATTERY_CURVE[-1][0])
-    for (low_v, low_pc), (high_v, high_pc) in zip(BATTERY_CURVE, BATTERY_CURVE[1:]):
-        if per_cell <= high_v:
-            share = (per_cell - low_v) / (high_v - low_v)
-            return int(round(low_pc + share * (high_pc - low_pc)))
-    return 100
+    share = (volts - BATTERY_EMPTY_V) / (BATTERY_FULL_V - BATTERY_EMPTY_V)
+    return int(round(100.0 * min(1.0, max(0.0, share))))
 
 
 def _battery_state(volts: float) -> str:

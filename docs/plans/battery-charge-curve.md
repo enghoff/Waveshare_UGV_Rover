@@ -5,10 +5,12 @@
 readings each) until 18:18, and a row every second (about 20) since. It has one whole
 charge (recording 1 below): from 10.95 V at 15:15 to a plateau of 12.30-12.33 V
 on the charger by about 17:15, which the owner reads as full at about 12.35 V.
-So the daemon's "full" (12.45 V) is never reached. No standing discharge has been
-recorded yet. The table is unchanged,
-and on 2026-10-10 it was shown to call about half a charge "10% or less"
-([the finding](../progress/2026-10-10-battery-reading-hides-half-the-pack.md)).
+So the old "full" (12.45 V) was never reached. No standing discharge has been
+recorded yet. On 2026-10-10 the old table was shown to call about half a charge
+"10% or less" ([the finding](../progress/2026-10-10-battery-reading-hides-half-the-pack.md)),
+and the same evening, at the owner's word, it was replaced by a temporary straight
+line across the range measured that day: 8.85 V is 0% and 12.35 V is 100%, with
+"low" below 9.55 V and "critical" below 9.03 V. The fit below replaces the line.
 
 This plan settles [R-CTL-11](../requirements/control.md#r-ctl-11): read standing
 still, the battery's percentage is the share of a charge that is left.
@@ -68,8 +70,9 @@ From recording 2:
   each interval by its `host_mw` plus a constant for everything the INA3221 does
   not see (the lidar, the board, the servos), and say which was done.
 - Smooth `v_mean` with a two-minute median and read off the voltage at every 5%
-  from 0 to 100. Write it into `BATTERY_CURVE` in volts a cell, in place of the
-  current table, keeping the comment honest about where each point came from.
+  from 0 to 100. Write it into `board_link.py` as a table of volts against
+  percentage, in place of the temporary line, keeping the comment honest about
+  where each point came from.
 
 Then check it against recording 3. For every stretch of two minutes or more with
 no wheel ticks in a session driven to switch-off, compare the fitted reading

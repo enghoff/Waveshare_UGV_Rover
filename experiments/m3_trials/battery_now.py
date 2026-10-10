@@ -8,9 +8,9 @@ import json, socket, sys, time
 #   battery_now.py [seconds=10]
 #
 # Reads every second and reports the median, the voltage's trend over the
-# window, and how long ago the wheels last moved. Near empty the curve is steep:
-# 11.04 V is 10%, 11.22 V 20%, 11.37 V 40%, so a few tenths of recovery move
-# the number by tens of points.
+# window, and how long ago the wheels last moved. The percentage is the daemon's:
+# since 2026-10-10 a straight line from 8.85 V (0%) to 12.35 V (100%), so a tenth
+# of a volt of recovery is about three points.
 SECONDS = float(sys.argv[1]) if len(sys.argv) > 1 else 10.0
 RECOVERING_S = 120.0   # the pack was still climbing two minutes after a drive
 
