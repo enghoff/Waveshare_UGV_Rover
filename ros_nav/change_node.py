@@ -15,7 +15,11 @@ not the bridge's or the mapper's.
 the whole flat changed at once, so scans count only while navigation says the
 map is settled and the position trusted, asked every few seconds over the
 bridge's own `status`. A restore nobody has confirmed, or a refit pending, is a
-pause, and says so in the report.
+pause, and says so in the report. So is navigation's drift check finding the
+scan fitting better somewhere else. Neither is enough alone: on 2026-10-10 a
+restore 170 degrees out stayed settled for a quarter of an hour, so each scan
+must also fit what the watch already knows (`change_watch.FIT_MIN`), and one
+that does not is refused and counted.
 
 **What it writes.** `~/.ugv/changes/<map_id>.npz`, the tallies, every two
 minutes and at exit, so that the last visit survives a restart and a reboot;
@@ -67,6 +71,7 @@ class ChangeNode(Node):
         self.why_paused = "navigation has not answered yet"
         self.seen = 0
         self.fed = 0
+        self.refused = 0
         self.last_yaw = None
         self.previous = []
         self.saved_at = self.reported_at = time.monotonic()
@@ -100,10 +105,17 @@ class ChangeNode(Node):
         map_id = status.get("map_id")
         if map_id != self.map_id:
             self.switch_map(map_id)
+        drift = status.get("map_drift") or {}
         if not status.get("map_settled"):
             self.believed, self.why_paused = False, "the map is not settled"
         elif not status.get("position_trusted"):
             self.believed, self.why_paused = False, "the position is not trusted"
+        elif drift.get("trusted") and drift.get("agrees") is False:
+            # Navigation's own look at the lidar says the rover is somewhere
+            # else, and goes on calling the map settled -- which is what it
+            # did at 18:06 on 2026-10-10. Paused until a later look agrees.
+            self.believed = False
+            self.why_paused = "the scan fits the map better elsewhere: %s" % drift.get("why")
         else:
             self.believed, self.why_paused = True, ""
 
@@ -169,8 +181,10 @@ class ChangeNode(Node):
         self.last_yaw = (stamp, yaw)
         n = len(msg.ranges)
         angles = [msg.angle_min + msg.angle_increment * i for i in range(n)]
-        self.watch.add_scan(t.x, t.y, yaw, msg.ranges, angles, stamp)
-        self.fed += 1
+        if self.watch.add_scan(t.x, t.y, yaw, msg.ranges, angles, stamp) is False:
+            self.refused += 1
+        else:
+            self.fed += 1
 
     # --- what it writes ------------------------------------------------------
     def path(self, ext):
@@ -188,7 +202,8 @@ class ChangeNode(Node):
         found = self.watch.changes()
         report = {"map_id": self.map_id, "at": time.time(),
                   "counting": self.believed, "paused": self.why_paused,
-                  "scans": self.watch.scans, "changes": found}
+                  "scans": self.watch.scans, "refused": self.watch.refused,
+                  "changes": found}
         tmp = self.path("json") + ".tmp"
         with open(tmp, "w") as out:
             json.dump(report, out)
@@ -202,12 +217,12 @@ class ChangeNode(Node):
         self.previous = found
         large = sum(1 for c in found if c["large"])
         self.get_logger().info(
-            "change watch: %d scans added since the last report, %d in all; "
-            "%d changes, %d furniture-sized%s (%.0f ms)"
-            % (self.fed, self.watch.scans, len(found), large,
+            "change watch: %d scans added since the last report and %d refused "
+            "as not fitting, %d in all; %d changes, %d furniture-sized%s (%.0f ms)"
+            % (self.fed, self.refused, self.watch.scans, len(found), large,
                "" if self.believed else "; paused: " + self.why_paused,
                1000.0 * (time.monotonic() - started)))
-        self.fed = 0
+        self.fed = self.refused = 0
         if time.monotonic() - self.saved_at >= SAVE_EVERY_S:
             self.save()
 

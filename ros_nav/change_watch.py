@@ -56,6 +56,19 @@ LARGE_M = 0.6
 MIN_RANGE_M = 0.12
 MAX_RANGE_M = 6.0
 STEP_M = RES_M / 2.0
+#: **A scan has to fit what the watch already knows before it is counted.** Of
+#: its hits that land where something is already known -- solid, or seen
+#: through -- at least FIT_MIN must land on (or SLACK_CELLS from) what is solid.
+#: An armchair moved is a small part of a scan; a scan laid at the wrong pose is
+#: most of it on floor already seen clear. On 2026-10-10 at 18:06 a restore 170
+#: degrees out, with the map still called settled, logged the charger room as
+#: changed; navigation's own say-so is not enough.
+FIT_MIN = 0.6
+#: Fewer known hits than this and there is nothing to judge the scan by: a place
+#: seen for the first time is taken as it is.
+FIT_MIN_KNOWN = 30
+#: How often the masks a scan is judged against are worked out again.
+FIT_REFRESH_SCANS = 30
 
 
 def _dilate(mask, cells):
@@ -110,6 +123,9 @@ class ChangeWatch:
         self.ref_pass = np.zeros(shape, np.int32)
         self.ref_time = np.full(shape, np.nan)
         self.scans = 0
+        self.refused = 0
+        self._known = None
+        self._known_age = 0
 
     @classmethod
     def around(cls, xmin, ymin, xmax, ymax, margin_m=3.0, res=RES_M):
@@ -161,8 +177,11 @@ class ChangeWatch:
         ok = np.isfinite(r) & (r > MIN_RANGE_M) & (r < MAX_RANGE_M)
         r, a = r[ok], a[ok] + heading
         if r.size == 0:
-            return
+            return None
         hits = self._cells(x + r * np.cos(a), y + r * np.sin(a))
+        if not self._fits(hits):
+            self.refused += 1
+            return False
         steps = np.arange(int(np.max(r) / STEP_M) + 1) * STEP_M + STEP_M
         inside = steps[None, :] < (r - self.res)[:, None]
         px = x + steps[None, :] * np.cos(a)[:, None]
@@ -185,6 +204,25 @@ class ChangeWatch:
         self.cur_pass.flat[passes] += 1
         self.cur_last.flat[touched] = t
         self.scans += 1
+        self._known_age += 1
+        return True
+
+    def _fits(self, hits):
+        """Whether a scan's hits lie on what this watch already knows is there.
+
+        Judged against both visits: the last one, and the one in progress, so a
+        pose that goes wrong part way through a visit is caught against the
+        visit's own first half as well."""
+        if self._known is None or self._known_age >= FIT_REFRESH_SCANS:
+            was_solid, was_clear = self._states(self.ref_hits, self.ref_pass)
+            is_solid, is_clear = self._states(self.cur_hits, self.cur_pass)
+            solid = _dilate(was_solid | is_solid, SLACK_CELLS)
+            self._known = (solid, (was_clear | is_clear) & ~solid)
+            self._known_age = 0
+        solid, clear = self._known
+        on = int(solid.flat[hits].sum())
+        off = int(clear.flat[hits].sum())
+        return on + off < FIT_MIN_KNOWN or on >= FIT_MIN * (on + off)
 
     def _states(self, hits, passes):
         seen = hits + passes

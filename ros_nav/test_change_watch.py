@@ -189,7 +189,53 @@ def test_a_change_is_news_once() -> None:
           cw.ChangeWatch.first_seen([far], [a]), [far])
 
 
+def visit_misplaced(watch, segments, t0, dx, dy, dturn_deg, seconds=60.0):
+    """A visit scanned truly but laid on the map at a pose that is off -- the
+    rover moved by hand, or a restore that put it the wrong way round, while
+    navigation went on calling the map settled."""
+    path = [(1.0, 1.0), (5.0, 1.0), (5.0, 3.0), (1.0, 3.0)]
+    n = int(seconds * 3)
+    refused = 0
+    for i in range(n):
+        f = (i / n) * len(path)
+        (ax, ay), (bx, by) = path[int(f) % 4], path[(int(f) + 1) % 4]
+        k = f - int(f)
+        x, y = ax + k * (bx - ax), ay + k * (by - ay)
+        heading = 0.3 * i
+        r = scan(x, y, heading, segments)
+        took = watch.add_scan(x + dx, y + dy, heading + math.radians(dturn_deg), r,
+                              BEAMS, t0 + i / 3.0)
+        refused += took is False
+    return refused, n
+
+
+def test_a_scan_laid_at_the_wrong_pose_is_refused() -> None:
+    """**2026-10-10, 18:06: two furniture-sized changes that were the rover's
+    pose.** The owner had driven the rover and rebooted it; the restore put it
+    170 degrees from where it stood and the map stayed settled, so the watch
+    counted every scan at the wrong place and logged the room as changed. A
+    scan whose hits fall on floor the watch has already seen clear is not a
+    room that has changed: an armchair is a small part of a scan, and a wrong
+    pose is most of it."""
+    section("a visit laid at the wrong pose")
+    for dx, dy, turn in ((0.5, 0.3, 20.0), (0.0, 0.0, 170.0)):
+        watch = new_watch()
+        visit(watch, ROOM + box(2.0, 2.0), t0=0.0)
+        refused, n = visit_misplaced(watch, ROOM + box(2.0, 2.0), 3600.0, dx, dy, turn)
+        check("%.1f m and %.0f degrees out: most scans are refused" % (math.hypot(dx, dy), turn),
+              refused > 0.8 * n, True)
+        check("...and no furniture-sized change is reported",
+              kinds(watch.changes()), [])
+    watch = new_watch()
+    visit(watch, ROOM + box(2.0, 2.0), t0=0.0)
+    refused, n = visit_misplaced(watch, ROOM + box(4.0, 2.0), 3600.0, 0.0, 0.0, 0.0)
+    check("an armchair truly moved, at the true pose, is not refused", refused, 0)
+    check("...and is still found", sorted(c["kind"] for c in watch.changes(large_only=True)),
+          ["GONE", "NEW"])
+
+
 TESTS = (
+    test_a_scan_laid_at_the_wrong_pose_is_refused,
     test_a_change_is_news_once,
     test_a_map_that_grows_keeps_what_was_learned,
     test_an_armchair_moved_between_visits_is_found_at_both_ends,

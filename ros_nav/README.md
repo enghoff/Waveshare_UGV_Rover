@@ -161,8 +161,14 @@ where it had stood, within 0.1 m of its world-state record
 (`experiments/m5_changes/replay_watch.py`).
 
 It counts scans only while navigation says the map is settled and the position
-trusted, so a restore nobody has confirmed is a pause rather than the whole flat
-changed. It takes every third scan not turning faster than 40 degrees a second,
+trusted and its drift check does not place the rover elsewhere, so a restore
+nobody has confirmed is a pause rather than the whole flat changed. That alone
+was not enough: on 2026-10-10 a restore 170 degrees out stayed settled for a
+quarter of an hour and the watch logged the charger room as changed. So each scan
+must also fit what the watch already knows, at least 60% of the hits that land on
+known cells landing on solid ones, and one that does not is refused and counted.
+Replayed 0.6 m and 20 degrees out, every scan of a 15-minute run was refused; at
+the true pose, 10 in 3,169. It takes every third scan not turning faster than 40 degrees a second,
 3 ms each on the Orin; the process as a whole takes an eighth of one core, most
 of it following the transform tree. It writes `~/.ugv/changes/<map_id>.npz` (the
 tallies, every two minutes and at exit), `<map_id>.json` (the changes found,
