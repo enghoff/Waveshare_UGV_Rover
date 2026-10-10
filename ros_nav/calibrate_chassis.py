@@ -38,10 +38,11 @@ reported but deliberately kept out of the curve.
 ## How it measures
 
 Turn rate comes from the **gyro**, through `/odom`, which is independent of the
-motors and was itself calibrated over eighteen turns. Forward speed and the tick
-scale come from the **map**, through the `map` -> `base_link` transform, which is
-`slam_toolbox` fixing the rover against the walls -- also independent of the
-wheels, which is what a wheel calibration requires.
+motors. The gyro's own scale is checked against a still scan fitted to the map
+before and after each burst (the navigation bridge's `measure`). Forward speed
+and the tick scale come from the **map**, through the `map` -> `base_link`
+transform, which is `slam_toolbox` fixing the rover against the walls -- also
+independent of the wheels, which is what a wheel calibration requires.
 
 Rates are taken from the steady middle of each burst, not from the total angle
 divided by the total time. That is what removes the ramp at the start and the
@@ -58,6 +59,7 @@ import argparse
 import json
 import math
 import os
+import socket
 import sys
 import time
 
@@ -143,6 +145,9 @@ MAX_DRIVE_DRIFT_DEG = 8.0
 # the two means anything.
 GYRO_PWM = 120
 GYRO_MIN_TURN_DEG = 25.0
+# How long the rover is left before a still fit, after `burst`'s own rest: the
+# fit refuses a scan taken while turning, and the chassis coasts.
+GYRO_STILL_S = 1.0
 
 
 def normalise(degrees):
@@ -194,6 +199,31 @@ class Chassis(Node):
             return None
         q = t.transform.rotation
         return math.degrees(2.0 * math.atan2(q.z, q.w))
+
+    def still_fit(self):
+        """Heading in degrees from one still scan fitted to the map, or None and why.
+
+        The navigation bridge's `measure`: a search around where the rover
+        believes it is, which moves nothing. It found the heading to within 2
+        degrees of a tape on 2026-10-01, and it does not depend on the mapper
+        having taken a scan, which turning on the spot does not make it do.
+        """
+        try:
+            s = socket.create_connection(
+                (self.args.bridge_host, self.args.nav_port), 30)
+            f = s.makefile("rwb")
+            f.write(b'{"op": "measure"}\n')
+            f.flush()
+            while True:
+                answer = json.loads(f.readline())
+                if answer.get("kind") != "progress":
+                    break
+            s.close()
+        except (OSError, ValueError) as exc:
+            return None, "the navigation bridge did not answer: %s" % exc
+        if not answer.get("trusted") or answer.get("heading_deg") is None:
+            return None, "the scan did not fit: %s" % answer.get("why")
+        return float(answer["heading_deg"]), None
 
     def pose(self):
         try:
@@ -391,12 +421,17 @@ class Chassis(Node):
         is integrated purely from the gyro, so a wheel that slips or comes off
         does not enter into it. Either the scale is wrong or the gyro is.
 
-        The reference is `slam_toolbox`, through `map` -> `base_link`. That yaw is
-        fixed by the walls, so it is independent of the gyro in exactly the way
-        this needs -- and it is the same trick the rover's own calibration used
-        when it read the angle back off the scan matcher's heading profile.
+        **The reference is a still scan fitted to the map before and after the
+        burst**, not `slam_toolbox`'s `map` -> `base_link` during it. That was the
+        reference until 2026-10-10, and it was the gyro itself: slam_toolbox 2.8
+        takes no scan into its graph until the rover has moved
+        `minimum_travel_distance`, whatever it has turned, so on the spot its yaw
+        is odometry's plus a constant. The walls agreed with the gyro to 1.0,
+        0.96, 1.01 and 1.03, while twelve turns checked against still fits on
+        2026-10-10 had the gyro 6.2% long (captures/2026-10-10-turns).
 
-        Returns (odom degrees, map degrees) for one burst.
+        Returns (odom degrees, map degrees) for one burst, both from still to
+        still, so the burst's start and its coast are in both.
         """
         room = self.nearest_anything()
         if room is None:
@@ -404,25 +439,30 @@ class Chassis(Node):
         if room < TURN_CLEARANCE_M:
             return None, ("only %.2f m to the nearest thing, needs %.2f to turn"
                           % (room, TURN_CLEARANCE_M))
-        if self.map_yaw() is None:
-            return None, "no map -> base_link transform: is slam_toolbox active?"
+        self.spin_for(GYRO_STILL_S)
+        before, why = self.still_fit()
+        if before is None:
+            return None, "before the burst, " + why
+        start = self.yaw()
 
         def sample():
-            odom, mapped = self.yaw(), self.map_yaw()
-            if odom is None or mapped is None:
-                return None
-            return (odom, mapped)
+            return self.yaw()
 
         left, right = (-pwm, pwm) if direction > 0 else (pwm, -pwm)
         samples, why = self.burst(left, right, sample)
         if samples is None:
             return None, why
-        # Accumulated from consecutive differences in both, so neither can alias
-        # however far the rover went.
-        odom_turned = sum(normalise(b[1][0] - a[1][0])
-                          for a, b in zip(samples, samples[1:]))
-        map_turned = sum(normalise(b[1][1] - a[1][1])
-                         for a, b in zip(samples, samples[1:]))
+        self.spin_for(GYRO_STILL_S)
+        end = self.yaw()
+        after, why = self.still_fit()
+        if after is None or start is None or end is None:
+            return None, "after the burst, " + (why or "no odometry")
+        # Odometry accumulated from consecutive differences, so it cannot alias
+        # however far the rover went; the fits are unwrapped against it, which
+        # holds while the gyro is within half a turn of the truth.
+        yaws = [start] + [value for _, value in samples] + [end]
+        odom_turned = sum(normalise(b - a) for a, b in zip(yaws, yaws[1:]))
+        map_turned = odom_turned + normalise((after - before) - odom_turned)
         if abs(map_turned) < GYRO_MIN_TURN_DEG:
             return None, ("the walls only moved %.1f degrees -- too little to divide "
                           "by" % map_turned)
@@ -525,6 +565,8 @@ def main():
     p.add_argument("--store", default=ODOMETRY_STORE)
     p.add_argument("--bridge-host", default="127.0.0.1")
     p.add_argument("--bridge-port", type=int, default=8772)
+    p.add_argument("--nav-port", type=int, default=8773,
+                   help="the navigation bridge, whose `measure` checks the gyro")
     p.add_argument("--repeats", type=int, default=REPEATS,
                    help="measurements per point per direction; averaging is the "
                         "only thing that shrinks the error on a skidding chassis")
