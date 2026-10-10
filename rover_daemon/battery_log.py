@@ -24,8 +24,9 @@ One row every five seconds, appended to one file per boot under ~/.ugv/battery/:
                  drive load
     host_mw      the Orin module's own input power, from its INA3221, which is
                  most of what the rover draws standing still. Blank elsewhere
-    event        `start` when the daemon starts and `stop` when it stops cleanly.
-                 A file that ends without `stop` ended in a crash or a power cut
+    event        `start` when the daemon starts and `stop` when it is stopped,
+                 including by the SIGTERM of a restart or a reboot. A file that
+                 ends without `stop` ended in a crash or a power cut
 
 Per boot rather than per day because the wall clock cannot be trusted until it
 is synchronised, and a file named by a wrong date is worse than one named by
@@ -111,6 +112,7 @@ class BatteryLog:
         self._uptime = uptime
         self._host_power = host_power if host_power is not None else _host_power_reader()
         self._lock = threading.Lock()
+        self._closed = False
         self._fresh()
         self._left: float | None = None
         self._right: float | None = None
@@ -198,6 +200,10 @@ class BatteryLog:
             pass   # a full disk or a closed file is not worth stopping the wheels for
 
     def close(self) -> None:
+        """The `stop` row, once. Called from a signal handler as well as on exit."""
+        if self._closed:
+            return
+        self._closed = True
         with self._lock:
             taken = {"low": self._low, "high": self._high, "sum": self._sum,
                      "count": self._count, "ticks": self._ticks}

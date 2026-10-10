@@ -272,7 +272,9 @@ Orin's input power from its INA3221. There is one file per boot, because the
 wall clock is wrong after a cold boot until it is synchronised, and every row
 also carries the time since boot. The record runs on the charger as well, and
 files older than 180 days are deleted when the daemon starts. A file that ends
-without a `stop` row ended in a crash or a power cut.
+without a `stop` row ended in a crash or a power cut. The `stop` row is also
+written when a restart or a reboot stops the daemon with SIGTERM. Files from
+before that change have no `stop` rows at all.
 
 Board telemetry also provides the wheel encoders and gyro used by the ROS base
 node. The daemon lends this path to ROS over loopback TCP 8772 so the ROS process

@@ -469,6 +469,7 @@ def test_the_battery_log():
         now["up"] += 5.0
         check("an interval with nothing in it is written too", log.tick(), True)
         log.close()
+        log.close()            # the signal handler and the exit path both may
         rows = list(csv.DictReader(open(log.path)))
         check("one file per boot", log.path.endswith("boot-testboot.csv"), True)
         check("...holding a start, two intervals and a stop",

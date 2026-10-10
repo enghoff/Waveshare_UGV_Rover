@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import signal
 import socket
 import socketserver
 import sys
@@ -135,7 +137,6 @@ def main() -> int | str:
     """Return 0, or a sentence that `sys.exit` prints with a non-zero status."""
     try:
         import faulthandler
-        import signal
 
         faulthandler.register(signal.SIGUSR1, all_threads=True)
     except (AttributeError, ValueError, OSError):
@@ -196,6 +197,20 @@ def main() -> int | str:
             link.battery_log = BatteryLog()
         except OSError as error:
             print(f"battery log not kept: {error}", flush=True)
+
+    # Every restart and every reboot stops this daemon with SIGTERM, which ends it
+    # without running the `finally` below, so the battery record never got its
+    # `stop` row and a restart read the same as a power cut -- the one thing that
+    # record has to tell apart. It gets its last row here, and then the signal is
+    # delivered again as it always was, so nothing else about stopping changes.
+    def last_word(signum, _frame):
+        log = getattr(link, "battery_log", None)
+        if log is not None:
+            log.close()
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    signal.signal(signal.SIGTERM, last_word)
 
     # And the rover starts recording what it sees. Here rather than in Rover's
     # constructor: building the world state is something a *daemon* does, and a
