@@ -801,6 +801,51 @@ def test_the_lidar_is_asked_at_once_and_then_rarely() -> None:
           nav_map.DRIFT_EVERY_S >= 60.0, True)
 
 
+class Interrupted(Watcher):
+    """A rover sent a drive while the lidar is being asked where it is.
+
+    The drive takes the move mutex the way the bridge's `move` does, without
+    waiting, half way through the search.
+    """
+
+    def __init__(self):
+        super().__init__(off_m=0.0, off_deg=0.0)
+        self.drive_got_the_wheels = None
+
+    def map_measure(self, *a, **k):
+        self.drive_got_the_wheels = self.move_mutex.acquire(blocking=False)
+        if self.drive_got_the_wheels:
+            self.move_mutex.release()
+        return Watcher.map_measure(self, *a, **k)
+
+
+def test_a_drive_sent_during_the_check_is_not_refused() -> None:
+    """**M3 session 17: a drive refused for a move nobody had made.**
+
+    On 2026-10-10 the first goal of a run, sent 34 s after the rover had
+    arrived, was refused as "a move is already running". Nothing was moving:
+    the drift check was searching, a second or so every five minutes, and it
+    held the move mutex for the whole search. The check only reads, so it has
+    no reason to keep a drive off the wheels; it is the one that gives way.
+    """
+    section("a drive sent while the lidar is asked")
+    node = Interrupted()
+    node.check_drift()
+    check("a drive sent during the search gets the wheels",
+          node.drive_got_the_wheels, True)
+    check("...and the search still answers", node.map_drift is not None, True)
+
+    node = Watcher(off_m=0.0, off_deg=0.0)
+    node.move_mutex.acquire()
+    try:
+        node.check_drift()
+    finally:
+        node.move_mutex.release()
+    check("a check while a move is running is still skipped", node.asked, [])
+    check("...and waits its five minutes rather than every tick",
+          node.drift_due(), False)
+
+
 #: By the charger on 2026-10-09: where the rover believed it stood after the
 #: drive back's last turn, and where the scan fitted the map -- 98.7% of it on a
 #: wall there against 57.6% at the belief.
@@ -920,6 +965,7 @@ TESTS = (
     test_a_mapper_that_never_answers_is_reported_as_itself,
     test_the_lidar_says_when_the_rover_is_wrong_without_moving_it,
     test_the_lidar_is_asked_at_once_and_then_rarely,
+    test_a_drive_sent_during_the_check_is_not_refused,
     test_a_refit_reports_where_the_mapper_put_the_rover,
     test_a_restore_is_believed_only_where_the_scan_fits,
 )

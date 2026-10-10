@@ -94,7 +94,9 @@ driving, it matches the current scan against the whole map and reports the
 disagreement as `map_drift` in `nav_status` — shown on the console's navigation
 panel as `vs lidar`, reading `agrees`, `cannot say`, or `OFF BY 43 cm, 174 deg`.
 Nothing acts on it: it writes no pose, touches no graph and does not move the
-rover, and pressing "refit to map" is still what corrects one. The gap it fills
+rover, and pressing "refit to map" is still what corrects one. Nor does it hold
+up a drive: it takes no move mutex, so a goal sent during its second of
+searching starts as usual (until 2026-10-10 such a goal was refused as busy). The gap it fills
 is that nothing else asks. `slam_toolbox` corrects `map -> odom` only when it
 folds a scan into the graph, and it will not fold one until the rover has
 apparently moved `minimum_travel_distance` or turned `minimum_travel_heading`

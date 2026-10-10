@@ -947,17 +947,19 @@ class NavMap:
         Skipped rather than queued while a move is running, for `refit`'s reason:
         a moving rover cannot be measured against the map, and the mapper is
         folding scans and correcting the pose itself while it drives, so this is
-        watching the case that nothing else covers.
+        watching the case that nothing else covers. **It never takes the move
+        mutex itself**, like `measure_pose`: the search reads one scan and one
+        pose as it starts, so a drive that begins during it changes nothing it
+        uses. Until 2026-10-10 it held the mutex for the whole second of the
+        search, and a run's first goal arriving then was refused as "a move is
+        already running" (M3 session 17).
         """
         self._map_drift_at = time.monotonic()
-        if not self.move_mutex.acquire(blocking=False):
+        if self.move_mutex.locked():
             return
-        try:
-            with self.map_lock:
-                answer, fit, _where = self.map_measure(
-                    window_m=DRIFT_WINDOW_M, window_deg=DRIFT_WINDOW_DEG)
-        finally:
-            self.move_mutex.release()
+        with self.map_lock:
+            answer, fit, _where = self.map_measure(
+                window_m=DRIFT_WINDOW_M, window_deg=DRIFT_WINDOW_DEG)
         if fit is None:
             # No map, no scan or no pose yet. Not a disagreement, and saying
             # nothing is right: the restore's own note already covers a stack
