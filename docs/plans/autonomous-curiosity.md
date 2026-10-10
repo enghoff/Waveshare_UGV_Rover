@@ -1556,8 +1556,8 @@ the problem.
 |---|---|---|
 | M0a (passed 2026-10-02) | bounded verification of uncertain hypotheses | shared geometry/capture gates + replay refusals + useful outcomes in >=20 attempts across >=3 fresh supervised runs |
 | M0b (retired 2026-10-01) | actions relying on persistent identity | no single gate: each such action's case is decided under R-WS-13 before an autonomous run may take it |
-| M1 | episodic memory | durable reconstruction across resets/merges, no authority |
-| M2 | curiosity shadow mode | fixed scenarios + a no-action rover shadow run |
+| M1 (passed 2026-09-08) | episodic memory | durable reconstruction across resets/merges, no authority |
+| M2 (passed 2026-09-08) | curiosity shadow mode | fixed scenarios + a no-action rover shadow run |
 | M3 (passed 2026-10-10) | bounded autonomous loop | a supervised session in each listed condition, then the current code over the conditions its changes touched; measured stops, permission expiry and failure tests |
 | M4 (passed 2026-10-10) | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it; the rover's own gain checked against the tape |
 | M5 | temporal curiosity | false alarms on replayed unchanged revisits within a budget set from the flat's change rate, then scripted changed/unchanged scenes |
