@@ -170,7 +170,27 @@ def test_a_map_that_grows_keeps_what_was_learned() -> None:
           sorted(c["kind"] for c in bigger.changes(large_only=True)), ["GONE", "NEW"])
 
 
+def test_a_change_is_news_once() -> None:
+    """The node logs each change the first time it is reported, so that a run
+    can be counted afterwards; the same armchair every thirty seconds would make
+    one change look like thirty."""
+    section("a change logged once")
+    a = {"kind": "GONE", "x_m": 1.0, "y_m": 1.0}
+    check("a change nobody has reported is news",
+          cw.ChangeWatch.first_seen([a], []), [a])
+    moved = dict(a, x_m=1.2)
+    check("the same group a little shifted is not",
+          cw.ChangeWatch.first_seen([moved], [a]), [])
+    other = dict(a, kind="NEW")
+    check("a group of the other kind at the same place is",
+          cw.ChangeWatch.first_seen([other], [a]), [other])
+    far = dict(a, x_m=2.0)
+    check("and so is one of the same kind further off",
+          cw.ChangeWatch.first_seen([far], [a]), [far])
+
+
 TESTS = (
+    test_a_change_is_news_once,
     test_a_map_that_grows_keeps_what_was_learned,
     test_an_armchair_moved_between_visits_is_found_at_both_ends,
     test_the_same_room_twice_is_no_change,

@@ -163,9 +163,12 @@ where it had stood, within 0.1 m of its world-state record
 It counts scans only while navigation says the map is settled and the position
 trusted, so a restore nobody has confirmed is a pause rather than the whole flat
 changed. It takes every third scan not turning faster than 40 degrees a second,
-3 ms each on the Orin. It writes `~/.ugv/changes/<map_id>.npz` (the tallies,
-every two minutes and at exit) and `<map_id>.json` (the changes found, every 30
-s); the bridge's `changes` op returns the latter. It moves nothing, publishes
+3 ms each on the Orin; the process as a whole takes an eighth of one core, most
+of it following the transform tree. It writes `~/.ugv/changes/<map_id>.npz` (the
+tallies, every two minutes and at exit), `<map_id>.json` (the changes found,
+every 30 s), which the bridge's `changes` op returns, and `<map_id>.log.jsonl`,
+each change once, when it is first found, which is what a run's changes are
+counted from afterwards. It moves nothing, publishes
 nothing, and nothing in the stack reads it, so it can stop without taking
 anything with it. It sees one plane about 20 cm up: paintings, table tops and
 shoes are not in it.

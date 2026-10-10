@@ -230,6 +230,19 @@ class ChangeWatch:
         found.sort(key=lambda g: -g["area_m2"])
         return found
 
+    @staticmethod
+    def first_seen(found, already, near_m=0.3):
+        """The groups in `found` not already reported: no group in `already` of
+        the same kind within `near_m`. A group grows and shifts a little as the
+        visit goes on, and the same armchair must not be news every report."""
+        fresh = []
+        for g in found:
+            if not any(o["kind"] == g["kind"]
+                       and math.hypot(o["x_m"] - g["x_m"], o["y_m"] - g["y_m"]) <= near_m
+                       for o in already):
+                fresh.append(g)
+        return fresh
+
     def save(self, path, **meta):
         """Write the tallies, atomically, with whatever names their map."""
         tmp = path + ".tmp.npz"

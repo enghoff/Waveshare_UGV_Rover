@@ -19,7 +19,9 @@ pause, and says so in the report.
 
 **What it writes.** `~/.ugv/changes/<map_id>.npz`, the tallies, every two
 minutes and at exit, so that the last visit survives a restart and a reboot;
-and `<map_id>.json`, the changes found, every thirty seconds. A different
+and `<map_id>.json`, the changes found, every thirty seconds; and each change
+the first time it is found, appended to `<map_id>.log.jsonl`, which is what a
+run's changes are counted from afterwards. A different
 `map_id` is a different map, whose cells are other places: each map keeps its
 own pair, and a cleared map starts with nothing to compare against.
 """
@@ -66,6 +68,7 @@ class ChangeNode(Node):
         self.seen = 0
         self.fed = 0
         self.last_yaw = None
+        self.previous = []
         self.saved_at = self.reported_at = time.monotonic()
         os.makedirs(STATE_DIR, exist_ok=True)
 
@@ -108,7 +111,15 @@ class ChangeNode(Node):
         if self.watch is not None and self.map_id:
             self.save()
         self.map_id, self.watch, self.last_yaw = map_id, None, None
+        self.previous = []
         if map_id:
+            # What the last report said, so that a restart does not log again
+            # every change it had already logged.
+            try:
+                with open(self.path("json")) as f:
+                    self.previous = json.load(f).get("changes") or []
+            except (OSError, ValueError):
+                pass
             watch, meta = cw.ChangeWatch.load(self.path("npz"))
             if watch is not None and meta.get("map_id") == map_id:
                 self.watch = watch
@@ -182,6 +193,13 @@ class ChangeNode(Node):
         with open(tmp, "w") as out:
             json.dump(report, out)
         os.replace(tmp, self.path("json"))
+        fresh = cw.ChangeWatch.first_seen(found, self.previous)
+        if fresh:
+            with open(self.path("log.jsonl"), "a") as log:
+                for g in fresh:
+                    log.write(json.dumps({"logged_at": report["at"],
+                                          "map_id": self.map_id, **g}) + "\n")
+        self.previous = found
         large = sum(1 for c in found if c["large"])
         self.get_logger().info(
             "change watch: %d scans added since the last report, %d in all; "
