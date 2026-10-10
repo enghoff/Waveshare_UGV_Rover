@@ -262,6 +262,13 @@ STILL_DEG = 10.0
 #: 1.1 seconds on the Orin, measured. Once every five minutes is under half a
 #: percent of one core.
 DRIFT_EVERY_S = 300.0
+# How much of the scan must lie on a wall where a restore left the rover for the
+# restore's "the rover is where it was parked" to stand. A mapper asked to anchor
+# a graph at a pose it cannot match simply stays there, which reads as agreement;
+# on 2026-10-10 that confirmed a bedroom pose for a rover at the charger, with 58%
+# of the scan on a wall. Parked where it was left the rover sees 94 to 98%, and
+# 85% with an armchair moved beside it.
+RESTORE_SUPPORT = 0.75
 DRIFT_M = 0.15
 DRIFT_DEG = 5.0
 
@@ -317,6 +324,9 @@ class NavMap:
         #: which is quietly wrong is logged once rather than every five minutes,
         #: and coming back into agreement is logged too.
         self._map_drift_said = False
+        # A restore that claimed the rover was where it was parked, waiting for
+        # the first look at the lidar to bear it out (`check_drift`).
+        self._restore_unchecked = False
         #: When the last attempt at a saved map began, and how many there have
         #: been. A saved map that will not load is asked for again rather than
         #: written over, so this is what spaces those attempts out and what lets
@@ -582,6 +592,7 @@ class NavMap:
             # somebody asked for settles the argument. Nothing goes looking
             # on its own -- that search is what used to run here.
             self.map_settled = bool(ok)
+            self._restore_unchecked = bool(ok)
             self.map_note = (
                 "the map from the last session is back, and the rover is "
                 "where it was parked" if ok else
@@ -924,7 +935,10 @@ class NavMap:
         the map every few minutes and the disagreement is reported.
 
         **Reported, and nothing else.** No pose is written, no graph is touched,
-        `map_settled` is not moved and the rover is not driven -- the search runs
+        `map_settled` is never set and the rover is not driven -- the one
+        exception takes a claim back rather than making one: after a restore,
+        the first look withdraws "the rover is where it was parked" if the scan
+        does not lie on the map there (`RESTORE_SUPPORT`). The search runs
         through `map_measure`, which has none of `map_fit_now`'s consequences.
         Acting on it is a person pressing "refit to map", because a rover that
         corrects itself unasked is a rover that can also relocate itself into
@@ -949,9 +963,31 @@ class NavMap:
             # nothing is right: the restore's own note already covers a stack
             # that is still coming up.
             self.map_drift = None
+            if self._restore_unchecked:
+                # A restore waiting to be borne out is asked again next tick
+                # rather than in five minutes.
+                self._map_drift_at = None
             return
         off_m, off_deg = answer["moved_m"], answer["turned_deg"]
         agrees = abs(off_m) < DRIFT_M and abs(off_deg) < DRIFT_DEG
+        if self._restore_unchecked:
+            # The one thing this does besides report, and it only ever takes a
+            # claim back: a restore's "where it was parked" is the mapper not
+            # having moved the rover, which it also does when it can match
+            # nothing. Where the scan does not lie on the map there, nobody has
+            # confirmed anything, and the saved pose must not be written over
+            # by it or runs opened on it.
+            self._restore_unchecked = False
+            here = float(answer["guess_score"] or 0.0)
+            if (self.map_settled and here < RESTORE_SUPPORT
+                    and not (fit.ok and agrees)):
+                self.map_settled = False
+                self.map_note = (
+                    "the map from the last session is back at the pose the "
+                    "rover was parked at, but only %.0f%% of the scan lies on a "
+                    "wall there, so it was probably moved while it was off -- "
+                    "a refit where it really is puts it right" % (100.0 * here))
+                self.get_logger().warn(self.map_note)
         if not fit.ok:
             # With the scan's own answer refused, how well it lies on the map
             # *here* is the only thing left that says anything, and it says

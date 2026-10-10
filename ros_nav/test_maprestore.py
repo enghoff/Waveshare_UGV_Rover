@@ -656,6 +656,8 @@ class Watcher:
         self.move_mutex = threading.Lock()
         self.map_settled = False
         self.map_restored = True
+        self.map_note = ""
+        self._restore_unchecked = False
         self.map_drift = None
         self._map_drift_at = None
         self._map_drift_said = False
@@ -747,6 +749,40 @@ def test_the_lidar_says_when_the_rover_is_wrong_without_moving_it() -> None:
     check("...but still says how well the scan lies on the map where the rover "
           "is, which is the only thing left that means anything",
           "24% of the scan lies on a wall" in node.map_drift["why"], True)
+
+
+def test_a_restore_is_believed_only_where_the_scan_fits() -> None:
+    """**A mapper that did not move the rover has not confirmed where it is.**
+
+    On 2026-10-10 the rover was driven home with its map unsettled, so the pose
+    on disk stayed the bedroom's. After a reboot at the charger the mapper,
+    asked to anchor there, had nothing better to match and stayed put; the
+    restore read that as agreement and called the map settled, with 58% of the
+    scan on a wall where the rover was taken to be. The owner had to carry it to
+    the bedroom. The first look at the lidar after a restore now decides it:
+    where the scan does not lie on the map, the anchor is not believed.
+    """
+    section("a restore believed only where the scan fits")
+    for here, settled, name in ((0.58, False, "the scan fits a different room"),
+                                (0.85, True, "a changed room around the rover"),
+                                (0.98, True, "the room as it was left")):
+        node = Watcher(off_m=0.6, off_deg=-2.0, ok=False, score=0.87, here=here)
+        node.map_settled = True
+        node.map_note = "the map from the last session is back, and the rover is where it was parked"
+        node._restore_unchecked = True
+        node.check_drift()
+        check("%s (%.0f%% on a wall): settled %s" % (name, 100 * here, settled),
+              node.map_settled, settled)
+        if not settled:
+            check("...and the note asks for a refit",
+                  "refit" in node.map_note, True)
+        check("...and it is asked only once", node._restore_unchecked, False)
+
+    node = Watcher(off_m=0.0, off_deg=0.0, here=0.24)
+    node.map_settled = True
+    node._restore_unchecked = False
+    node.check_drift()
+    check("a map settled some other way is left as it is", node.map_settled, True)
 
 
 def test_the_lidar_is_asked_at_once_and_then_rarely() -> None:
@@ -885,4 +921,5 @@ TESTS = (
     test_the_lidar_says_when_the_rover_is_wrong_without_moving_it,
     test_the_lidar_is_asked_at_once_and_then_rarely,
     test_a_refit_reports_where_the_mapper_put_the_rover,
+    test_a_restore_is_believed_only_where_the_scan_fits,
 )
