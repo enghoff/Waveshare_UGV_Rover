@@ -234,6 +234,9 @@ def test_configs_agree():
               "mode: mapping" in slam_text, True)
         check("loop closing is on, which is the whole reason for this stack",
               "do_loop_closing: true" in slam_text, True)
+        check("a turn on the spot is taken into the map, or its heading is never "
+              "corrected (2026-10-10)",
+              "check_min_dist_and_heading_precisely: true" in slam_text, True)
 
 
 def test_nav2_error_codes():

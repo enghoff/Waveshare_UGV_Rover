@@ -90,6 +90,16 @@ slam_toolbox:
     # motion rather than on time. A rover parked for ten minutes adds none.
     minimum_travel_distance: 0.2
     minimum_travel_heading: 0.2
+    # **Without this the heading above is never consulted, and a turn on the spot
+    # is never corrected.** slam_toolbox 2.8's front gate (shouldProcessScan) lets
+    # a scan through on distance alone unless told to check both; Karto's own
+    # heading test behind it never sees one. So map -> odom stood still through
+    # twelve turns on the spot on 2026-10-10, and each left the heading wrong by
+    # whatever the gyro had got wrong -- 6 to 16 degrees, kept until the rover
+    # next drove 0.16 m (captures/2026-10-10-turns). Replayed with this on, every
+    # turn was corrected; with the scans also put back together (lidar_node.py)
+    # and odometry restamped (base_node.py), to within a degree.
+    check_min_dist_and_heading_precisely: true
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0
     link_match_minimum_response_fine: 0.1

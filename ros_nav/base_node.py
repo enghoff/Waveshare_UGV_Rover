@@ -36,6 +36,7 @@ import threading
 import time
 
 import rclpy
+import rclpy.duration
 import rclpy.executors
 from geometry_msgs.msg import Quaternion, Twist, TransformStamped
 from nav_msgs.msg import Odometry
@@ -80,6 +81,18 @@ STILL_SETTLE_S = 1.0
 # long compared with the noise and short compared with that drift; at ~18 samples
 # a second this is a time constant of about a minute.
 BIAS_GAIN = 0.001
+
+# How long a motion sample is old by the time it is stamped here. The board
+# integrates its gyro and counts its wheels continuously but reports them about 17
+# times a second, over a serial line, to a loop that stamps them on arrival -- so
+# the pose published for "now" is the pose of a moment ago. Measured against the
+# lidar on 2026-10-10: every scan of twelve turns fitted against the map put the
+# scan 48 ms later than odometry stamped on arrival said, in proportion to the
+# turn rate (captures/2026-10-10-turns). At 120 degrees a second that is 6
+# degrees between where the mapper put a scan and where the rover was. Replayed
+# with odometry restamped this much earlier and each scan put back together
+# (lidar_node.py), the heading after a turn landed within a degree of the walls.
+ODOM_LATENCY_S = 0.048
 
 
 def yaw_to_quaternion(yaw):
@@ -574,7 +587,7 @@ class BaseNode(Node):
         gz = motion.get("gz_lsb_s")
         ticks = motion.get("ticks")
         breaks = motion.get("breaks")
-        stamp = self.get_clock().now()
+        stamp = self.get_clock().now() - rclpy.duration.Duration(seconds=ODOM_LATENCY_S)
 
         broken = (self._last_breaks is not None and breaks != self._last_breaks)
         self._last_breaks = breaks

@@ -28,6 +28,7 @@ import rclpy.duration
 from rclpy.node import Node
 from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
                        QoSReliabilityPolicy)
+from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 
@@ -44,6 +45,7 @@ for _candidate in (os.path.join(_HERE, "..", "lidar_slam"),
             sys.path.insert(0, _candidate)
 
 import slam2d                                                  # noqa: E402
+from scan_deskew import YawHistory, deskew                     # noqa: E402
 
 LIDAR_BAUD = 230400
 # What the sensor actually delivers: about 450 points in each of ten revolutions a
@@ -88,6 +90,9 @@ class LidarNode(Node):
         self.bins = args.bins
         self.increment = 2.0 * math.pi / self.bins
         self.scan_time = 1.0 / NOMINAL_HZ
+        # Where a sweep starts, in the rover's frame: the sensor's bearing zero,
+        # which the library's mount angle puts at the rover's left.
+        self.mount_rad = math.radians(cfg.mount_deg)
 
         # Sensor data QoS: best-effort and shallow. A scan that is late is a scan
         # that is wrong, and slam_toolbox would rather miss one than be handed a
@@ -98,6 +103,14 @@ class LidarNode(Node):
                          durability=QoSDurabilityPolicy.VOLATILE,
                          history=QoSHistoryPolicy.KEEP_LAST, depth=1)
         self.pub = self.create_publisher(LaserScan, args.topic, qos)
+
+        # Odometry's heading over the last second, so that a scan taken while the
+        # rover turns can be put back together (scan_deskew.py). Without it the
+        # scan is published as measured, which is what it was before 2026-10-10.
+        self.history = YawHistory()
+        self.deskewed = self.skewed = 0
+        if not args.no_deskew:
+            self.create_subscription(Odometry, args.odom_topic, self._on_odom, 50)
 
         # The room in words, for the daemon's `describe_surroundings` tool.
         #
@@ -142,6 +155,12 @@ class LidarNode(Node):
 
     def now(self):
         return self.get_clock().now()
+
+    def _on_odom(self, msg):
+        q = msg.pose.pose.orientation
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        self.history.add(stamp, math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                                           1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
 
     # --- the port -------------------------------------------------------------
     def open_port(self):
@@ -234,6 +253,17 @@ class LidarNode(Node):
         90-degree mount rotation is applied inside the library, so this sees a
         sensor that is pointing where the rover is.
         """
+        # Stamped at the *start* of the revolution, and every point is put where
+        # it was then: see below and scan_deskew.py.
+        start = self.now() - rclpy.duration.Duration(seconds=self.scan_time)
+        moved = False
+        if not self.args.no_deskew:
+            points, moved = deskew(points, start.nanoseconds * 1e-9, self.history,
+                                   self.mount_rad, self.scan_time)
+            if moved:
+                self.deskewed += 1
+            else:
+                self.skewed += 1
         ranges = [float("inf")] * self.bins
         used = 0
         for x, y in points:
@@ -258,12 +288,13 @@ class LidarNode(Node):
 
         msg = LaserScan()
         # Stamped at the *start* of the revolution, which is where the first point
-        # was measured, with scan_time and time_increment saying how the rest are
-        # spread after it. Stamping at the end -- the obvious thing, since that is
+        # was measured. Stamping at the end -- the obvious thing, since that is
         # when this code runs -- puts every point up to 100 ms in the future of a
         # transform lookup, and on a rover that is turning, 100 ms is degrees.
-        msg.header.stamp = (self.now() - rclpy.duration.Duration(
-            seconds=self.scan_time)).to_msg()
+        # The points have already been put where they were at that moment, so
+        # time_increment is zero: nothing downstream should spread them again.
+        # Without odometry they have not, and it says how they are spread.
+        msg.header.stamp = start.to_msg()
         msg.header.frame_id = self.frame_id
         # Half an increment in, because these are bins and not samples. Bin i
         # holds whatever fell in [-pi + i*inc, -pi + (i+1)*inc), so the bearing
@@ -275,7 +306,7 @@ class LidarNode(Node):
         msg.angle_max = msg.angle_min + (self.bins - 1) * self.increment
         msg.angle_increment = self.increment
         msg.scan_time = self.scan_time
-        msg.time_increment = self.scan_time / self.bins
+        msg.time_increment = 0.0 if moved else self.scan_time / self.bins
         msg.range_min = float(self.args.range_min)
         msg.range_max = float(self.args.range_max)
         msg.ranges = ranges
@@ -319,10 +350,12 @@ class LidarNode(Node):
         if elapsed < 10.0:
             return
         self.get_logger().info(
-            "%.1f Hz on %s (%d revolutions, %d thin)"
+            "%.1f Hz on %s (%d revolutions, %d thin; %d put together, %d without "
+            "odometry)"
             % (self.revolutions / elapsed, self.port_path or "?",
-               self.revolutions, self.thin))
+               self.revolutions, self.thin, self.deskewed, self.skewed))
         self.revolutions = 0
+        self.deskewed = self.skewed = 0
         self._last_report = now
 
 
@@ -347,6 +380,10 @@ def parse_args(argv):
     p.add_argument("--describe", type=float, default=0.5,
                    help="seconds between those descriptions; skipped entirely "
                         "when nothing subscribes")
+    p.add_argument("--odom-topic", default="odom",
+                   help="odometry, whose heading puts a turning scan back together")
+    p.add_argument("--no-deskew", action="store_true",
+                   help="publish each revolution as measured, as before 2026-10-10")
     p.add_argument("--quiet", action="store_true")
     return p.parse_args(strip_ros_args(argv))
 

@@ -81,6 +81,94 @@ def test_scan_binning():
     check("...leaving none empty", sum(1 for r in ranges if math.isinf(r)), 0)
 
 
+def room_range(x0, y0, direction, half_w=2.0, half_h=1.5):
+    """How far a beam from (x0, y0) along `direction` travels to a box's walls."""
+    dx, dy = math.cos(direction), math.sin(direction)
+    best = float("inf")
+    for wall, d, origin in ((half_w, dx, x0), (-half_w, dx, x0),
+                            (half_h, dy, y0), (-half_h, dy, y0)):
+        if abs(d) > 1e-9:
+            t = (wall - origin) / d
+            if t > 0:
+                best = min(best, t)
+    return best
+
+
+def turning_sweep(rate, n=420, scan_time=0.1, mount=math.pi / 2, heading0=0.3,
+                  where=(0.6, -0.4)):
+    """One D500 sweep from a rover turning on the spot at `rate` rad/s.
+
+    The sensor starts at the rover's left and sweeps clockwise; each point is
+    reported in the rover's frame as it was at that point's own moment, which is
+    what the library hands over.
+    """
+    points = []
+    for k in range(n):
+        t = k / n * scan_time
+        phi = mount - 2.0 * math.pi * k / n
+        heading = heading0 + rate * t
+        r = room_range(where[0], where[1], heading + phi)
+        points.append((r * math.cos(phi), r * math.sin(phi)))
+    return points
+
+
+def test_a_turning_scan_is_put_back_together():
+    from scan_deskew import YawHistory, deskew, sweep_offset
+
+    section("a scan taken while turning, put back where it was at the sweep's start")
+    rate = math.radians(120.0)             # what this chassis does on the spot
+    heading0, where = 0.3, (0.6, -0.4)
+    history = YawHistory()
+    for i in range(-20, 21):               # odometry at 20 Hz around the sweep
+        history.add(10.0 + i * 0.05, heading0 + rate * i * 0.05)
+
+    check("the sweep starts at the rover's left", sweep_offset(math.pi / 2, math.pi / 2, 0.1),
+          0.0, tolerance=1e-9)
+    check("...and reaches straight ahead a quarter of a sweep later",
+          sweep_offset(0.0, math.pi / 2, 0.1), 0.025, tolerance=1e-9)
+
+    raw = turning_sweep(rate, heading0=heading0, where=where)
+    fixed, moved = deskew(raw, 10.0, history, math.pi / 2, 0.1)
+    check("odometry covers the sweep, so it is put together", moved, True)
+
+    truth = turning_sweep(0.0, heading0=heading0, where=where)
+    raw_bins, _, inc = bin_scan(raw)
+    fixed_bins, _, _ = bin_scan(fixed)
+    true_bins, _, _ = bin_scan(truth)
+
+    def worst(bins):
+        # Away from the corners, where a degree of bearing is a jump in range.
+        errors = []
+        for b in range(len(bins)):
+            if math.isinf(bins[b]) or math.isinf(true_bins[b]):
+                continue
+            neighbours = [true_bins[(b + d) % len(bins)] for d in (-2, 2)]
+            if max(abs(v - true_bins[b]) for v in neighbours) > 0.05:
+                continue
+            errors.append(abs(bins[b] - true_bins[b]))
+        errors.sort()
+        return errors[int(0.95 * len(errors))]
+
+    check("as measured, the turning scan is bent (95th percentile over 10 cm)",
+          worst(raw_bins) > 0.10, True)
+    check("put back together, it matches the room within 2 cm",
+          worst(fixed_bins) < 0.02, True)
+
+    stale = YawHistory()
+    stale.add(1.0, 0.0)
+    stale.add(1.05, 0.1)
+    same, moved = deskew(raw, 10.0, stale, math.pi / 2, 0.1)
+    check("odometry that stopped long ago leaves the scan as measured",
+          (moved, same == raw), (False, True))
+
+    wrap = YawHistory()
+    wrap.add(0.0, math.pi - 0.05)
+    wrap.add(0.1, -math.pi + 0.05)
+    check("a heading crossing +-180 is unwrapped, not swung through 360",
+          wrap.at(0.05), math.pi, tolerance=1e-9)
+
+
 TESTS = (
     test_scan_binning,
+    test_a_turning_scan_is_put_back_together,
 )

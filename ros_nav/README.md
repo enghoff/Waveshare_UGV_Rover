@@ -47,6 +47,19 @@ The current host was measured at 15.310723 gyro units per degree per second and
 107.206 encoder ticks per metre. The source and runtime file remain authoritative
 over these documentary values.
 
+### Turning scans and odometry's stamp
+
+A scan taken while the rover turns is put back together before it is published.
+The D500 sweeps in 0.1 s, from the rover's left clockwise, and on the spot this
+chassis turns about 120 degrees a second, so the last point of a sweep is 12
+degrees of heading after the first. `lidar_node.py` rotates each point by how far
+odometry says the rover turned between the sweep's start and that point's moment
+(`scan_deskew.py`), and stamps the scan at the start. `base_node.py` stamps
+odometry `ODOM_LATENCY_S` (48 ms) before it arrives, the lag measured between the
+two. Replayed over twelve recorded turns with the mapper's heading rule on, these
+took the heading after a turn from 9 degrees typical and 16 at worst to 0.6 and
+1.0 (`captures/2026-10-10-turns`). `--no-deskew` publishes scans as measured.
+
 ## Maps and localization
 
 The stack periodically serializes its pose graph and last trusted pose under
@@ -84,7 +97,10 @@ is that nothing else asks. `slam_toolbox` corrects `map -> odom` only when it
 folds a scan into the graph, and it will not fold one until the rover has
 apparently moved `minimum_travel_distance` or turned `minimum_travel_heading`
 (0.2 m and 0.2 rad in `config/slam_toolbox.yaml`), so a parked rover has the
-walls in plain sight and consults nobody. On 2026-09-07 that let the believed
+walls in plain sight and consults nobody. The heading half of that rule only
+applies with `check_min_dist_and_heading_precisely`, set since 2026-10-10: without
+it slam_toolbox 2.8 gates on distance alone, so a turn on the spot was never
+corrected and left the heading wrong by whatever the gyro had got wrong. On 2026-09-07 that let the believed
 heading creep 174 degrees round over a working day with `position` still reading
 "trusted", because slam_toolbox was confident in a match it had made hours
 earlier.
