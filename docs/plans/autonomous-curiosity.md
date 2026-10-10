@@ -11,7 +11,7 @@ M3's criteria 6, 7, 9, 10 and 12 are met. Every condition criterion 4 lists has
 now been driven, which replaced a count of twenty on 2026-10-07
 ([the decision](../decisions/trials-are-sized-by-what-they-show.md)), the last
 of them and the re-drives on 2026-10-10 ([sessions 14 to 19](../progress/2026-10-10-m3-sessions-14-to-19.md)).
-What remains is one run on the fix for the fault session 17 found. M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Thirteen development attempts out of reach then found the chosen viewpoint improving its thing five times against the re-look's once ([2026-10-09](../progress/2026-10-09-m4-out-of-reach.md)). Later phases remain proposed. This is the
+The run owed on the fix for the fault session 17 found ([session 20](../progress/2026-10-10-m3-session-20.md)) found nothing new, so all twelve criteria read as met and M3 waits on the owner's sign-off. M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Thirteen development attempts out of reach then found the chosen viewpoint improving its thing five times against the re-look's once ([2026-10-09](../progress/2026-10-09-m4-out-of-reach.md)). Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -582,14 +582,14 @@ refused by name.
 
 ### What is still ahead
 
-What is left of M3 is one run:
+What is left of M3 is the owner's sign-off:
 
-- **One run on the fix session 17 found** (criterion 4 and the list under
-  it), with the owner present. Every condition has been driven. Session 17's
-  first drive was refused because navigation's drift check held the lock every
-  move takes (fixed in 4e3a447), so a run on that fix, starting in the bedroom
-  and free to use the whole flat, that finds nothing new is still owed. The
-  sessions so far, the third to eighth in the charger room
+- **Every condition has been driven** (criterion 4 and the list under it),
+  with the owner present. Session 17's first drive was refused because
+  navigation's drift check held the lock every move takes (fixed in 4e3a447),
+  and [session 20](../progress/2026-10-10-m3-session-20.md), on that fix from
+  the bedroom over the whole flat, found nothing new. The sessions, the third
+  to eighth in the charger room
   ([1](../progress/2026-10-05-m3-session-1.md), 8.7 minutes;
   [2](../progress/2026-10-05-m3-session-2.md), 11 minutes, stopped at 5% battery;
   [3](../progress/2026-10-06-m3-session-3.md), 3.6 minutes, ended by going home;
@@ -615,7 +615,9 @@ What is left of M3 is one run:
   blind to a person until it had set off, fixed;
   [14 to 19](../progress/2026-10-10-m3-sessions-14-to-19.md) on 2026-10-10,
   furniture moved, the bedroom without a fence, and the charger room, the
-  bedroom and the whole flat again on the turning and restore fixes);
+  bedroom and the whole flat again on the turning and restore fixes;
+  [20](../progress/2026-10-10-m3-session-20.md), 15 minutes from the bedroom on
+  the drift-check fix, 24 drives and none failed);
   M0a's runs were its own protocol and do not count towards them. Open each
   with no action limit. A fenced condition gets a safe area around the cleared
   room, drawn 0.6 m beyond where the run starts. A fenced run ends by going home
@@ -1572,9 +1574,8 @@ M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
 
 1. **Finish M3 on the rover.** Every condition has been driven, and the
    charger room, another room and the whole flat again on the current code
-   (criterion 4). One run is left: on the fix for the drive session 17 had
-   refused (4e3a447), from the bedroom over the whole flat. Then the owner's
-   sign-off.
+   (criterion 4), and the run on the fix for session 17's refused drive found
+   nothing new. What is left is the owner's sign-off.
 2. **Run M4's attempts.** The trial run, its re-look and the scoring exist;
    what is left is labelling the six old targets' records, development attempts
    on them to size the set, a new taped set, and then the acceptance attempts
