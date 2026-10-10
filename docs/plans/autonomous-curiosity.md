@@ -981,8 +981,23 @@ lidar compared run against run found the moved armchair in every comparison that
 spanned its move and nothing of its size in the three that did not. So the
 proposal is that changes to the larger things come from the lidar, compared with
 what earlier runs saw, with records attached by where they are, and looks say
-which thing it was rather than whether it is there. Next, every run produces
-that comparison, so that every run is a control, before any scripted scene.
+which thing it was rather than whether it is there. Since 2026-10-10 the
+rover keeps that comparison itself: navigation's change watch
+([ros_nav/README.md](../../ros_nav/README.md), *What has changed since a place
+was last seen*) logs every change it finds, so every run is now a control, and
+parked on the charger after the deploy it found nothing changed against
+session 20. What is ahead, in order:
+
+1. **Controls.** Ordinary runs with nothing moved, the owner saying so before
+   each, counted from the change log: a change of furniture size in any of
+   them is a false alarm.
+2. **A first scripted scene.** The owner moves two or three large things, the
+   armchair by the window, a bean bag, a floor lamp, within their rooms between
+   two runs, and puts them back before a third: each should be reported gone
+   and new where it went, then back, and nothing else.
+3. **Changes named.** A change attached to the world record nearest it (the
+   armchair's was 0.1 m off), and a door told from furniture; then a change
+   becomes something for the executive to go and look at (criteria 5 and 6).
 
 M3's remaining sessions are recorded for these, at the owner's request
 (2026-10-10). Its re-drives of the charger room, another room and the whole flat
