@@ -43,8 +43,10 @@ the chassis-specific gyro scale, encoder distance and motor curves. It is runtim
 state and is not deployed. Copy it when replacing the rover computer; remeasure
 with `calibrate_chassis.py` only if it cannot be recovered.
 
-The current host was measured at 15.310723 gyro units per degree per second and
-107.206 encoder ticks per metre. The source and runtime file remain authoritative
+The current host was measured at 16.14613 gyro units per degree per second
+(2026-10-10, against still scan fits; the 15.31 before it had been checked
+against slam_toolbox's heading on the spot, which is the gyro's own) and 107.206
+encoder ticks per metre. The source and runtime file remain authoritative
 over these documentary values.
 
 ### Turning scans and odometry's stamp
