@@ -31,6 +31,7 @@ What comes up, and why in this order:
   base_node    the driver board as /odom and the odom -> base_link transform
   the mapper   /scan plus that transform as /map, and map -> odom on top
   nav_bridge   all of the above, served to the rover daemon on loopback 8773
+  change_node  what has changed since each place was last seen, from the scan
 
 The bridge is here rather than in nav.launch.py on purpose. Most of what it hands
 over -- the map, the pose, what is around the rover -- exists as soon as
@@ -102,6 +103,14 @@ def generate_launch_description():
         Node(executable=sys.executable,
              name="nav_bridge", output="screen",
              arguments=[os.path.join(HERE, "nav_bridge.py"), "--port", nav_port]),
+
+        # A passenger: it reads the scan and the transform tree and writes what
+        # has changed since each place was last seen to ~/.ugv/changes. Nothing
+        # in this stack reads it back, so it can fail without taking anything
+        # with it.
+        Node(executable=sys.executable,
+             name="change_node", output="screen",
+             arguments=[os.path.join(HERE, "change_node.py"), "--nav-port", nav_port]),
 
         # slam_toolbox is a *lifecycle* node in Jazzy, and it comes up
         # `unconfigured`: the process runs, answers `ros2 node list`, and has

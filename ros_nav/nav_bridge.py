@@ -55,6 +55,7 @@ import argparse
 import base64
 import json
 import math
+import os
 import socket
 import socketserver
 import sys
@@ -586,6 +587,29 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
             "live": self.live_cells(),
         }
 
+    def changes(self):
+        """What `change_node` last found changed on this map, read off its file.
+
+        Read rather than asked: the change watch is a separate process that this
+        one does not depend on, and the file is what it leaves for anyone. A
+        report for another map is not this map's, and says so."""
+        if self.map_id is None:
+            return {"ok": False, "error": "no map is held yet, so there is no "
+                                          "map to have changed"}
+        path = os.path.join(os.path.expanduser("~/.ugv/changes"),
+                            "%s.json" % self.map_id)
+        try:
+            with open(path) as f:
+                report = json.load(f)
+        except FileNotFoundError:
+            return {"ok": False, "error": "the change watch has written nothing "
+                                          "for this map yet"}
+        except (OSError, ValueError) as error:
+            return {"ok": False, "error": "the change report could not be read: %s"
+                                          % error}
+        return {"ok": True, "age_s": round(time.time() - float(report.get("at") or 0), 1),
+                **report}
+
     # --- writes ---------------------------------------------------------------
     def halt(self, latch=False):
         """Stop, by both roads at once. Never refused and never blocked.
@@ -719,6 +743,8 @@ class Handler(socketserver.StreamRequestHandler):
             self.write({"kind": "reply", **node.describe()})
         elif op == "map":
             self.write({"kind": "reply", **node.grid()})
+        elif op == "changes":
+            self.write({"kind": "reply", **node.changes()})
         elif op == "measure":
             # Read-only and quick, and no mutex: see nav_map.measure_pose.
             self.write({"kind": "reply", "ok": True, **node.measure_pose(

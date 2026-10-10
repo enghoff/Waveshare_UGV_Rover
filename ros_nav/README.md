@@ -138,6 +138,38 @@ To save an additional visual map manually:
 ros2 run nav2_map_server map_saver_cli -f ~/house
 ```
 
+### What has changed since a place was last seen
+
+`change_node.py` watches the scan for things moved since the rover was last in a
+place: an armchair gone from where it stood, something new on floor that was
+clear. It is the lidar's half of M5's change detection
+([the plan](../docs/plans/autonomous-curiosity.md)), and it exists because the
+camera's looks were measured unable to say whether a thing is still there
+([2026-10-10](../docs/progress/2026-10-10-m5-what-reports-a-change.md)).
+
+Every 5 cm cell of the map keeps two tallies, one for the visit in progress and
+one for the visit before it: in how many scans a beam ended in the cell and in
+how many one passed through (`change_watch.py`). A visit to a cell ends after
+five minutes unseen. A cell solid in one visit and seen through in the other has
+changed, with 10 cm of slack for the pose; changed cells are grouped, and a group
+is reported once its evidence spans 20 s, so a person walking past is not one.
+Groups 0.6 m or longer are marked furniture-sized; on the recordings it was
+measured on, smaller ones were doors. Replayed through today's recordings in
+order, it reported nothing for three runs with the armchair moved and then, on
+the run after it was put back, the armchair back in its place and gone from
+where it had stood, within 0.1 m of its world-state record
+(`experiments/m5_changes/replay_watch.py`).
+
+It counts scans only while navigation says the map is settled and the position
+trusted, so a restore nobody has confirmed is a pause rather than the whole flat
+changed. It takes every third scan not turning faster than 40 degrees a second,
+3 ms each on the Orin. It writes `~/.ugv/changes/<map_id>.npz` (the tallies,
+every two minutes and at exit) and `<map_id>.json` (the changes found, every 30
+s); the bridge's `changes` op returns the latter. It moves nothing, publishes
+nothing, and nothing in the stack reads it, so it can stop without taking
+anything with it. It sees one plane about 20 cm up: paintings, table tops and
+shoes are not in it.
+
 ## Movement
 
 The daemon offers:

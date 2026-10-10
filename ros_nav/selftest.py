@@ -28,6 +28,7 @@ import sys
 import test_harness
 from test_bridge import TESTS as BRIDGE_TESTS
 from test_calibrate import TESTS as CALIBRATE_TESTS
+from test_change_watch import TESTS as CHANGE_WATCH_TESTS
 from test_autonomy_guard import TESTS as AUTONOMY_GUARD_TESTS
 from test_chassis import TESTS as CHASSIS_TESTS
 from test_config import TESTS as CONFIG_TESTS
@@ -45,7 +46,7 @@ def main():
     for test in (*CHASSIS_TESTS, *ODOMETRY_TESTS, *SCAN_TESTS, *BRIDGE_TESTS,
                  *CONFIG_TESTS, *PLANNING_TESTS, *CONTROL_TESTS, *REFIT_TESTS,
                  *MAPRESTORE_TESTS, *MEASURE_TESTS, *AUTONOMY_GUARD_TESTS,
-                 *WAY_ROUND_TESTS, *CALIBRATE_TESTS):
+                 *WAY_ROUND_TESTS, *CALIBRATE_TESTS, *CHANGE_WATCH_TESTS):
         test()
     print("\n%d passed, %d failed" % (test_harness.PASSED, test_harness.FAILED))
     return 1 if test_harness.FAILED else 0

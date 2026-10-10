@@ -68,7 +68,7 @@ check_count() {
         printf '  !!   %-30s %s  <- expected %s\n' "$1" "$n" "$2"
     fi
 }
-for name in lidar_node.py base_node.py nav_bridge.py; do
+for name in lidar_node.py base_node.py nav_bridge.py change_node.py; do
     check_count "$name" 1
 done
 check_count async_slam_toolbox_node 1
