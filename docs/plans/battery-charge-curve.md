@@ -1,8 +1,11 @@
 # Fitting the charge reading to this pack
 
 **Status:** the voltage record has run on the rover since a435582 was deployed on
-2026-10-10, at about 14:06, writing about 100 readings a row. No whole charge or
-discharge has been recorded yet. The table is unchanged,
+2026-10-10, at about 14:06, writing about 100 readings a row. It has one whole
+charge (recording 1 below): from 10.95 V at 15:15 to a plateau of 12.30-12.33 V
+on the charger by about 17:15, which the owner reads as full at about 12.35 V.
+So the daemon's "full" (12.45 V) is never reached. No standing discharge has been
+recorded yet. The table is unchanged,
 and on 2026-10-10 it was shown to call about half a charge "10% or less"
 ([the finding](../progress/2026-10-10-battery-reading-hides-half-the-pack.md)).
 
