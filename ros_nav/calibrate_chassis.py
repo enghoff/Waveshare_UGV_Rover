@@ -148,6 +148,12 @@ GYRO_MIN_TURN_DEG = 25.0
 # How long the rover is left before a still fit, after `burst`'s own rest: the
 # fit refuses a scan taken while turning, and the chassis coasts.
 GYRO_STILL_S = 1.0
+# A still fit used though the bridge does not trust it -- the room fits nearly as
+# well somewhere else -- must still put this much of the scan on a wall, this
+# close to where the rover believes it is. In the bedroom on 2026-10-10 the fit
+# was 99.7% and 2 cm, against a rival elsewhere at 97%.
+STILL_FIT_SCORE = 0.9
+STILL_FIT_MOVED_M = 0.10
 
 
 def normalise(degrees):
@@ -221,7 +227,15 @@ class Chassis(Node):
             s.close()
         except (OSError, ValueError) as exc:
             return None, "the navigation bridge did not answer: %s" % exc
-        if not answer.get("trusted") or answer.get("heading_deg") is None:
+        if answer.get("heading_deg") is None:
+            return None, "the scan did not fit: %s" % answer.get("why")
+        # A fit the bridge will not trust because another place in the flat fits
+        # nearly as well is still the right fit *here*, for a rover that has only
+        # turned on the spot: what this needs is the heading of the best fit beside
+        # the believed pose, and that one is close and good.
+        local = ((answer.get("score") or 0.0) >= STILL_FIT_SCORE
+                 and (answer.get("moved_m") or 0.0) <= STILL_FIT_MOVED_M)
+        if not (answer.get("trusted") or local):
             return None, "the scan did not fit: %s" % answer.get("why")
         return float(answer["heading_deg"]), None
 
