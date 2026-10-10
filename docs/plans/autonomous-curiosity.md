@@ -964,6 +964,14 @@ measurements ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)):
 - **how many change hypotheses replayed revisits of unchanged scenes raise**, on
   the recordings already held. Scripted scenes wait until replay meets the budget.
 
+The owner answered the first on 2026-10-10: the larger things the rover records
+as objects rarely move unless they are arranged for a test. Outside a test,
+then, nearly every change the rover reported would be a false alarm, whatever
+its rate, so no false-alarm rate makes a change claimed from one revisit right
+more often than wrong. The proposal, awaiting the owner, is that an apparent
+change is a reason to look again rather than a claim, and only a change that
+holds up on that second look is reported; the budget then applies to those.
+
 M3's remaining sessions are recorded for these, at the owner's request
 (2026-10-10). Its re-drives of the charger room, another room and the whole flat
 are revisits of unchanged rooms, and its furniture-moved session is a real
