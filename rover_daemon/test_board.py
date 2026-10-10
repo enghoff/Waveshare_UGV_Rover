@@ -57,6 +57,9 @@ def test_battery():
     check("the flat middle is read off the table",
           rover_daemon._battery_percent(11.53), 55)
     check("a pack off the charger is 100%", rover_daemon._battery_percent(12.6), 100)
+    # Whole points, not steps of five: 10.5 V is 3.5 V/cell, which the table puts
+    # at 6.1%, and a five-point step would have read it as 5.
+    check("the percentage is in whole points", rover_daemon._battery_percent(10.5), 6)
     check("nothing reads below zero", rover_daemon._battery_percent(6.0), 0)
     for volts, want in ((12.5, "full"), (11.5, "ok"), (11.0, "low"),
                         (10.5, "critical"), (0.3, "absent")):
@@ -432,9 +435,91 @@ def test_a_board_that_goes_quiet_gets_its_port_reopened():
         serial.Serial = real
 
 
+def test_the_battery_log():
+    """The pack's voltage over time, written where a fit can find it.
+
+    What has to hold: one row per interval and not one per line, a mean and the
+    extremes rather than whichever reading came last, a spin on the spot counted
+    as the wheels turning, a board that restarted its counters not counted as
+    travel, an interval the board said nothing in written as such rather than
+    skipped, and a clean stop that can be told from a power cut.
+    """
+    import csv
+    import shutil
+    import tempfile
+
+    import battery_log
+
+    folder = tempfile.mkdtemp()
+    try:
+        now = {"t": 1000.0, "up": 50.0}
+        log = battery_log.BatteryLog(folder, interval_s=5.0,
+                                     clock=lambda: now["t"], uptime=lambda: now["up"],
+                                     host_power=lambda: 6512.0, boot_id="testboot")
+        log.fold([b'{"T":1001,"odl":120100,"odr":120100,"v":1150}',
+                  b'{"T":1001,"odl":120150,"odr":120050,"v":1080}',     # a spin's sag
+                  b'{"T":1001,"odl":120200,"odr":120000,"v":1146}'])
+        now["up"] += 4.0
+        check("nothing is written before the interval is over", log.tick(), False)
+        log.fold([b'{"T":1001,"odl":7,"odr":3,"v":1152}'])         # board rebooted
+        now["t"] += 5.0
+        now["up"] += 1.0
+        check("the interval is written when it is over", log.tick(), True)
+        now["t"] += 5.0
+        now["up"] += 5.0
+        check("an interval with nothing in it is written too", log.tick(), True)
+        log.close()
+        rows = list(csv.DictReader(open(log.path)))
+        check("one file per boot", log.path.endswith("boot-testboot.csv"), True)
+        check("...holding a start, two intervals and a stop",
+              [r["event"] for r in rows], ["start", "", "", "stop"])
+        row = rows[1]
+        check("the lowest reading is kept", row["v_min"], "10.80")
+        check("...and the highest", row["v_max"], "11.52")
+        check("...and the mean", row["v_mean"], "11.320")
+        check("...over every reading", row["samples"], "4")
+        check("a spin counts as the wheels turning, a counter reset does not",
+              row["wheel_ticks"], "200")
+        check("the host's own power is recorded", row["host_mw"], "6512")
+        check("...against both clocks", (row["time"], row["uptime_s"]),
+              ("1005.0", "55.0"))
+        check("a silent board is an empty row, not a missing one",
+              (rows[2]["samples"], rows[2]["v_mean"]), ("0", ""))
+
+        # A daemon restart within the same boot carries on in the same file.
+        again = battery_log.BatteryLog(folder, clock=lambda: now["t"],
+                                       uptime=lambda: now["up"],
+                                       host_power=lambda: None, boot_id="testboot")
+        again.close()
+        rows = list(csv.DictReader(open(again.path)))
+        check("a restart appends rather than starting the file again",
+              [r["event"] for r in rows][-2:], ["start", "stop"])
+        check("...with one header", len(rows), 6)
+        check("a host with no power monitor leaves the column blank",
+              rows[-1]["host_mw"], "")
+
+        # And the link is what feeds it: whatever drains the board's stream hands
+        # the same lines on, so the log sees every reading the gyro does.
+        class Heard:
+            lines = []
+
+            def fold(self, lines):
+                Heard.lines += lines
+
+        port = FakePort()
+        link = _link_over(port)
+        link.battery_log = Heard()
+        port.feed(LINE.format(gz=0, odl=1, odr=1) + LINE.format(gz=0, odl=2, odr=2))
+        link.pump()
+        check("the link hands every line it drains to the log", len(Heard.lines), 2)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 TESTS = (
     test_levels,
     test_battery,
+    test_the_battery_log,
     test_lights,
     test_gimbal,
     test_reading_the_board,

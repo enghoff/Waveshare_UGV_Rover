@@ -146,3 +146,20 @@ isolation and not a sandbox, which is why scripts are a convenience for
 sequences a person wants repeated and explicitly not the representation for
 anything the rover might one day write for itself — see
 [R-SAFE-8](safety.md#r-safe-8).
+
+<a id="r-ctl-11"></a>
+### R-CTL-11 — Read standing still, the battery's percentage is the share of a charge left
+
+- **State:** proposed
+- **Proposed in:** [plans/battery-charge-curve.md](../plans/battery-charge-curve.md)
+
+The percentage is what people decide by: whether to start a run, when a
+supervised session stops and drives home, and what the voice model tells
+someone who asks. It is only worth deciding by if it means what it says.
+Readings taken while the wheels turn sag and are excluded. A reading taken
+standing still is false if, in a discharge recorded to the rover switching
+itself off, it differs by more than 10 points from the share of that discharge
+still to come. The table that converts volts to percent lives in
+`rover_daemon/board_link.py`. On 2026-10-10 it called about half a charge "10%
+or less"
+([the finding](../progress/2026-10-10-battery-reading-hides-half-the-pack.md)).

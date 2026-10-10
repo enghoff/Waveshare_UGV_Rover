@@ -169,19 +169,21 @@ def _newest_telemetry(chatter: bytes) -> dict[str, Any] | None:
 
 
 def _battery_percent(volts: float) -> int:
-    """Roughly how much charge is left, from the pack voltage.
+    """Roughly how much charge is left, from the pack voltage, in whole points.
 
-    Rounded to five points, because the reading does not deserve more: it is taken
-    under whatever the host, the lidar and the servos happen to be drawing, and the
-    sag from that alone is worth several points. What is worth having is the shape
-    of the number over an afternoon, not the number.
+    Whole points rather than the steps of five it was rounded to until 2026-10-10:
+    nothing downstream needs the steps, and they hid a floor's worth of change --
+    "5%" covered everything from 2.5 to 7.5. The reading is still only as good as
+    the table and is taken under whatever the rover happens to be drawing; the
+    table is being refitted from battery_log.py's record
+    (docs/plans/battery-charge-curve.md).
     """
     per_cell = min(max(volts / BATTERY_CELLS, BATTERY_CURVE[0][0]),
                    BATTERY_CURVE[-1][0])
     for (low_v, low_pc), (high_v, high_pc) in zip(BATTERY_CURVE, BATTERY_CURVE[1:]):
         if per_cell <= high_v:
             share = (per_cell - low_v) / (high_v - low_v)
-            return int(round((low_pc + share * (high_pc - low_pc)) / 5.0) * 5)
+            return int(round(low_pc + share * (high_pc - low_pc)))
     return 100
 
 
@@ -238,6 +240,11 @@ class SerialLink:
     of yaw rate and the newest wheel counts, which `motion` hands out. See
     `ros_nav/base_node.py` for what reads them and what it takes to believe them.
     """
+
+    #: The pack's voltage over time (battery_log.py), attached by the daemon and
+    #: not here: a bench script that opens the port to read the battery once
+    #: should not start writing files on the rover.
+    battery_log = None
 
     def __init__(self, port: str) -> None:
         import serial
@@ -309,6 +316,9 @@ class SerialLink:
         while not self._stop.wait(TELEMETRY_POLL_S):
             self.pump()
             self.watch()
+            log = self.battery_log
+            if log is not None:
+                log.tick()
 
     def watch(self) -> bool:
         """Reopen the port if the board has gone quiet. True if it was reopened.
@@ -479,6 +489,9 @@ class SerialLink:
                             and abs(mean - self._ticks) > MAX_TICK_STEP):
                         self._breaks += 1     # the board restarted its counters
                     self._ticks = mean
+        log = self.battery_log
+        if log is not None:
+            log.fold(lines)
 
     def motion(self) -> dict[str, Any] | None:
         """Where the wheels and the gyro have got to, in the board's own units.
@@ -529,6 +542,9 @@ class SerialLink:
         self._stop.set()
         if self._reader.is_alive():
             self._reader.join(timeout=1.0)
+        log, self.battery_log = self.battery_log, None
+        if log is not None:
+            log.close()
         try:
             self.link.close()
         except Exception:

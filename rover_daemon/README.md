@@ -258,7 +258,21 @@ self-tests.
 The ESP32 streams `T:1001` telemetry continuously. The daemon's board link parses
 that stream and keeps recent state. Battery voltage comes from `v` in that
 telemetry and is reported with an estimated charge state rather than pretending a
-single loaded voltage is a laboratory state-of-charge measurement.
+single loaded voltage is a laboratory state-of-charge measurement. The percentage
+is in whole points, off the table in `board_link.py`, and that table is known to
+read far too low near empty
+([the plan to refit it](../docs/plans/battery-charge-curve.md)).
+
+The daemon also keeps a record of the pack voltage over time, for fitting that
+table (`battery_log.py`). Every line the board link drains goes into it. Every
+five seconds the link's backstop thread writes one row to
+`~/.ugv/battery/boot-<id>.csv` and syncs it to disk. The row holds the lowest,
+mean and highest voltage in the interval, the wheel encoder travel, and the
+Orin's input power from its INA3221. There is one file per boot, because the
+wall clock is wrong after a cold boot until it is synchronised, and every row
+also carries the time since boot. The record runs on the charger as well, and
+files older than 180 days are deleted when the daemon starts. A file that ends
+without a `stop` row ended in a crash or a power cut.
 
 Board telemetry also provides the wheel encoders and gyro used by the ROS base
 node. The daemon lends this path to ROS over loopback TCP 8772 so the ROS process

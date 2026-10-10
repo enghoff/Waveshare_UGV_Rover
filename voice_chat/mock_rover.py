@@ -192,7 +192,7 @@ class Rover(RoverRoom):
         volts = max(9.6, MOCK_BATTERY_FULL_V
                     - MOCK_BATTERY_DROP_V_PER_MIN
                     * (time.monotonic() - self.started) / 60.0)
-        percent = round(max(0.0, min(100.0, (volts - 9.9) / (12.6 - 9.9) * 100)) / 5) * 5
+        percent = round(max(0.0, min(100.0, (volts - 9.9) / (12.6 - 9.9) * 100)))
         state = ("full" if volts >= 12.45 else "critical" if volts < 10.8
                  else "low" if volts < 11.2 else "ok")
         return {"ok": True, "volts": round(volts, 2), "percent": percent,

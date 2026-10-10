@@ -32,6 +32,7 @@ import time
 import permission
 import scripting
 
+from battery_log import BatteryLog
 from board_link import (
     DEFAULT_SERIAL, SerialLink, open_link, _battery_percent, _battery_state,
     _field_number, _newest_telemetry,
@@ -185,6 +186,16 @@ def main() -> int | str:
 
     # The gimbal angles are a model. Put the hardware where that model starts.
     rover.centre_gimbal()
+
+    # The pack's voltage over time, kept for fitting the charge curve to this
+    # pack (battery_log.py). Only on the serial link, which is the one that hears
+    # the board's whole stream; a failure to open the file costs the record, not
+    # the daemon.
+    if isinstance(link, SerialLink):
+        try:
+            link.battery_log = BatteryLog()
+        except OSError as error:
+            print(f"battery log not kept: {error}", flush=True)
 
     # And the rover starts recording what it sees. Here rather than in Rover's
     # constructor: building the world state is something a *daemon* does, and a
