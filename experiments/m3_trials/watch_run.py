@@ -2,10 +2,11 @@ import json, socket, sys, time
 # Polls the run every 5 s. Exits when the run ends, when the battery reads the
 # floor or less three times standing still (the supervisor then stops it and
 # drives it back), or after the time given.
-#   watch_run.py [floor_percent=10] [minutes=17]
-# 10% at rest is the owner's standing floor for supervised drives (2026-10-07);
-# below it the rover is stopped and driven back to the charger.
-FLOOR = int(sys.argv[1]) if len(sys.argv) > 1 else 10
+#   watch_run.py [floor_percent=5] [minutes=17]
+# 5% at rest is the owner's standing floor for supervised drives (since
+# 2026-10-10; 10% from 2026-10-07); below it the rover is stopped and driven
+# back to the charger.
+FLOOR = int(sys.argv[1]) if len(sys.argv) > 1 else 5
 SECONDS = 60 * float(sys.argv[2]) if len(sys.argv) > 2 else 1000
 s = socket.create_connection(("127.0.0.1", 8769), 10)
 f = s.makefile("rwb")

@@ -2,12 +2,14 @@
 
 Polls every second. Prints when a drive has gone 20 s without moving 0.3 m,
 when a near goal finds something in its way (the wait, and going round), when
-the run ends, when the battery has read 10% or less for 12 s standing still,
+the run ends, when the battery has read 5% or less for 12 s standing still,
 and a one-line summary every two minutes. Read-only.
 """
 import json, math, socket, time
 
-FLOOR = 10
+# The owner's standing floor for supervised drives, read at rest: 5% since
+# 2026-10-10, 10% from 2026-10-07.
+FLOOR = 5
 s = socket.create_connection(("127.0.0.1", 8769), 10)
 f = s.makefile("rwb")
 

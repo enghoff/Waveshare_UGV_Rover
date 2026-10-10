@@ -613,10 +613,11 @@ Most of M3 is still physical:
   unfenced one has the whole flat and ends on the battery, since runs carry no
   battery floor. Start each on a full charge and judge the battery at rest: a
   reading while driving sags by up to 30 points. A supervised session may run
-  down to 10% at rest, the owner's standing floor since 2026-10-07, and is then
-  stopped and driven back to the charger. Session 9 found the rover could not
-  pivot at 30% (11.3 V at rest), and the percent reading is erratic; a floor in
-  volts is a proposal for the owner, and until they agree the floor is 10%.
+  down to 5% at rest, the owner's standing floor since 2026-10-10 (10% from
+  2026-10-07), and is then stopped and driven back to the charger. Session 9
+  found the rover could not pivot at 30% (11.3 V at rest), and the percent
+  reading is erratic; a floor in volts is a proposal for the owner, and until
+  they agree the floor is 5%.
 - **Contacts the lidar cannot see.** It scans one plane about 20 cm up, so
   shoes and rugs are invisible to it. In session 10 the rover snagged on a pair
   of shoes, and the owner reports it often snags on a rug. Criterion 5 counts

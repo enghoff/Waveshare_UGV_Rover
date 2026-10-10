@@ -27,11 +27,12 @@ percent = call("battery").get("percent")
 print("pre", {k: nav.get(k) for k in ("pose", "position_trusted", "map_settled", "map_id",
                                      "gyro_bias_dps")},
       percent, "%", "fence", fence)
-# The owner's floor is 10% at rest; standing still to start a run is at rest. On
-# 2026-10-08 a run was opened straight after a reading of 10%, because a wait for
-# set-asides to lapse had drained the last 5% while the rover idled.
-if percent is not None and percent <= 10:
-    raise SystemExit("the battery reads %s%%, at the 10%% floor: no run opened; drive home" % percent)
+# The owner's floor is 5% at rest (10% until 2026-10-10); standing still to start
+# a run is at rest. On 2026-10-08 a run was opened straight after a reading at the
+# then 10% floor, because a wait for set-asides to lapse had drained the last 5%
+# while the rover idled.
+if percent is not None and percent <= 5:
+    raise SystemExit("the battery reads %s%%, at the 5%% floor: no run opened; drive home" % percent)
 budget = {"seconds": 900, "travel_m": None, "actions": None}
 if fence:
     budget["geofence"] = fence
