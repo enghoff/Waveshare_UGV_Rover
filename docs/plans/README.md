@@ -9,7 +9,7 @@ or abandoned.
 |---|---|---|
 | [semantic-world-state.md](semantic-world-state.md) | mostly delivered; one thing per object (R-WS-17, R-WS-18) in investigation | remembering what the rover has seen, and searching it by description |
 | [entity-evidence-drive.md](entity-evidence-drive.md) | recorded and scored; re-scored once the world state rebuilds the painting's eight mixed records (R-WS-13, R-WS-17, R-WS-18) | connect verified views across viewpoint changes and separate foreground from background |
-| [autonomous-curiosity.md](autonomous-curiosity.md) | Phase 0 closed; Phase 3 in progress | the rover choosing for itself what to investigate, and learning skills from experience |
+| [autonomous-curiosity.md](autonomous-curiosity.md) | Phase 0 closed; M3 and M4 passed 2026-10-10 | the rover choosing for itself what to investigate, and learning skills from experience |
 | [autonomous-curiosity-design.md](autonomous-curiosity-design.md) | proposed | the architecture the plan above implements |
 | [battery-charge-curve.md](battery-charge-curve.md) | recording the pack; nothing fitted yet (R-CTL-11) | making the battery percentage mean the share of a charge left |
 

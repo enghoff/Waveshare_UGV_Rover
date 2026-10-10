@@ -1,7 +1,7 @@
 # Development plan: curiosity-driven autonomy
 
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
-Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
+Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08, and Phase 3 (P3) passed M3 on 2026-10-10, signed off by the owner. The executive and the
 daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
 the rover in supervised stop trials and in M0a's inspection runs. Nineteen M3
 sessions have run; [the third](../progress/2026-10-06-m3-session-3.md)
@@ -11,7 +11,7 @@ M3's criteria 6, 7, 9, 10 and 12 are met. Every condition criterion 4 lists has
 now been driven, which replaced a count of twenty on 2026-10-07
 ([the decision](../decisions/trials-are-sized-by-what-they-show.md)), the last
 of them and the re-drives on 2026-10-10 ([sessions 14 to 19](../progress/2026-10-10-m3-sessions-14-to-19.md)).
-The run owed on the fix for the fault session 17 found ([session 20](../progress/2026-10-10-m3-session-20.md)) found nothing new, so all twelve criteria read as met and M3 waits on the owner's sign-off. M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Thirteen development attempts out of reach then found the chosen viewpoint improving its thing five times against the re-look's once ([2026-10-09](../progress/2026-10-09-m4-out-of-reach.md)). Later phases remain proposed. This is the
+The run owed on the fix for the fault session 17 found ([session 20](../progress/2026-10-10-m3-session-20.md)) found nothing new, so all twelve criteria read as met, and the owner signed M3 off on 2026-10-10. M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Thirteen development attempts out of reach then found the chosen viewpoint improving its thing five times against the re-look's once ([2026-10-09](../progress/2026-10-09-m4-out-of-reach.md)). Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -582,7 +582,8 @@ refused by name.
 
 ### What is still ahead
 
-What is left of M3 is the owner's sign-off:
+M3 passed: the owner signed it off on 2026-10-10. What follows is how its
+criteria were met, and the limits it leaves for later phases:
 
 - **Every condition has been driven** (criterion 4 and the list under it),
   with the owner present. Session 17's first drive was refused because
@@ -1557,7 +1558,7 @@ the problem.
 | M0b (retired 2026-10-01) | actions relying on persistent identity | no single gate: each such action's case is decided under R-WS-13 before an autonomous run may take it |
 | M1 | episodic memory | durable reconstruction across resets/merges, no authority |
 | M2 | curiosity shadow mode | fixed scenarios + a no-action rover shadow run |
-| M3 | bounded autonomous loop | a supervised session in each listed condition, then the current code over the conditions its changes touched; measured stops, permission expiry and failure tests |
+| M3 (passed 2026-10-10) | bounded autonomous loop | a supervised session in each listed condition, then the current code over the conditions its changes touched; measured stops, permission expiry and failure tests |
 | M4 (passed 2026-10-10) | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it; the rover's own gain checked against the tape |
 | M5 | temporal curiosity | false alarms on replayed unchanged revisits within a budget set from the flat's change rate, then scripted changed/unchanged scenes |
 | M1-M5 usefulness | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted; budget stated in charges and owner hours |
@@ -1572,10 +1573,10 @@ the problem.
 
 M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
 
-1. **Finish M3 on the rover.** Every condition has been driven, and the
-   charger room, another room and the whole flat again on the current code
-   (criterion 4), and the run on the fix for session 17's refused drive found
-   nothing new. What is left is the owner's sign-off.
+1. **M3 passed** on 2026-10-10, signed off by the owner: every condition
+   driven, and the charger room, another room and the whole flat again on the
+   current code, the last run finding nothing new
+   ([session 20](../progress/2026-10-10-m3-session-20.md)).
 2. **Run M4's attempts.** The trial run, its re-look and the scoring exist;
    what is left is labelling the six old targets' records, development attempts
    on them to size the set, a new taped set, and then the acceptance attempts
