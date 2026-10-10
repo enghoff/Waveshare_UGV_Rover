@@ -972,6 +972,18 @@ more often than wrong. The proposal, awaiting the owner, is that an apparent
 change is a reason to look again rather than a claim, and only a change that
 holds up on that second look is reported; the budget then applies to those.
 
+The second was begun the same day on the recordings and looks already held
+([the measurement](../progress/2026-10-10-m5-what-reports-a-change.md)). A look
+aimed at a thing that files nothing, the only "it is not there" the rover has,
+fired on half the looks at things in view when nothing had moved, and no
+loosening of it tells a present thing from another object in its place. The
+lidar compared run against run found the moved armchair in every comparison that
+spanned its move and nothing of its size in the three that did not. So the
+proposal is that changes to the larger things come from the lidar, compared with
+what earlier runs saw, with records attached by where they are, and looks say
+which thing it was rather than whether it is there. Next, every run produces
+that comparison, so that every run is a control, before any scripted scene.
+
 M3's remaining sessions are recorded for these, at the owner's request
 (2026-10-10). Its re-drives of the charger room, another room and the whole flat
 are revisits of unchanged rooms, and its furniture-moved session is a real
