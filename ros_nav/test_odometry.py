@@ -231,7 +231,119 @@ def test_a_spin_nobody_commanded_here_is_still_a_spin():
           math.degrees(node._bias), math.degrees(learned), tolerance=0.01)
 
 
+class _Integrating(_Debiasing):
+    """Enough of a BaseNode for its real `integrate` and `tick`, publishing nothing."""
+
+    def __init__(self, bridge=None):
+        super().__init__(ticks=None)
+        import rclpy.clock
+        self.calibration = {"gyro_lsb_per_dps": 16.1461, "ticks_per_metre": 107.2}
+        self.x = self.y = self.yaw = 0.0
+        self.speed = self.turn_rate = 0.0
+        self._last_gz = self._last_breaks = self._last_at = self._last_samples = None
+        self._connects_seen = 0
+        self._cmd = (0.0, 0.0)
+        self._motion_at = 0.0
+        self._warned_ticks = False
+        self._clock = rclpy.clock.Clock()
+        self.bridge = bridge
+
+    def get_clock(self):
+        return self._clock
+
+    def debias(self, *args):
+        from base_node import BaseNode
+        return BaseNode.debias(self, *args)
+
+    def integrate(self, *args, **kwargs):
+        from base_node import BaseNode
+        return BaseNode.integrate(self, *args, **kwargs)
+
+    def drive(self):
+        pass
+
+    def publish_odom(self, stamp):
+        pass
+
+    def publish_imu(self, stamp, telemetry):
+        pass
+
+
+class _Daemon:
+    """The board bridge as base_node sees it: the daemon's running totals, which
+    start again from nothing whenever the daemon does."""
+
+    def __init__(self, running_h=2.0, rate_dps=0.46):
+        self.connects = 1
+        self.latest = None
+        self.at = 1000.0
+        self.restart()
+        # Already running for a while, as a deployed daemon is: its integral
+        # holds every degree of gyro offset since it started.
+        self.gz = rate_dps * 16.1461 * running_h * 3600.0
+        self.samples = int(running_h * 3600.0 * 17)
+
+    def restart(self):
+        self.gz = 0.0
+        self.samples = 0
+
+    def parked(self, seconds, rate_dps=0.46):
+        """The board's samples for a rover standing still, one at a time."""
+        for _ in range(int(seconds * 17)):
+            self.at += 1.0 / 17.0
+            self.gz += rate_dps * 16.1461 / 17.0
+            self.samples += 1
+            self.latest = {"motion": {"at": self.at, "gz_lsb_s": self.gz,
+                                      "ticks": 500.0, "samples": self.samples,
+                                      "breaks": 0}}
+            yield self.latest
+
+    def read(self):
+        return self.latest, 0.0
+
+
+def test_a_daemon_restart_is_not_a_turn():
+    """**2026-10-10: two daemon deploys turned the parked rover round.** The
+    daemon keeps the gyro's running integral and starts it again from zero when
+    it restarts. base_node took the first difference after the restart against
+    the old total -- the whole gyro since the daemon last started, at once -- and
+    since the morning's `SPINNING_DPS` read anything that fast as a turn, it went
+    into the heading: 170 degrees at 18:05, 158 at 18:18, with the rover parked
+    and the scan saying so. Both ways it can arrive are covered: the totals going
+    backwards in a record, and a new connection to the bridge."""
+    from base_node import BaseNode
+
+    section("a daemon restart under a parked rover")
+    for name, through_tick in (("the records alone", False), ("through tick", True)):
+        daemon = _Daemon()
+        node = _Integrating(bridge=daemon)
+        previous = None
+        for record in daemon.parked(45.0):
+            if through_tick:
+                BaseNode.tick(node)
+            else:
+                at = record["motion"]["at"]
+                node.integrate(record["motion"], record,
+                               dt=None if previous is None else at - previous)
+                previous = at
+        before = math.degrees(node.yaw)
+        daemon.at += 20.0
+        daemon.restart()
+        daemon.connects += 1
+        for record in daemon.parked(10.0):
+            if through_tick:
+                BaseNode.tick(node)
+            else:
+                at = record["motion"]["at"]
+                node.integrate(record["motion"], record, dt=at - previous)
+                previous = at
+        moved = (math.degrees(node.yaw) - before + 180.0) % 360.0 - 180.0
+        check("%s: the heading does not move across the restart" % name,
+              moved, 0.0, tolerance=0.5)
+
+
 TESTS = (
+    test_a_daemon_restart_is_not_a_turn,
     test_idle_behaviour,
     test_gyro_bias,
     test_odometry,

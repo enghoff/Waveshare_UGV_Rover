@@ -157,6 +157,10 @@ class Bridge:
             except Exception:
                 pass
             self.sock = None
+        # And the last record goes with the connection: it belongs to a daemon
+        # that may be gone, whose running totals the next one does not continue.
+        with self._lock:
+            self.latest = None
 
     def _read_forever(self):
         pending = b""
@@ -261,6 +265,8 @@ class BaseNode(Node):
         self._last_gz = None
         self._last_breaks = None
         self._last_at = None
+        self._last_samples = None
+        self._connects_seen = 0
         self._cmd = (0.0, 0.0)
         self._cmd_at = 0.0
         self._commanded = None
@@ -481,6 +487,16 @@ class BaseNode(Node):
     def tick(self):
         record, _ = self.bridge.read()
         self.drive()
+        if self.bridge.connects != self._connects_seen:
+            # **A new connection is a new set of running totals.** The daemon
+            # keeps the gyro's integral and the sample count from when it
+            # started, so after a daemon restart the first difference taken
+            # against the old totals is hours of gyro at once. On 2026-10-10
+            # two daemon deploys turned the parked rover's believed heading 170
+            # and 158 degrees that way. Begin again from the next sample.
+            self._connects_seen = self.bridge.connects
+            self._last_gz = self._last_ticks = self._last_breaks = None
+            self._last_at = self._last_samples = None
         if record is None:
             return
         motion = record.get("motion")
@@ -602,6 +618,14 @@ class BaseNode(Node):
 
         broken = (self._last_breaks is not None and breaks != self._last_breaks)
         self._last_breaks = breaks
+        # A sample count that went backwards is a daemon that started again, and
+        # its totals with it: the interval across the restart is a hole, not a
+        # turn (see `tick`, which catches the same thing by the connection).
+        samples = motion.get("samples")
+        if (samples is not None and self._last_samples is not None
+                and samples < self._last_samples):
+            broken = True
+        self._last_samples = samples
 
         d_yaw = 0.0
         if gz is not None and self._last_gz is not None and not broken:
