@@ -268,10 +268,13 @@ def test_the_thinning_keeps_the_best_placed_thing_of_each_patch() -> None:
     """Run in node, because which mark survives is behaviour and not text.
 
     Three copies of one object, a lone weak thing, one with no position and one
-    placed under an old map. Only the strongest copy survives; the lone thing,
-    which has nothing better near it, and the two with no position here are kept;
-    and the list keeps the order it was given. The thing being examined is never
-    the one hidden, and a thing whose looks disagree with it loses its patch.
+    placed under an old map. The copy the rover claims the smallest error for
+    survives -- not the one seen from the most places, which is the case of
+    2026-10-10, nor a tighter one crossed from only two, which can be a phantom.
+    The lone thing, which has nothing better near it, and the two with no
+    position here are kept, and the list keeps the order it was given. The thing
+    being examined is never the one hidden, and a thing whose looks disagree with
+    it loses its patch.
     """
     import json
     import shutil
@@ -299,25 +302,26 @@ for (const [name, chosen] of Object.entries(ask.cases)) {
 console.log(JSON.stringify(out));
 """
 
-    def thing(name, x, places, agreeing=0, disagree=False, session=7):
+    def thing(name, x, places, error, stated=None, disagree=False, session=7):
         return {"id": name, "placement_map_session": session,
                 "placement": {"x_m": x, "y_m": 0.0, "viewpoints": places,
-                              "rays_agreeing": agreeing,
-                              "error_major_m": 0.2},
+                              "rays_agreeing": 24, "error_major_m": error,
+                              "stated_uncertainty_m": stated or error},
                 "rays": [{"relation": {"agrees": False}}] if disagree else []}
 
-    entities = [thing("a", 0.0, 3), thing("b", 0.3, 6, 4),
-                thing("c", 0.5, 6, 10), thing("lone", 3.0, 1),
+    entities = [thing("a", 0.0, 11, 1.12), thing("b", 0.3, 8, 0.62, 0.2),
+                thing("c", 0.5, 2, 0.1), thing("lone", 3.0, 1, 1.0),
                 {"id": "unplaced", "placement": None},
-                thing("old", 0.1, 9, session=6),
-                thing("doubted", 6.0, 9, disagree=True), thing("plain", 6.2, 2)]
+                thing("old", 0.1, 9, 0.1, session=6),
+                thing("doubted", 6.0, 9, 0.1, disagree=True),
+                thing("plain", 6.2, 3, 0.5)]
     got = json.loads(subprocess.run(
         [node, "-e", script, os.path.join(here, "drive_world.js"),
          json.dumps({"entities": entities,
                      "cases": {"none": "", "chosen": "a"}})],
         capture_output=True, text=True, check=True).stdout)
-    check("one copy of the object survives, the strongest, in the given order",
-          got["none"], ["c", "lone", "unplaced", "old", "plain"])
+    check("one copy of the object survives, the best placed, in the given order",
+          got["none"], ["b", "lone", "unplaced", "old", "plain"])
     check("the thing being examined is never the one hidden",
           got["chosen"], ["a", "lone", "unplaced", "old", "plain"])
 

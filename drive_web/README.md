@@ -112,13 +112,16 @@ than the topmost, and the delay is what stops a swept pointer buying a request
 per mark. Uncertainty is drawn for the selected entity only.
 
 A bar beside the search box narrows the list and the map together. By default
-it keeps only the best-placed entity within 1 m of any other, ranked as
-`world_state/cluster.py` ranks fitted positions -- more viewpoints, then more
-agreeing looks, then the smaller error -- with an entity whose looks disagree
-with it last. Most of a crowded map is one object recorded several times: on
-2026-10-10, 630 entities sat a median 0.14 m from their nearest neighbour, and
-the thinning left 72. The selected entity is never thinned away, and under a
-search the best match wins its patch. Two further steps add a placement bar
+it keeps only the best-placed entity within 1 m of any other: the smallest
+`stated_uncertainty_m` -- the depth camera's figure where it ranged the thing,
+the crossing's where not -- among entities seen from three viewpoints or more,
+with fewer viewpoints next and an entity whose looks disagree with it last.
+Most of a crowded map is one object recorded several times: on 2026-10-10, 630
+entities sat a median 0.14 m from their nearest neighbour, and the thinning
+left about 75. Ranking by viewpoint count first, as it briefly did, showed a
+thing with a 1.12 m error over a neighbour ranged to 0.2 m, because the counts
+saturate on anything looked at often. The selected entity is never thinned
+away, and under a search the best match wins its patch. Two further steps add a placement bar
 (three viewpoints; four viewpoints and 0.3 m), and "every placed thing" turns
 both off. What each step hides is counted under the map.
 

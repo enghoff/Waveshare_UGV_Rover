@@ -355,16 +355,35 @@ function wOnMap(one) {
 // well placed as the others. Kept and shown are the strongest of each cluster
 // and anything with nothing stronger near it; 1 m left 72 of those 630.
 //
-// Strongest in the order the rover itself ranks a fitted position
-// (`cluster.py`): crossed from more places, then by more agreeing looks, then
-// to a tighter error -- after the thing being examined, which is never hidden,
-// and under a phrase after the best match, since that is what is being looked
-// for. A thing whose own looks have stopped agreeing with it goes last.
+// **Strongest is the smallest error the rover itself claims, among things
+// crossed from three places or more.** It was first the order `cluster.py`
+// ranks one thing's candidate positions by -- most places, then most agreeing
+// looks, error last -- and that is a count of how often the rover looked, not
+// of how well it knows where. Both counts saturate on anything looked at a lot
+// (agreeing looks stop at the 24 a fit is made over), so the error almost never
+// got a say: on 2026-10-10 a thing seen from 11 places with a 1.12 m ellipse
+// beat one 0.37 m away ranged by the depth camera to 0.2 m, and 32 of the 74
+// marks shown had a neighbour like that, claiming half their error or less.
+// `stated_uncertainty_m` is the rover's own answer -- the ranged figure where
+// the depth camera measured it, the crossing's where not -- and ranking by it
+// took the median shown from 0.36 m to 0.24 m and the worst from 3.4 m to 1.8.
+// Fewer than three places still goes behind, because a tight crossing from two
+// can be a phantom between two real things (`locate.py`), and a thing whose own
+// looks have stopped agreeing with it goes last of all.
+//
+// Ahead of all of that, the thing being examined, which is never hidden, and
+// under a phrase the best match, since that is what is being looked for.
 //
 // In the order it was given, so the list does not reshuffle as the marks
 // change hands; and things with no position here are kept, since there is no
 // patch for them to share.
 const WTHIN_M = 1.0;
+
+const wStated = (one) => {
+  const place = one.placement || {};
+  return +(place.stated_uncertainty_m ?? place.error_major_m
+           ?? place.uncertainty_m ?? 9);
+};
 
 function wThin(things) {
   const score = worldFilter ? worldFilter.things : null;
@@ -373,9 +392,9 @@ function wThin(things) {
     one.id === chosen ? 0 : 1,
     score ? -(score.get(one.id) || 0) : 0,
     wDisagreeing(one) ? 1 : 0,
+    wPlacedFrom(one) < 3 ? 1 : 0,
+    wStated(one),
     -wPlacedFrom(one),
-    -+((one.placement || {}).rays_agreeing || 0),
-    wSpread(one),
   ];
   const ranked = things.filter(wOnMap).map((one) => [rank(one), one]);
   ranked.sort(([a], [b]) => {
