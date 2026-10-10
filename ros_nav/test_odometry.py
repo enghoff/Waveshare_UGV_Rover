@@ -66,7 +66,7 @@ def test_idle_behaviour():
           idle_sends((0, 0), 30.0), False)
 
 
-def debias_run(samples, gain=0.001, settle=1.0, still_ticks=0.5):
+def debias_run(samples, gain=0.001, settle=1.0, still_ticks=0.5, spinning_dps=3.0):
     """base_node.BaseNode.debias, standing alone.
 
     Each sample is (d_yaw, dt, ticks, commanded). Returns the corrected total and
@@ -81,6 +81,8 @@ def debias_run(samples, gain=0.001, settle=1.0, still_ticks=0.5):
         moving = bool(commanded)
         if ticks is not None and last_ticks is not None:
             moving = moving or abs(ticks - last_ticks) > still_ticks
+        if not moving:
+            moving = abs(math.degrees(rate - (bias or 0.0))) > spinning_dps
         if not moving:
             still_for += dt
             if still_for > settle:
@@ -188,8 +190,50 @@ def test_odometry():
           tolerance=1e-9)
 
 
+class _Debiasing:
+    """Enough of a BaseNode for its real `debias`: nothing commanded by it."""
+
+    def __init__(self, ticks):
+        self._cmd_at = 0.0
+        self._last_ticks = ticks
+        self._still_for = 0.0
+        self._bias = None
+        self._bias_samples = 0
+
+
+def test_a_spin_nobody_commanded_here_is_still_a_spin():
+    """The real `debias`, on a spin whose tracks cancel and which it did not command.
+
+    On 2026-10-10 calibrate_chassis.py spun the rover through the board bridge,
+    which base_node neither commanded nor could see in the wheels: the tracks turn
+    opposite ways, so their mean count stands still. Read as a still rover, every
+    burst's rotation was thrown away and learned as gyro offset -- the believed
+    heading stood while the room turned 27.5 degrees, and the offset read 2.0
+    deg/s. A hand turning the rover on its tracks is the same case.
+    """
+    from base_node import BaseNode
+
+    section("a spin base_node did not command, with the tracks cancelling")
+    dt = 1.0 / 18.0
+    drift = math.radians(0.46)
+    node = _Debiasing(ticks=100.0)
+    for _ in range(18 * 30):                       # parked long enough to learn
+        BaseNode.debias(node, drift * dt, dt, 100.0)
+        node._last_ticks = 100.0
+    learned = node._bias
+    turned = 0.0
+    for _ in range(18 * 3):                        # 60 deg/s for three seconds
+        turned += BaseNode.debias(node, math.radians(60.0) * dt + drift * dt, dt, 100.0)
+        node._last_ticks = 100.0
+    check("three seconds at 60 deg/s reads about 180 degrees, not nothing",
+          math.degrees(turned), 180.0, tolerance=3.0)
+    check("...and teaches the offset nothing",
+          math.degrees(node._bias), math.degrees(learned), tolerance=0.01)
+
+
 TESTS = (
     test_idle_behaviour,
     test_gyro_bias,
     test_odometry,
+    test_a_spin_nobody_commanded_here_is_still_a_spin,
 )

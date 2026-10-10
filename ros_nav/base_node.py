@@ -77,6 +77,14 @@ CMD_TIMEOUT_S = 0.5
 # and jitters in the last place even when nothing is moving.
 STILL_TICKS = 0.5
 STILL_SETTLE_S = 1.0
+# A turn rate this far above the learned offset is the rover turning, whoever
+# turned it. The wheels cannot say so on the spot -- the tracks run opposite ways
+# and their mean count stands still -- and a spin commanded through the board
+# bridge by somebody else (calibrate_chassis.py, 2026-10-10) or a hand turning the
+# rover on its tracks is nothing base_node commanded. Read as stillness, such a
+# spin was thrown away and learned as offset. Three degrees a second is several
+# times the still noise and far below any real turn.
+SPINNING_DPS = 3.0
 # Slow. The offset drifts with temperature over minutes, so the average has to be
 # long compared with the noise and short compared with that drift; at ~18 samples
 # a second this is a time constant of about a minute.
@@ -509,9 +517,9 @@ class BaseNode(Node):
         doubling a mis-rotated map would have. Scale was exonerated by
         measurement and the map by inspection, which leaves the offset.
 
-        Estimated only while the rover is genuinely still -- nothing commanded and
-        the wheels not turning -- because that is the only time the true rate is
-        known to be zero. A slow exponential average, because the offset drifts
+        Estimated only while the rover is genuinely still -- nothing commanded, the
+        wheels not turning and the gyro not reporting a turn (`SPINNING_DPS`) --
+        because that is the only time the true rate is known to be zero. A slow exponential average, because the offset drifts
         with temperature over minutes and a fast one would chase the noise it is
         supposed to be averaging out.
 
@@ -555,6 +563,9 @@ class BaseNode(Node):
                   and time.monotonic() - self._cmd_at <= CMD_TIMEOUT_S)
         if ticks is not None and self._last_ticks is not None:
             moving = moving or abs(ticks - self._last_ticks) > STILL_TICKS
+        if not moving:
+            offset = self._bias if self._bias is not None else 0.0
+            moving = abs(math.degrees(rate - offset)) > SPINNING_DPS
         if not moving:
             self._still_for += dt
             # A moment's grace after stopping, so the coast is not averaged in as
