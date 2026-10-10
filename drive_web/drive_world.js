@@ -294,13 +294,20 @@ function wReadFilter() {
 // range no longer points at it, decided on the rover by the same `locate.agrees`
 // that would attach it today -- see `view.relate`. One of those is a thing whose
 // own evidence has moved out from under it.
+//
+// Every step past the first is also thinned -- see `wThin` -- because on its own
+// a bar does not clear the cloud: on 2026-10-10 "agreed" still left 486 of 630
+// things on the map and "settled" 185, a median 0.14 m from their nearest
+// neighbour. `best` is that thinning with no bar at all, and is where the popup
+// opens.
 const WGRADES = {
   all: () => true,
+  best: () => true,
   agreed: (one) => wPlacedFrom(one) >= 3 && !wDisagreeing(one),
   settled: (one) => wPlacedFrom(one) >= 4 && !wDisagreeing(one)
       && wSpread(one) <= 0.3,
 };
-let worldGrade = "all";
+let worldGrade = "best";
 
 const wPlacedFrom = (one) => +((one.placement || {}).viewpoints || 0);
 const wSpread = (one) => +((one.placement || {}).error_major_m
@@ -319,12 +326,71 @@ const wDisagreeing = (one) => (one.rays || []).filter(
 // views of one store disagreeing on screen is the fault this popup exists to
 // make visible and must never itself invent.
 function wShown() {
+  const narrowed = wNarrowed();
+  return worldGrade === "all" ? narrowed : wThin(narrowed);
+}
+
+// The same, before the thinning: what the bar and the phrase let through.
+function wNarrowed() {
   const graded = (world.entities || []).filter(
       WGRADES[worldGrade] || WGRADES.all);
   if (!worldFilter) return graded;
   const best = worldFilter.things;
   return graded.filter((one) => best.has(one.id))
       .sort((a, b) => best.get(b.id) - best.get(a.id));
+}
+
+// Whether a thing has a position on the map being shown. One measured against
+// a map that has since been cleared is not a position on this one.
+function wOnMap(one) {
+  const session = (world.summary || {}).map_session;
+  return !!one.placement
+      && (!session || one.placement_map_session === session);
+}
+
+// **One thing per patch of floor: the best placed of whatever stands within
+// `WTHIN_M` of it.** Most of a crowded map is the same object several times
+// over -- 630 things on 2026-10-10 sat a median 0.14 m from their nearest
+// neighbour -- and the bars above cannot clear that, because each copy is as
+// well placed as the others. Kept and shown are the strongest of each cluster
+// and anything with nothing stronger near it; 1 m left 72 of those 630.
+//
+// Strongest in the order the rover itself ranks a fitted position
+// (`cluster.py`): crossed from more places, then by more agreeing looks, then
+// to a tighter error -- after the thing being examined, which is never hidden,
+// and under a phrase after the best match, since that is what is being looked
+// for. A thing whose own looks have stopped agreeing with it goes last.
+//
+// In the order it was given, so the list does not reshuffle as the marks
+// change hands; and things with no position here are kept, since there is no
+// patch for them to share.
+const WTHIN_M = 1.0;
+
+function wThin(things) {
+  const score = worldFilter ? worldFilter.things : null;
+  const chosen = state.world.selected;
+  const rank = (one) => [
+    one.id === chosen ? 0 : 1,
+    score ? -(score.get(one.id) || 0) : 0,
+    wDisagreeing(one) ? 1 : 0,
+    -wPlacedFrom(one),
+    -+((one.placement || {}).rays_agreeing || 0),
+    wSpread(one),
+  ];
+  const ranked = things.filter(wOnMap).map((one) => [rank(one), one]);
+  ranked.sort(([a], [b]) => {
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+    return 0;
+  });
+  const kept = [], keep = new Set();
+  const reach = WTHIN_M * WTHIN_M;
+  for (const [, one] of ranked) {
+    const {x_m: x, y_m: y} = one.placement;
+    if (kept.some((k) => (k.x_m - x) ** 2 + (k.y_m - y) ** 2 < reach)) continue;
+    kept.push(one.placement);
+    keep.add(one);
+  }
+  return things.filter((one) => keep.has(one) || !wOnMap(one));
 }
 
 // How many placed things the bar is holding back, for the line under the map.
@@ -931,7 +997,9 @@ function wireWorld() {
   });
   // The bar is a local view of a payload the page already holds, so nothing is
   // asked of the rover and the two views are redrawn here rather than waiting
-  // for the next state to arrive a second later.
+  // for the next state to arrive a second later. Read once now as well, because
+  // a browser reloading the page puts back whatever step was chosen before.
+  worldGrade = $("wGrade").value || worldGrade;
   $("wGrade").onchange = () => {
     worldGrade = $("wGrade").value;
     drawWorldList();

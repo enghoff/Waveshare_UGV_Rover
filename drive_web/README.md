@@ -111,6 +111,17 @@ list, the detail pane and the observation stream; the nearest mark wins rather
 than the topmost, and the delay is what stops a swept pointer buying a request
 per mark. Uncertainty is drawn for the selected entity only.
 
+A bar beside the search box narrows the list and the map together. By default
+it keeps only the best-placed entity within 1 m of any other, ranked as
+`world_state/cluster.py` ranks fitted positions -- more viewpoints, then more
+agreeing looks, then the smaller error -- with an entity whose looks disagree
+with it last. Most of a crowded map is one object recorded several times: on
+2026-10-10, 630 entities sat a median 0.14 m from their nearest neighbour, and
+the thinning left 72. The selected entity is never thinned away, and under a
+search the best match wins its patch. Two further steps add a placement bar
+(three viewpoints; four viewpoints and 0.3 m), and "every placed thing" turns
+both off. What each step hides is counted under the map.
+
 The popup has its own map picture, at `/world_map.png`, drawn wide enough to hold
 both the entities and the room; the driving map is a fallback until the first one
 arrives. The view is fitted to the map itself with a small margin, using the

@@ -176,9 +176,7 @@ function drawWorldMap() {
   // position on this one. Those things stay in the list, where their looks and
   // their pictures still mean something; they are not on the map, and the line
   // underneath says how many.
-  const session = (world.summary || {}).map_session;
-  const placed = entities.filter((one) => one.placement
-      && (!session || one.placement_map_session === session));
+  const placed = entities.filter(wOnMap);
   if (!view || !view.pose || !picture.gen) {
     wrap.hidden = true;
     note.textContent = !picture.gen ? "no map yet"
@@ -280,6 +278,10 @@ function drawWorldMap() {
   // and it is not good enough, these have none at all. Silence here is what
   // would make a bar look like a store that had lost half its contents.
   if (held > 0) bits.push(`${held} held back`);
+  // And what the thinning is keeping off it, which is a third absence: these are
+  // placed well enough and have a better placed thing beside them.
+  const crowded = wNarrowed().filter(wOnMap).length - placed.length;
+  if (crowded > 0) bits.push(`${crowded} within ${WTHIN_M} m of a better one`);
   if (missing > 0) {
     // Which is the ordinary state of a thing seen once -- and, after a map has
     // been cleared, of everything. Said as a count rather than left to be read

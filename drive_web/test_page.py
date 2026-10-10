@@ -238,16 +238,23 @@ def test_the_evidence_bar_narrows_both_views_and_says_what_it_hid() -> None:
 
     check("the bar sits beside the phrase, above the views",
           html.index('id="wGrade"') < html.index('id="worldBody"'), True)
-    check("...and offers three steps",
+    check("...and offers four steps",
           html[html.index('id="wGrade"'):
                html.index("</select>", html.index('id="wGrade"'))
-               ].count("<option"), 3)
+               ].count("<option"), 4)
     check("every step the markup offers is a step the script knows",
           sorted(re.findall(r'<option value="([a-z]+)"', html)),
           sorted(re.findall(r"^  ([a-z]+): \(", js, re.M)))
+    check("the page opens on the thinned map, in the markup and the script",
+          '<option value="best" selected>' in html
+          and 'let worldGrade = "best";' in js, True)
     check("the bar is applied where both views read their things",
           "WGRADES[worldGrade]" in js, True)
     check("...which is one function they share", js.count("= wShown()"), 2)
+    check("...and the thinning is inside it, for every step but the first",
+          'worldGrade === "all" ? narrowed : wThin(narrowed)' in js, True)
+    check("the line under the map says how many the thinning hid",
+          "of a better one`" in js, True)
     check("changing it redraws both without asking the rover",
           '$("wGrade").onchange' in js
           and "drawWorldList();" in js and "drawWorldMap();" in js, True)
@@ -255,6 +262,64 @@ def test_the_evidence_bar_narrows_both_views_and_says_what_it_hid() -> None:
           "held} held back" in js, True)
     check("...counted against what is placed, not against the whole store",
           "one.placement && !keep(one)" in js, True)
+
+
+def test_the_thinning_keeps_the_best_placed_thing_of_each_patch() -> None:
+    """Run in node, because which mark survives is behaviour and not text.
+
+    Three copies of one object, a lone weak thing, one with no position and one
+    placed under an old map. Only the strongest copy survives; the lone thing,
+    which has nothing better near it, and the two with no position here are kept;
+    and the list keeps the order it was given. The thing being examined is never
+    the one hidden, and a thing whose looks disagree with it loses its patch.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        SKIP.append("the thinning's behaviour (no node here)")
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    script = """
+const vm = require("vm"), fs = require("fs");
+const ctx = vm.createContext({});
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), ctx);
+const ask = JSON.parse(process.argv[2]);
+const out = {};
+for (const [name, chosen] of Object.entries(ask.cases)) {
+  ctx.ask = {entities: ask.entities, chosen: chosen};
+  out[name] = vm.runInContext(`
+    world = {entities: ask.entities, summary: {map_session: 7}};
+    var state = {world: {selected: ask.chosen}};
+    worldFilter = null;
+    wThin(world.entities).map((one) => one.id)`, ctx);
+}
+console.log(JSON.stringify(out));
+"""
+
+    def thing(name, x, places, agreeing=0, disagree=False, session=7):
+        return {"id": name, "placement_map_session": session,
+                "placement": {"x_m": x, "y_m": 0.0, "viewpoints": places,
+                              "rays_agreeing": agreeing,
+                              "error_major_m": 0.2},
+                "rays": [{"relation": {"agrees": False}}] if disagree else []}
+
+    entities = [thing("a", 0.0, 3), thing("b", 0.3, 6, 4),
+                thing("c", 0.5, 6, 10), thing("lone", 3.0, 1),
+                {"id": "unplaced", "placement": None},
+                thing("old", 0.1, 9, session=6),
+                thing("doubted", 6.0, 9, disagree=True), thing("plain", 6.2, 2)]
+    got = json.loads(subprocess.run(
+        [node, "-e", script, os.path.join(here, "drive_world.js"),
+         json.dumps({"entities": entities,
+                     "cases": {"none": "", "chosen": "a"}})],
+        capture_output=True, text=True, check=True).stdout)
+    check("one copy of the object survives, the strongest, in the given order",
+          got["none"], ["c", "lone", "unplaced", "old", "plain"])
+    check("the thing being examined is never the one hidden",
+          got["chosen"], ["a", "lone", "unplaced", "old", "plain"])
 
 
 def test_the_popup_can_be_read_while_the_rover_is_filling_it() -> None:
@@ -426,6 +491,7 @@ TESTS = (
     test_the_page_draws_every_pane_its_tabs_offer,
     test_the_console_is_written_in_the_encoding_it_is_served_in,
     test_the_evidence_bar_narrows_both_views_and_says_what_it_hid,
+    test_the_thinning_keeps_the_best_placed_thing_of_each_patch,
     test_the_map_offers_two_acts_and_the_script_can_find_them_both,
     test_the_world_popup_scrolls_its_lists_not_its_body,
     test_the_observation_stream_is_tiled_and_opens_one_at_a_time,

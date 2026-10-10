@@ -247,11 +247,14 @@
            carrying all of them says less than a map carrying the ones that are
            actually pinned down. The options say the bar rather than naming a
            grade, because "firm" is a word a person has to be taught and
-           "3 places" is one they can check against the row. -->
+           "3 places" is one they can check against the row. Every step after
+           the first also keeps only the best placed thing within a metre,
+           which is what actually clears a map of one object seen as five. -->
       <select id="wGrade" aria-label="how well placed a thing must be to show">
         <option value="all">every placed thing</option>
-        <option value="agreed">agreed, 3 places</option>
-        <option value="settled">settled to 0.3 m, 4 places</option>
+        <option value="best" selected>best within 1 m</option>
+        <option value="agreed">best within 1 m · 3 places</option>
+        <option value="settled">best within 1 m · 4 places, 0.3 m</option>
       </select>
       <p id="wSearchNote"></p>
     </div>
