@@ -1002,7 +1002,8 @@ session 20. What is ahead, in order:
    found the changes made out of the rover's sight and missed those made while
    it was parked in the room watching. Next: the owner's word on the scene's
    positions; a reference that still remembers what a parked rover watched
-   change, without keeping one recorded at a bad pose; and a second scene.
+   change, without keeping one recorded at a bad pose; then the remaining
+   sessions, packed as [sessions that serve several milestones at once](sessions-that-serve-several-milestones.md).
 2. **A first scripted scene.** The owner moves two or three large things, the
    armchair by the window, a bean bag, a floor lamp, within their rooms between
    two runs, and puts them back before a third: each should be reported gone
