@@ -90,8 +90,12 @@ All of it offline, on the recordings of 2026-10-10 and 11:
 - **The false-alarm budget set** (criterion 3), with the plan's proposal that an
   apparent change is a reason to look again.
 - **The benchmark's question sets and scoring**, predeclared.
-- Why navigation's pose went half a metre out entering the bedroom on
-  2026-10-11, replayed into the mapper.
+- Why the mapper's correction doubled the bedroom's pose error on 2026-10-11
+  ([measured](../progress/2026-10-11-bedroom-pose.md): a quarter metre from the
+  wheels over the doorway and turn, half a metre after the correction). Its graph
+  from then is gone; the session script now keeps each session's, so the next
+  occurrence can be replayed into the mapper. The shakedown's loop drives
+  through that doorway twice and is measured the same way.
 - What comes and goes at the corner by the balcony, seven times in the log
   since 2026-10-10: a look from close to on the shakedown's loop, or the
   owner's word, so that a control's count can name it.

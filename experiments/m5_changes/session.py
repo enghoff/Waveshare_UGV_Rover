@@ -27,6 +27,7 @@ the lidar sees all round.
 import json
 import math
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -191,6 +192,16 @@ def start(name):
          watch_paused=report.get("paused"), **check)
     if not (check["trusted"] and check["settled"]):
         raise SystemExit("navigation does not trust its position: refit or turn first")
+    # The map as the session found it, so that a pose that goes wrong can be
+    # replayed into the mapper from the graph it really had: on 2026-10-11 the
+    # bedroom's could not be, the graph having been saved over since.
+    kept = path_of(name, "-map")
+    os.makedirs(kept, exist_ok=True)
+    for one in ("current.posegraph", "current.data", "current.json"):
+        source = os.path.join(os.path.expanduser("~/.ugv/map"), one)
+        if os.path.exists(source):
+            shutil.copy2(source, kept)
+    note(name, "start", map_kept_in=kept)
     rec = "%s/ugv/ros_nav/record_drive.sh" % os.path.expanduser("~")
     log = open(path_of(name, ".recording.log"), "w")
     subprocess.Popen([rec, "--seconds", str(RECORD_S), "--name", "session-" + name],
