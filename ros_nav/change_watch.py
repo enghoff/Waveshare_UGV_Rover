@@ -55,6 +55,14 @@ SLACK_CELLS = 2
 #: this long. On the recordings of 2026-10-10, 20 s kept the armchair and dropped
 #: everything a person walking past left.
 PERSIST_S = 20.0
+#: **And from places this far apart.** On 2026-10-11 the rover stood 27 s with
+#: its pose 10 cm and 3 degrees out, and beams running along a hall wall passed
+#: through it: 0.7 m of wall reported gone, every scan behind it taken within
+#: 0.30 m. The armchair moved the day before was seen from across the room. From
+#: one spot a change is a reason to look again; from two it is reported.
+VIEW_SPREAD_M = 0.5
+VIEW_ARRAYS = ("hit_x0", "hit_x1", "hit_y0", "hit_y1",
+               "pass_x0", "pass_x1", "pass_y0", "pass_y1")
 MIN_CELLS = 6
 #: Groups this long or longer are the size of furniture; smaller ones on those
 #: recordings were doors in the wall lines.
@@ -128,6 +136,12 @@ class ChangeWatch:
         self.ref_hits = np.zeros(shape, np.int32)
         self.ref_pass = np.zeros(shape, np.int32)
         self.ref_time = np.full(shape, np.nan)
+        # Where the visit in progress saw each cell from: the box round the
+        # rover's positions, for the scans that ended in it and those that
+        # passed through it.
+        for name in VIEW_ARRAYS:
+            setattr(self, name, np.full(shape, np.inf if name.endswith("0") else -np.inf,
+                                        np.float32))
         self.scans = 0
         self.refused = 0
         self.stale = 0
@@ -163,7 +177,7 @@ class ChangeWatch:
         dx = int(round((self.x0 - x0) / self.res))
         dy = int(round((self.y0 - y0) / self.res))
         for name in ("cur_hits", "cur_pass", "cur_first", "cur_last",
-                     "ref_hits", "ref_pass", "ref_time"):
+                     "ref_hits", "ref_pass", "ref_time") + VIEW_ARRAYS:
             getattr(bigger, name)[dy:dy + self.ny, dx:dx + self.nx] = getattr(self, name)
         bigger.scans = self.scans
         return bigger
@@ -220,6 +234,14 @@ class ChangeWatch:
             self.cur_hits.flat[lapsed] = 0
             self.cur_pass.flat[lapsed] = 0
             self.cur_first.flat[lapsed] = t
+            for name in VIEW_ARRAYS:
+                getattr(self, name).flat[lapsed] = np.inf if name.endswith("0") else -np.inf
+        for kind, cells in (("hit", hits), ("pass", passes)):
+            for axis, at in (("x", x), ("y", y)):
+                low = getattr(self, "%s_%s0" % (kind, axis))
+                high = getattr(self, "%s_%s1" % (kind, axis))
+                low.flat[cells] = np.minimum(low.flat[cells], at)
+                high.flat[cells] = np.maximum(high.flat[cells], at)
         self.cur_hits.flat[hits] += 1
         self.cur_pass.flat[passes] += 1
         self.cur_last.flat[touched] = t
@@ -271,6 +293,16 @@ class ChangeWatch:
                 last = float(np.max(self.cur_last[rows, cols]))
                 if last - first < PERSIST_S:
                     continue
+                # Seen gone from where the beams passed through, new from where
+                # they ended.
+                by = "pass" if kind == "GONE" else "hit"
+                spread = math.hypot(
+                    float(getattr(self, by + "_x1")[rows, cols].max()
+                          - getattr(self, by + "_x0")[rows, cols].min()),
+                    float(getattr(self, by + "_y1")[rows, cols].max()
+                          - getattr(self, by + "_y0")[rows, cols].min()))
+                if not spread >= VIEW_SPREAD_M:
+                    continue
                 extent = self.res * max(np.ptp(cols) + 1, np.ptp(rows) + 1)
                 if large_only and extent < LARGE_M:
                     continue
@@ -319,6 +351,7 @@ class ChangeWatch:
             tmp, cur_hits=self.cur_hits, cur_pass=self.cur_pass,
             cur_first=self.cur_first, cur_last=self.cur_last,
             ref_hits=self.ref_hits, ref_pass=self.ref_pass, ref_time=self.ref_time,
+            **{name: getattr(self, name) for name in VIEW_ARRAYS},
             meta=np.array(json.dumps({
                 "x0": self.x0, "y0": self.y0, "nx": self.nx, "ny": self.ny,
                 "res": self.res, "scans": self.scans, "saved_at": time.time(),
@@ -334,7 +367,10 @@ class ChangeWatch:
             meta = json.loads(str(data["meta"]))
             watch = cls(meta["x0"], meta["y0"], meta["nx"], meta["ny"], meta["res"])
             for name in ("cur_hits", "cur_pass", "cur_first", "cur_last",
-                         "ref_hits", "ref_pass", "ref_time"):
-                getattr(watch, name)[...] = data[name]
+                         "ref_hits", "ref_pass", "ref_time") + VIEW_ARRAYS:
+                # A file from before 2026-10-11 has no viewpoints: the visit in
+                # progress has to be seen from two places again.
+                if name in data.files:
+                    getattr(watch, name)[...] = data[name]
             watch.scans = int(meta.get("scans", 0))
         return watch, meta

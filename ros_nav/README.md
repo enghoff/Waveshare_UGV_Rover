@@ -152,7 +152,11 @@ one for the visit before it: in how many scans a beam ended in the cell and in
 how many one passed through (`change_watch.py`). A visit to a cell ends after
 five minutes unseen. A cell solid in one visit and seen through in the other has
 changed, with 10 cm of slack for the pose; changed cells are grouped, and a group
-is reported once its evidence spans 20 s, so a person walking past is not one.
+is reported once its evidence spans 20 s, so a person walking past is not one,
+and was gathered from places at least 0.5 m apart. On 2026-10-11 the rover stood
+27 s with its pose 10 cm and 3 degrees out and beams running along a hall wall
+passed through it, all from within 0.30 m: from one spot a change is a reason to
+look again, not a claim.
 Groups 0.6 m or longer are marked furniture-sized; on the recordings it was
 measured on, smaller ones were doors. Replayed through today's recordings in
 order, it reported nothing for three runs with the armchair moved and then, on

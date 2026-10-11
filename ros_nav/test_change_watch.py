@@ -273,7 +273,29 @@ def test_a_scan_from_before_the_clock_was_set_is_not_counted() -> None:
           min(c["was_otherwise_at"] for c in found) >= day, True)
 
 
+def test_a_change_seen_from_one_place_is_not_reported() -> None:
+    """**2026-10-11, control 3: a wall reported gone.** The rover stood 27 s
+    doing a look with its pose 10 cm and 3 degrees out, and beams running almost
+    along a hall wall passed through it; 0.7 m of wall was logged as furniture
+    gone. Every scan behind it came from one spot, 0.30 m across, where the
+    armchair moved on 2026-10-10 was seen from all over the room. A change has to
+    be seen from places VIEW_SPREAD_M apart before it is reported: from one spot
+    it is a reason to look again, not a claim."""
+    section("a change seen from one place")
+    watch = new_watch()
+    visit(watch, ROOM + box(2.0, 2.0), t0=0.0)
+    seen = ROOM + box(4.0, 2.0)
+    for i in range(180):
+        r = scan(1.0, 1.0, 0.3 * i, seen)
+        watch.add_scan(1.0, 1.0, 0.3 * i, r, BEAMS, 3600.0 + i / 3.0)
+    check("a minute standing in one place reports nothing", kinds(watch.changes()), [])
+    visit(watch, seen, t0=3660.0, seconds=30.0)
+    check("driving round the room then reports it",
+          sorted(c["kind"] for c in watch.changes(large_only=True)), ["GONE", "NEW"])
+
+
 TESTS = (
+    test_a_change_seen_from_one_place_is_not_reported,
     test_a_scan_from_before_the_clock_was_set_is_not_counted,
     test_a_scan_laid_at_the_wrong_pose_is_refused,
     test_a_change_is_news_once,
