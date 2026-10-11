@@ -44,6 +44,9 @@ VISIT_GAP_S = 300.0
 #: How far a scan's time may run back behind the newest the watch holds -- a
 #: network clock correction -- before it is taken for a clock not yet set.
 CLOCK_SLACK_S = 60.0
+#: A change logged is not logged again, the same kind at the same place, for
+#: this long: a run is counted from the log.
+RELOG_S = 3600.0
 MIN_OBS = 6
 SOLID = 0.6
 CLEAR = 0.1
@@ -297,6 +300,17 @@ class ChangeWatch:
                        for o in already):
                 fresh.append(g)
         return fresh
+
+    @staticmethod
+    def news(found, previous, logged, now, within_s=None):
+        """What to log from a report: groups neither in the report before
+        (`previous`) nor logged in the last `within_s` (`logged`, rows carrying
+        `logged_at`). A group near its thresholds drops out of one report and
+        comes back in the next, and in control 1 on 2026-10-11 two changes were
+        logged twice that way, minutes apart."""
+        within_s = RELOG_S if within_s is None else within_s
+        recent = [r for r in logged if now - r["logged_at"] < within_s]
+        return ChangeWatch.first_seen(found, list(previous) + recent)
 
     def save(self, path, **meta):
         """Write the tallies, atomically, with whatever names their map."""

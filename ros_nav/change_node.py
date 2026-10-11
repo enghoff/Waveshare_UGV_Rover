@@ -75,7 +75,7 @@ class ChangeNode(Node):
         self.fed = 0
         self.refused = 0
         self.last_yaw = None
-        self.previous = []
+        self.previous, self.logged = [], []
         self.saved_at = self.reported_at = time.monotonic()
         os.makedirs(STATE_DIR, exist_ok=True)
 
@@ -125,13 +125,20 @@ class ChangeNode(Node):
         if self.watch is not None and self.map_id:
             self.save()
         self.map_id, self.watch, self.last_yaw = map_id, None, None
-        self.previous = []
+        self.previous, self.logged = [], []
         if map_id:
-            # What the last report said, so that a restart does not log again
-            # every change it had already logged.
+            # What the last report said and what was logged in the last hour, so
+            # that a restart does not log again every change it had logged.
             try:
                 with open(self.path("json")) as f:
                     self.previous = json.load(f).get("changes") or []
+            except (OSError, ValueError):
+                pass
+            try:
+                with open(self.path("log.jsonl")) as f:
+                    rows = [json.loads(line) for line in f if line.strip()]
+                self.logged = [r for r in rows
+                               if time.time() - r.get("logged_at", 0) < cw.RELOG_S]
             except (OSError, ValueError):
                 pass
             watch, meta = cw.ChangeWatch.load(self.path("npz"))
@@ -211,12 +218,15 @@ class ChangeNode(Node):
         with open(tmp, "w") as out:
             json.dump(report, out)
         os.replace(tmp, self.path("json"))
-        fresh = cw.ChangeWatch.first_seen(found, self.previous)
+        fresh = cw.ChangeWatch.news(found, self.previous, self.logged, report["at"])
         if fresh:
             with open(self.path("log.jsonl"), "a") as log:
                 for g in fresh:
-                    log.write(json.dumps({"logged_at": report["at"],
-                                          "map_id": self.map_id, **g}) + "\n")
+                    row = {"logged_at": report["at"], "map_id": self.map_id, **g}
+                    log.write(json.dumps(row) + "\n")
+                    self.logged.append(row)
+        self.logged = [r for r in self.logged
+                       if report["at"] - r["logged_at"] < cw.RELOG_S]
         self.previous = found
         large = sum(1 for c in found if c["large"])
         self.get_logger().info(

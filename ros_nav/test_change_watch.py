@@ -187,6 +187,17 @@ def test_a_change_is_news_once() -> None:
     far = dict(a, x_m=2.0)
     check("and so is one of the same kind further off",
           cw.ChangeWatch.first_seen([far], [a]), [far])
+    # 2026-10-11: logged at 08:10:48 and again at 08:13:48, having dropped out
+    # of the reports between.
+    logged, previous = [], []
+    for at, found in ((0.0, [a]), (30.0, []), (60.0, [moved])):
+        for g in cw.ChangeWatch.news(found, previous, logged, at):
+            logged.append(dict(g, logged_at=at))
+        previous = found
+    check("a group that drops out of a report and comes back is logged once",
+          len(logged), 1)
+    check("...but logged again after an hour",
+          cw.ChangeWatch.news([moved], [], logged, 3700.0), [moved])
 
 
 def visit_misplaced(watch, segments, t0, dx, dy, dturn_deg, seconds=60.0):

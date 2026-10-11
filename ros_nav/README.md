@@ -177,7 +177,8 @@ of it following the transform tree. It writes `~/.ugv/changes/<map_id>.npz` (the
 tallies, every two minutes and at exit), `<map_id>.json` (the changes found,
 every 30 s), which the bridge's `changes` op returns, and `<map_id>.log.jsonl`,
 each change once, when it is first found, which is what a run's changes are
-counted from afterwards. It moves nothing, publishes
+counted from afterwards; a change that drops out of a report and comes back is
+not logged again for an hour. It moves nothing, publishes
 nothing, and nothing in the stack reads it, so it can stop without taking
 anything with it. It sees one plane about 20 cm up: paintings, table tops and
 shoes are not in it.
