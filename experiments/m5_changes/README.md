@@ -30,6 +30,7 @@ episode store and a copy of the world store:
 | Script | What it does |
 |---|---|
 | `bag_extract.py` | a recording (`ros_nav/record_drive.sh`) as arrays: scans, odom -> base_link, map -> odom. Run on the rover in the ROS environment |
+| `control_count.py START [END]` | what the live change watch logged in a window (a run): each change, its size, and when the place was last seen otherwise; on a control, every furniture-sized one is a false alarm unless shown to have moved. Run on the rover |
 | `change_detect.py` | hit and pass-through counts per 5 cm map cell for two recordings; cells solid in one and seen through in the other, grouped and kept when seen across more than 20 s. Runs anywhere with numpy and scipy |
 
 ```
