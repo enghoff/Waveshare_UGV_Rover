@@ -172,8 +172,10 @@ def loop(name, which):
     for label, x, y in views:
         if stopped(name) or low_battery(name, step):
             break
-        face(name, step, x, y)
-        drive(name, step, label, x, y)
+        p, _ = where()
+        if not p or math.hypot(p["x_m"] - x, p["y_m"] - y) > 0.3:
+            face(name, step, x, y)
+            drive(name, step, label, x, y)
         time.sleep(DWELL_S)
         note(name, step, viewpoint=label, **pose_check())
     note(name, step, end=True, battery=battery())
@@ -190,7 +192,7 @@ def start(name):
     if not (check["trusted"] and check["settled"]):
         raise SystemExit("navigation does not trust its position: refit or turn first")
     rec = "%s/ugv/ros_nav/record_drive.sh" % os.path.expanduser("~")
-    log = open("/tmp/%s.recording.log" % name, "w")
+    log = open(path_of(name, ".recording.log"), "w")
     subprocess.Popen([rec, "--seconds", str(RECORD_S), "--name", "session-" + name],
                      stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                      start_new_session=True)
