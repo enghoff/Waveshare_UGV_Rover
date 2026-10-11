@@ -56,7 +56,7 @@ Steps 4 and 5 swap on alternate days so neither arm always sees the scene first.
 
 | Milestone | What it needs from the hardware | Sessions |
 |---|---|---|
-| M5 | a detection rate with its interval (criterion 2), false alarms on controls (criterion 3), the executive choosing changed places and losing interest once refreshed (criteria 5-6) | **three**, one a day, after **one shakedown** that counts as development. Four moved things a session give eight changes and four resets the next morning: about forty events over three sessions, enough for an interval of roughly ten points; about forty room-controls |
+| M5 | a detection rate with its interval (criterion 2), false alarms on controls (criterion 3), the executive choosing changed places and losing interest once refreshed (criteria 5-6) | **three**, one a day, after **one shakedown** that counts as development. Four moved things a session give eight changes and four resets the next morning: about forty events over three sessions, enough for an interval of roughly ten points; about twenty room-controls ([counted](../decisions/m5-sessions-are-counted-before-they-start.md)) |
 | Multi-day benchmark | three separate days, autonomy against a fixed schedule, restarts and a map reset, scripted changes and controls | **the same three sessions**: loop B is the fixed schedule, step 4 the autonomy; a restart in one session and a map reset in another, at a step where they cost nothing |
 | M6 | a few supervised runs of the reference skill stopping through the ordinary path | folded into step 4 of any session after it is built |
 | M7, M8 | paired physical trials, sized when there is a skill | folded into step 4 of later sessions; one dedicated session only if the pairing needs more attempts than step 4 holds |
@@ -71,13 +71,10 @@ they need paired trials.
 
 All of it offline, on the recordings of 2026-10-10 and 11:
 
-- **What counts as found.** An armchair seen from the front comes out under
-  furniture size where it left (scene 1: one of the four places an armchair
-  left, [replayed](../progress/2026-10-11-m5-scene-1-replayed.md)), and the
-  count takes furniture-sized changes only, so criterion 2's rate is low by that
-  much. Either the count is predeclared to say so beside each staged change, or
-  the two viewpoints a place the survey loop gives are shown on replay to bring
-  them up to size.
+- **The counts agreed**: what counts as found, a false alarm and its budget,
+  and the benchmark's questions and minimum improvement, all
+  [proposed](../decisions/m5-sessions-are-counted-before-they-start.md) and
+  waiting on the owner; then the session script counts them by script.
 - **The session script on the floor.** It is written
   ([`session.py`](../../experiments/m5_changes/README.md)) and its route
   planned leg by leg clear of the rug, 33 m for both loops; it has not yet
@@ -87,9 +84,6 @@ All of it offline, on the recordings of 2026-10-10 and 11:
   ([2026-10-11](../progress/2026-10-11-m5-investigate-change.md)); it is in
   shadow acceptance, so the shakedown's run records what it would do, and
   turning it on (`investigate_changes`) before session 1 is the owner's call.
-- **The false-alarm budget set** (criterion 3), with the plan's proposal that an
-  apparent change is a reason to look again.
-- **The benchmark's question sets and scoring**, predeclared.
 - Why the mapper's correction doubled the bedroom's pose error on 2026-10-11
   ([measured](../progress/2026-10-11-bedroom-pose.md): a quarter metre from the
   wheels over the doorway and turn, half a metre after the correction). Its graph
