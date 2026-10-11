@@ -1,7 +1,8 @@
 # What M5's sessions count, set before the first
 
-Status: proposed 2026-10-11, for the owner. Nothing here is in force until
-agreed; it is written now because the plan wants every count of the
+Status: proposed 2026-10-11, for the owner; the false-alarm budget set the same
+day at under one room-control in seven, the owner having no preference between
+it and one in ten. Nothing else here is in force until agreed; it is written now because the plan wants every count of the
 [sessions](../plans/sessions-that-serve-several-milestones.md) set before the
 first of them, and the counts cannot come from the recordings the code was tuned
 on.
@@ -39,10 +40,14 @@ be lower by however often that happens, said beside it.
   apparent change is a reason to look again, and only one still reported once
   the place has been seen from another viewpoint (the other loop, or the
   executive's look at it) counts.
-- **Proposed budget: a held-up false alarm in fewer than one room-control in
-  ten.** Twenty clean room-controls show the rate is under 14%, thirty under
-  10%, so three sessions can show "under 14%" and a fourth would be needed to
-  show "under 10%". Which of the two, or another number, is the owner's call.
+- **The budget: a held-up false alarm in fewer than one room-control in
+  seven** (14%). Twenty clean room-controls show the rate is under 14%, thirty
+  under 10%. At three sessions' twenty the choice between the two decides
+  nothing: none held up passes one in seven and cannot show one in ten, and one
+  held up shows only "under 22%", which fails both. So the budget is what three
+  sessions can show, and the sessions pass it only with none held up. One in
+  ten was the other candidate and would have needed a fourth session to be
+  shown at all.
 
 ## The benchmark (multi-day usefulness)
 
