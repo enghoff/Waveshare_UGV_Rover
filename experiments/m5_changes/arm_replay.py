@@ -27,7 +27,13 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(HERE, "..", "..", "ros_nav"))
+# The watch from the repository beside this, or the one deployed on the rover
+# when this has been copied there on its own with change_detect.py.
+for _where in (os.path.join(HERE, "..", "..", "ros_nav"),
+               os.path.expanduser("~/ugv/ros_nav")):
+    if os.path.exists(os.path.join(_where, "change_watch.py")):
+        sys.path.insert(0, _where)
+        break
 import change_watch as cw  # noqa: E402
 from change_detect import compose, interp_pose, last_pose  # noqa: E402
 
