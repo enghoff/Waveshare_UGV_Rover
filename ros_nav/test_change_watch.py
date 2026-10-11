@@ -300,7 +300,47 @@ def test_a_change_seen_from_one_place_is_not_reported() -> None:
     check("a visit whose viewpoints are not known reports nothing", watch.changes(), [])
 
 
+def walls_grid(segments, x0=-0.5, y0=-0.5, w=7.0, h=5.0, res=0.05):
+    """The mapper's occupancy, as a boolean grid of the segments, rows along y."""
+    grid = np.zeros((int(h / res), int(w / res)), bool)
+    for (ax, ay), (bx, by) in segments:
+        n = int(math.hypot(bx - ax, by - ay) / (res / 2)) + 1
+        for k in range(n + 1):
+            x = ax + (bx - ax) * k / n; y = ay + (by - ay) * k / n
+            grid[int((y - y0) / res), int((x - x0) / res)] = True
+    return grid, x0, y0, res
+
+
+def test_a_scan_that_misses_the_map_is_refused() -> None:
+    """**2026-10-11, 14:18: the bedroom reported changed, three times over.** The
+    rover's pose went 0.5 m and more out as it drove into the bedroom, and the
+    mapper's correction made it worse; navigation went on trusting it. The
+    watch's own check judges a scan against what the watch has seen, and a
+    bedroom seen all day was solid near enough everywhere to let the bad scans
+    through: a 1.55 m wall "new", two lengths of bed "gone". Against the
+    mapper's map the hits beyond 1.5 m, the walls, fitted at 0.41 where good
+    poses all day fitted at 0.95 to 1.0 and moved armchairs beside the rover at
+    0.87. A scan whose far hits mostly miss the map is refused."""
+    section("a scan that misses the mapper's walls")
+    watch = new_watch()
+    watch.set_map(*walls_grid(ROOM))
+    visit(watch, ROOM + box(2.0, 2.0), t0=0.0)
+    check("the room at its true pose fits", watch.off_map, 0)
+    refused, n = visit_misplaced(watch, ROOM + box(2.0, 2.0), 3600.0, 0.5, 0.3, 10.0)
+    check("0.6 m and 10 degrees out, most scans are refused", refused > 0.8 * n, True)
+    check("...as missing the map", watch.off_map > 0.8 * n, True)
+    check("...and nothing is reported", kinds(watch.changes()), [])
+    watch = new_watch()
+    watch.set_map(*walls_grid(ROOM))
+    visit(watch, ROOM + box(2.0, 2.0), t0=0.0)
+    visit(watch, ROOM + box(4.0, 2.0) + box(3.0, 1.6, size=0.4), t0=3600.0)
+    check("furniture moved, the walls still on the map: nothing refused", watch.off_map, 0)
+    check("...and the move is found",
+          sorted(c["kind"] for c in watch.changes(large_only=True)), ["GONE", "NEW"])
+
+
 TESTS = (
+    test_a_scan_that_misses_the_map_is_refused,
     test_a_change_seen_from_one_place_is_not_reported,
     test_a_scan_from_before_the_clock_was_set_is_not_counted,
     test_a_scan_laid_at_the_wrong_pose_is_refused,

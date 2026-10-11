@@ -19,7 +19,9 @@ pause, and says so in the report. So is navigation's drift check finding the
 scan fitting better somewhere else. Neither is enough alone: on 2026-10-10 a
 restore 170 degrees out stayed settled for a quarter of an hour, so each scan
 must also fit what the watch already knows (`change_watch.FIT_MIN`), and one
-that does not is refused and counted. A scan dated before what the watch
+that does not is refused and counted; so is one whose far hits miss the
+mapper's own map (`change_watch.MAP_FIT_MIN`), which on 2026-10-11 the watch's
+own check let through for a bedroom it had seen all day. A scan dated before what the watch
 already holds -- the minute after a cold boot, while the clock reads 1970 -- is
 set aside too, and counted in the report's `before_clock_set`.
 
@@ -39,6 +41,7 @@ import signal
 import socket
 import time
 
+import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
@@ -56,6 +59,8 @@ STATUS_EVERY_S = 5.0
 REPORT_EVERY_S = 30.0
 SAVE_EVERY_S = 120.0
 MARGIN_M = 3.0
+#: What the mapper calls occupied, of its 0-100.
+OCCUPIED = 65
 
 
 def yaw_of(q):
@@ -69,6 +74,7 @@ class ChangeNode(Node):
         self.watch = None
         self.map_id = None
         self.map_box = None
+        self.occupied = None
         self.believed = False
         self.why_paused = "navigation has not answered yet"
         self.seen = 0
@@ -153,6 +159,9 @@ class ChangeNode(Node):
         x0, y0 = info.origin.position.x, info.origin.position.y
         self.map_box = (x0, y0, x0 + info.width * info.resolution,
                         y0 + info.height * info.resolution)
+        # What every scan is judged against (change_watch.MAP_FIT_MIN).
+        cells = np.asarray(msg.data, dtype=np.int16).reshape(info.height, info.width)
+        self.occupied = (cells >= OCCUPIED, x0, y0, info.resolution)
         self.fit_to_map()
 
     def fit_to_map(self):
@@ -162,6 +171,8 @@ class ChangeNode(Node):
             self.watch = cw.ChangeWatch.around(*self.map_box, margin_m=MARGIN_M)
         elif not self.watch.covers(*self.map_box):
             self.watch = self.watch.grown_to(*self.map_box, margin_m=MARGIN_M)
+        if self.occupied is not None:
+            self.watch.set_map(*self.occupied)
 
     # --- the scans -----------------------------------------------------------
     def on_scan(self, msg):
@@ -213,6 +224,7 @@ class ChangeNode(Node):
         report = {"map_id": self.map_id, "at": time.time(),
                   "counting": self.believed, "paused": self.why_paused,
                   "scans": self.watch.scans, "refused": self.watch.refused,
+                  "off_map": self.watch.off_map,
                   "before_clock_set": self.watch.stale, "changes": found}
         tmp = self.path("json") + ".tmp"
         with open(tmp, "w") as out:
@@ -231,8 +243,9 @@ class ChangeNode(Node):
         large = sum(1 for c in found if c["large"])
         self.get_logger().info(
             "change watch: %d scans added since the last report and %d refused "
-            "as not fitting, %d in all; %d changes, %d furniture-sized%s (%.0f ms)"
-            % (self.fed, self.refused, self.watch.scans, len(found), large,
+            "as not fitting (%d in all off the map), %d in all; %d changes, "
+            "%d furniture-sized%s (%.0f ms)"
+            % (self.fed, self.refused, self.watch.off_map, self.watch.scans, len(found), large,
                "" if self.believed else "; paused: " + self.why_paused,
                1000.0 * (time.monotonic() - started)))
         self.fed = self.refused = 0

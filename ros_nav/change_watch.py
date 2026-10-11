@@ -83,6 +83,19 @@ FIT_MIN = 0.6
 FIT_MIN_KNOWN = 30
 #: How often the masks a scan is judged against are worked out again.
 FIT_REFRESH_SCANS = 30
+#: **And it has to fit the mapper's map.** The check above judges a scan by what
+#: the watch has seen, and a room seen all day is solid near enough everywhere:
+#: on 2026-10-11 the rover's pose went 0.5 m and more out entering the bedroom
+#: and the watch logged a wall new and two lengths of bed gone. Of the hits
+#: beyond MAP_FIT_FAR_M -- walls, mostly; what is near is what moves -- at least
+#: MAP_FIT_MIN must land within MAP_FIT_SLACK_CELLS of what the mapper calls
+#: occupied. On that day's recordings good poses fitted at a median of 0.95 to
+#: 1.0, with at most 2% of scans under 0.6; armchairs moved to beside the rover
+#: at 0.87; the bad bedroom pose at 0.41.
+MAP_FIT_MIN = 0.6
+MAP_FIT_FAR_M = 1.5
+MAP_FIT_SLACK_CELLS = 2
+MAP_FIT_MIN_HITS = 20
 
 
 def _dilate(mask, cells):
@@ -144,6 +157,8 @@ class ChangeWatch:
                                         np.float32))
         self.scans = 0
         self.refused = 0
+        self.off_map = 0
+        self._map = None
         self.stale = 0
         self._newest = None
         self._known = None
@@ -180,7 +195,27 @@ class ChangeWatch:
                      "ref_hits", "ref_pass", "ref_time") + VIEW_ARRAYS:
             getattr(bigger, name)[dy:dy + self.ny, dx:dx + self.nx] = getattr(self, name)
         bigger.scans = self.scans
+        bigger._map = self._map
         return bigger
+
+    def set_map(self, occupied, x0, y0, res):
+        """The mapper's occupancy to judge scans against (MAP_FIT_MIN): a boolean
+        grid, rows along y, whose cell (0, 0) has its corner at (x0, y0)."""
+        self._map = (_dilate(np.asarray(occupied, bool), MAP_FIT_SLACK_CELLS),
+                     float(x0), float(y0), float(res))
+
+    def _on_map(self, xs, ys):
+        """Whether these far hits fit the mapper's map; True with no map or too
+        few of them to judge."""
+        if self._map is None:
+            return True
+        near, x0, y0, res = self._map
+        cx = np.floor((xs - x0) / res).astype(np.int64)
+        cy = np.floor((ys - y0) / res).astype(np.int64)
+        inside = (cx >= 0) & (cx < near.shape[1]) & (cy >= 0) & (cy < near.shape[0])
+        if inside.sum() < MAP_FIT_MIN_HITS:
+            return True
+        return near[cy[inside], cx[inside]].mean() >= MAP_FIT_MIN
 
     def _cells(self, xs, ys):
         cx = np.floor((xs - self.x0) / self.res).astype(np.int64)
@@ -212,6 +247,11 @@ class ChangeWatch:
         r, a = r[ok], a[ok] + heading
         if r.size == 0:
             return None
+        far = r > MAP_FIT_FAR_M
+        if not self._on_map(x + r[far] * np.cos(a[far]), y + r[far] * np.sin(a[far])):
+            self.off_map += 1
+            self.refused += 1
+            return False
         hits = self._cells(x + r * np.cos(a), y + r * np.sin(a))
         if not self._fits(hits):
             self.refused += 1
