@@ -212,7 +212,13 @@ def start(name):
         source = os.path.join(os.path.expanduser("~/.ugv/map"), one)
         if os.path.exists(source):
             shutil.copy2(source, kept)
-    note(name, "start", map_kept_in=kept)
+    # And the occupancy grid, which the map gate judges scans against when an
+    # arm is replayed on its own scans (arm_replay.py).
+    grid = call("nav_grid")
+    if grid.get("ok"):
+        with open(path_of(name, "-grid.json"), "w") as f:
+            json.dump({k: v for k, v in grid.items() if k not in ("trail", "live")}, f)
+    note(name, "start", map_kept_in=kept, grid_kept=bool(grid.get("ok")))
     rec = "%s/ugv/ros_nav/record_drive.sh" % os.path.expanduser("~")
     log = open(path_of(name, ".recording.log"), "w")
     subprocess.Popen([rec, "--seconds", str(RECORD_S), "--name", "session-" + name],
