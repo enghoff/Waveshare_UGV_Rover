@@ -999,11 +999,14 @@ session 20. What is ahead, in order:
    goes on to the scene ([agreed](../decisions/m5-moves-on-after-two-clean-controls.md));
    every later run still counts as a control.
    The first scene ([2026-10-11](../progress/2026-10-11-m5-scene-1.md))
-   found the changes made out of the rover's sight and missed those made while
-   it was parked in the room watching. Next: the owner's word on the scene's
-   positions; a reference that still remembers what a parked rover watched
-   change, without keeping one recorded at a bad pose; then the remaining
-   sessions, packed as [sessions that serve several milestones at once](sessions-that-serve-several-milestones.md).
+   found the changes made out of the rover's sight; replayed with the hour the
+   rover sat parked rebuilt ([the replay](../progress/2026-10-11-m5-scene-1-replayed.md)),
+   it gives seven true furniture-sized changes and no false ones after three
+   fixes, and the armchairs' old places, thought missed, were found but small.
+   A move made while the rover watches is still blurred into one visit; the
+   sessions stage changes while it waits in another room, so that stays open
+   beside them. Next: the remaining sessions, packed as
+   [sessions that serve several milestones at once](sessions-that-serve-several-milestones.md).
 2. **A first scripted scene.** The owner moves two or three large things, the
    armchair by the window, a bean bag, a floor lamp, within their rooms between
    two runs, and puts them back before a third: each should be reported gone

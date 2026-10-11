@@ -71,11 +71,13 @@ they need paired trials.
 
 All of it offline, on the recordings of 2026-10-10 and 11:
 
-- **The change watch's blind spot** (a move the rover watches), fixed and shown
-  on replay with no new false alarms.
-- **Counting a change once and at its full size.** The log keeps a change at the
-  size it was first seen, so one that grows to furniture size later is counted
-  small; found replaying 2026-10-11.
+- **What counts as found.** An armchair seen from the front comes out under
+  furniture size where it left (scene 1: one of the four places an armchair
+  left, [replayed](../progress/2026-10-11-m5-scene-1-replayed.md)), and the
+  count takes furniture-sized changes only, so criterion 2's rate is low by that
+  much. Either the count is predeclared to say so beside each staged change, or
+  the two viewpoints a place the survey loop gives are shown on replay to bring
+  them up to size.
 - **The session script:** one command for steps 1 to 6, recording, loops, the
   wait, the run, counts and the drive home, with the survey route fixed.
 - **Changes named:** each change attached to the world record nearest it.
@@ -86,3 +88,10 @@ All of it offline, on the recordings of 2026-10-10 and 11:
 - **The benchmark's question sets and scoring**, predeclared.
 - Why navigation's pose went half a metre out entering the bedroom on
   2026-10-11, replayed into the mapper.
+- What comes and goes at the corner by the balcony, seven times in the log
+  since 2026-10-10: a look from close to on the shakedown's loop, or the
+  owner's word, so that a control's count can name it.
+
+A move made while the rover watches is not here: scenes are staged out of its
+sight (rule 5), and the rule that would see one costs false reports on replay
+(open in the [replay's entry](../progress/2026-10-11-m5-scene-1-replayed.md)).
