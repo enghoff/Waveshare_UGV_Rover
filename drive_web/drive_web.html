@@ -161,10 +161,14 @@
          lost -- and "describe surroundings" said in words what the picture above
          it was already showing. "rover up" turned the map to the rover's heading
          and went with them: what is left is the map's two real acts, one that
-         moves the rover onto the map and one that throws the map away. -->
+         moves the rover onto the map and one that throws the map away. The third
+         opens the snapshots, which keep the map, the world state and the rover's
+         place on the map so they can be put back -- the act that undoes the
+         second. -->
     <div class="row" style="margin-top:8px">
       <button id="refitPose">refit to map</button>
       <button id="clearMap">clear map</button>
+      <button id="snapshots">snapshots</button>
     </div>
   </section>
 </div>
@@ -304,9 +308,37 @@
   </div>
 </div>
 
+<!-- Snapshots: the rover's map, world state and place on the map, kept so they
+     can be put back. A list and four acts -- save, name, restore, delete -- and
+     the last two pressed twice, like clearing the map. Like the world popup it
+     takes no key: space and Escape still stop the rover, except that a space
+     typed into a name is part of the name. -->
+<div id="snapBack" hidden>
+  <div id="snapBox" role="dialog" aria-modal="false" aria-label="snapshots">
+    <div id="snapHead">
+      <strong>snapshots</strong>
+      <span id="snapCounts" class="mono"></span>
+      <span class="grow"></span>
+      <button id="snapSave">save now</button>
+      <button id="snapClose">close</button>
+    </div>
+    <p id="snapNote" class="hint"></p>
+    <p id="snapError" class="bad"></p>
+    <div id="snapBody">
+      <table>
+        <thead><tr><th>name</th><th>taken</th><th>things</th><th>looks</th>
+          <th>map</th><th>rover at</th><th>size</th><th></th></tr></thead>
+        <tbody id="snapList"></tbody>
+      </table>
+      <p id="snapEmpty" class="hint"></p>
+    </div>
+  </div>
+</div>
+
 <script src="/drive_world.js"></script>
 <script src="/drive_world_map.js"></script>
 <script src="/drive_world_observations.js"></script>
+<script src="/drive_snapshots.js"></script>
 <script src="/drive_web.js"></script>
 </body>
 </html>

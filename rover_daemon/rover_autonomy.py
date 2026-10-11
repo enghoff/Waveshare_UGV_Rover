@@ -67,7 +67,7 @@ HUMAN_MOVES = frozenset({
     "drive", "drive_to", "drive_to_map_point", "turn_in_place", "explore",
     "go_to_thing", "stop_driving", "run_script", "start_script",
     "clear_map", "refit_pose", "world_state_clear", "world_state_rebuild",
-    "world_state_merge",
+    "world_state_merge", "snapshot_restore",
 })
 
 #: The person's calls above that set the wheels going themselves. When one of
@@ -103,6 +103,7 @@ TAKEOVER = {
     "world_state_clear": "somebody emptied the world state",
     "world_state_rebuild": "somebody rebuilt the world state",
     "world_state_merge": "somebody joined things in the world state",
+    "snapshot_restore": "somebody put back a snapshot of the map and world",
 }
 
 

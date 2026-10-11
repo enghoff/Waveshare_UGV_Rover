@@ -43,6 +43,7 @@ from test_map import TESTS as MAP_TESTS
 from test_recall import TESTS as RECALL_TESTS
 from test_ros_nav import TESTS as ROS_NAV_TESTS
 from test_scripting import TESTS as SCRIPTING_TESTS
+from test_snapshots import TESTS as SNAPSHOT_TESTS
 from test_wifi import TESTS as WIFI_TESTS
 from test_world import TESTS as WORLD_TESTS
 
@@ -59,7 +60,7 @@ def main():
                  *MAP_TESTS, *WIFI_TESTS, *WORLD_TESTS, *SCRIPTING_TESTS,
                  *AIMING_TESTS, *ROS_NAV_TESTS, *RECALL_TESTS,
                  *DEPTH_TESTS, *AUTONOMY_TESTS, *AUTONOMY_REGRESSIONS,
-                 *INSPECTION_LIMIT_TESTS):
+                 *INSPECTION_LIMIT_TESTS, *SNAPSHOT_TESTS):
         try:
             test()
         except Exception as exc:

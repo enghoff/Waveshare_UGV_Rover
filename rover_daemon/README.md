@@ -56,6 +56,40 @@ an M4 trial's executive keeps the store as it stood before each attempt, for
 `experiments/m4/score_attempts.py`. About 0.6 s and 200 MB on 2026-10-09; a name
 already used is refused rather than overwritten.
 
+### Snapshots
+
+A snapshot is not that copy. It keeps everything the rover knows about the room,
+together, so it can be put back: the world store and its pictures, the SLAM graph
+as the mapper holds it at that moment, where the rover stood on it and whether
+that was believed, the occupancy grid, and the change watch's tallies for that
+map. One directory each under `~/.ugv/snapshots/<id>/`, with `snapshot.json`
+written last; see [`rover_snapshots.py`](rover_snapshots.py) for the layout. The
+pictures are hard links to the store's own write-once files, so a snapshot costs
+about the size of the database and takes a second or two, most of it the graph.
+
+| Call | Does |
+|---|---|
+| `snapshot_list {}` | every complete snapshot, newest first, with counts, the map it was taken on (`same_map` when that is the rover's map now), the pose, its size, and free disk |
+| `snapshot_save {"name"?}` | keep the state as it is now; named by the date and time until renamed. Refused, keeping nothing, if the map cannot be had |
+| `snapshot_rename {"id", "name"}` | change a snapshot's name; nothing else is touched |
+| `snapshot_restore {"id"}` | put one back; refused while the rover is moving |
+| `snapshot_delete {"id"}` | delete one for good; pictures it shares with the store stay |
+
+A restore keeps the state it is about to replace first, as a snapshot named
+"before restoring ...", which is how one is undone. Then the map goes back through
+the navigator ([`nav_snapshot.py`](../ros_nav/nav_snapshot.py)), which makes it the
+saved map so a boot comes back to it, and the world store becomes the snapshot's.
+If the map will not come back, the world is not put back either. On the map the
+rover is already on, with its place believed, the rover stays where it is;
+otherwise it is put where the snapshot says it stood and the restore's first look
+at the lidar withdraws "settled" if the scan does not lie on the map there -- refit
+from where the rover really is. Names handed out after the snapshot are never
+handed out again (see [`world_state/snapshot.py`](../world_state/snapshot.py)).
+
+All five are control calls, kept from models, and all but the list are served on
+the rover itself only (`LOCAL_ONLY`). A restore ends an autonomous run, as clearing
+the map does. The console's "snapshots" button on the map card is the way in.
+
 `world_state_groups {}` is a diagnostic control call, excluded from model tools.
 It returns candidate groups from a disposable snapshot without applying them;
 the response identifies the snapshot and flags concurrent changes. See
@@ -435,6 +469,7 @@ model choice, for example:
   position" when the position is usually not what is wrong;
 - detector diagnostics such as running YuNet over a supplied known image;
 - the semantic world state -- `world_inspect`, `world_state_summary` and the rest;
+- the snapshot calls above, one of which replaces the map and the world at once;
 - `get_depth_power`, which reports whether the OAK is awake and cannot set it,
   and `depth_map`, its depth in millimetres for the console, which cannot wake
   it either;

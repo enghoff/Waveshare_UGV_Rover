@@ -19,6 +19,7 @@ from console_model import (
 )
 from drive_actions import SessionActions
 from drive_show import SessionShow
+from drive_snapshots import SessionSnapshots
 from drive_world import SessionWorld
 
 # How often the pump wakes: drain what came back, decide what to ask for next, and
@@ -52,7 +53,7 @@ DEFAULT_HTTP_PORT = 8770
 ROVER_HTTP_PORT = 8771
 
 
-class Session(SessionActions, SessionShow, SessionWorld):
+class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
     """The rover, as one object a browser can render: the six connections, the
     pacing, and one dict that is everything on screen.
 
@@ -275,6 +276,7 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.stopped_orphan = False
         self.running = True
         self.world_reset()
+        self.snaps_reset()
 
     def tag(self, count: int) -> str:
         """The name a picture is published under: this run, and which picture.
@@ -365,6 +367,9 @@ class Session(SessionActions, SessionShow, SessionWorld):
             # same reason -- it is tens of kilobytes and this goes out ten times a
             # second.
             "world": self.world_state(),
+            # The same for snapshots: counts and a tag, the list behind
+            # /snapshots.json.
+            "snapshots": self.snap_state(),
             "notice": self.notice,
             "clear_armed": self.clear_armed_until > time.monotonic(),
             "watching": self.listeners,
@@ -482,6 +487,8 @@ class Session(SessionActions, SessionShow, SessionWorld):
         world_half = self.world_map_due(now)
         if world_half is not None:
             self.world_map_refresh(world_half)
+        # The snapshot list, likewise only while its popup is open.
+        self.snap_due(now)
         # Asked, not remembered: the voice session and any other console can start
         # or stop tracking, so the only honest source for this panel is the daemon.
         if (self.watch is not None and not self.track_outstanding
@@ -681,6 +688,7 @@ class Session(SessionActions, SessionShow, SessionWorld):
         # time" flag stays set for good.
         self.moves = self.halt = self.watch = self.picture = self.camera = None
         self.scanner = self.world_link = None
+        self.snap_abandon()
         self.frame_outstanding = False
         self.depth_mm_outstanding = False
         self.map_outstanding = False
@@ -779,8 +787,11 @@ class Session(SessionActions, SessionShow, SessionWorld):
         # panel and the map stopped for as long as it took.
         self.world_link = Channel("world", address, self.replies,
                                   timeout=WORLD_TIMEOUT_S)
+        # And the snapshots', for the same reason as the world's: a restore is
+        # two minutes, and a stop must never queue behind one.
         self.channels = [self.moves, self.halt, self.watch, self.picture,
-                         self.camera, self.scanner, self.world_link]
+                         self.camera, self.scanner, self.world_link,
+                         self.snap_connect(address)]
         self.link_text = f"{address}: asking what it can do"
         self.watch.submit("list_tools")
         # The board cannot be read back, so the daemon only knows the level it last
@@ -894,6 +905,10 @@ class Session(SessionActions, SessionShow, SessionWorld):
                 else:
                     self.wifi["note"] = (f"the scan did not come back: "
                                          f"{body.get('error', 'no answer')}")
+            return
+        if name.startswith("snapshot_"):
+            # Its own popup and its own lines, like the world's below.
+            self.snap_handle(name, body, reply.seconds)
             return
         if name.startswith("world_"):
             # Its own connection, its own panel and its own errors, so none of

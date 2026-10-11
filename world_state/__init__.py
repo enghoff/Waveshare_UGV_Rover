@@ -27,6 +27,7 @@ to cross it. Nothing here asks a model anything.
     depth_client.py      asking it how far away the things in a picture are
     outline.py           a region's own pixels, and the depth read under them
     rebuild.py           the kept looks read again, and the things built again
+    snapshot.py          the store copied out to a snapshot, and back in from one
     replay.py            a recorded run back through the resolver, at a desk
 
 The rover deploys this to ``~/ugv/world_state`` and the daemon imports it from
@@ -45,6 +46,7 @@ from . import outline
 from . import rebuild
 from . import resolve
 from . import search
+from . import snapshot
 from .locate import agrees, best_fix, fix
 from .depth_client import (
     FakeRanger, Ranged, Ranger, SidecarRanger, describe_ranger,

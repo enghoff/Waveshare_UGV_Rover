@@ -75,6 +75,7 @@ throw work away.
 import json
 import math
 import os
+import shutil
 import time
 import uuid
 
@@ -334,6 +335,46 @@ class SavedMap(object):
         self.saved_odom = None
         self.posed_at = None
         self.posed_odom = None
+
+    def install(self, stem, map_id, pose, **extra):
+        """Make a graph kept somewhere else the saved map, with its own identity.
+
+        For a snapshot being restored (nav_snapshot.py), and the one way besides
+        `forget` that the saved map is replaced by a different one. `commit`
+        refuses that for a good reason -- a graph from another frame landing on
+        top of the map silently relabels every remembered position -- and the
+        reason does not apply here: the world state is restored beside this
+        graph, so the positions and the frame they were measured in come back
+        together. It is a person's act, like a clear.
+
+        The copies are made under the staging names first, which is the slow
+        part, so that the saved map stays whole until they are complete. Then
+        `forget`'s order: the note goes, the graph is renamed into place, and the
+        new note is written last, so a power cut in between leaves no map rather
+        than a note describing the wrong graph.
+        """
+        self.make()
+        for src, dst in zip(self.graph_paths(stem),
+                            self.graph_paths(self.staging_stem)):
+            shutil.copyfile(src, dst)
+        try:
+            os.remove(self.note_path)
+        except OSError:
+            pass
+        for src, dst in zip(self.graph_paths(self.staging_stem),
+                            self.graph_paths()):
+            os.replace(src, dst)
+        note = {"map_id": map_id, "saved_at": time.time(),
+                "pose": _pose_fields(pose)}
+        note.update(extra)
+        self._write_note(note)
+        # Nothing this process wrote describes the graph on disk any more, so the
+        # gates start again; the caller's `restored` sets them from the wheels.
+        self.saved_at = None
+        self.saved_odom = None
+        self.posed_at = None
+        self.posed_odom = None
+        return note
 
     def restored(self, odom, now=None):
         """Take the note on disk as already describing where the rover is.

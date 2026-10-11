@@ -125,6 +125,7 @@ function render(next) {
   drawWifi(next.wifi);
   drawNotice(next.notice);
   drawWorld(next.world);
+  drawSnapshots(next.snapshots);
 
   // Only the moves go out while one is running; stop, the map and the camera
   // stay live, which is the whole reason they have their own connections.
@@ -149,6 +150,9 @@ function render(next) {
   // still to be measured against its map, and the daemon refuses it while a move
   // is running anyway.
   $("refitPose").disabled = !next.link.connected || wheelsTaken || next.refitting;
+  // Opening the list is a view, so only the link matters; what can be pressed
+  // inside it is drawn there.
+  $("snapshots").disabled = !next.link.connected;
 
   // The explore toggle. Its rules are not the driving buttons' rules, which is
   // why it is not one of them: those go out while anything is running, and this
@@ -744,10 +748,11 @@ function keys() {
   addEventListener("keydown", (event) => {
     // Stop is the one key that works while a distance is being typed. Nothing
     // else does: without that guard, typing 0.5 sends an arrow to the motors on
-    // the way to the decimal point. The box that takes a phrase to look for is
-    // the exception for space alone: a space there is part of what is being
-    // typed, and Escape still stops the rover from inside it.
-    const phrase = event.target.id === "wSearchBox";
+    // the way to the decimal point. The box that takes a phrase to look for, and
+    // a snapshot's name, are the exception for space alone: a space there is part
+    // of what is being typed, and Escape still stops the rover from inside them.
+    const phrase = event.target.id === "wSearchBox"
+        || event.target.classList.contains("snap-name");
     if ((event.key === " " && !phrase) || event.key === "Escape") {
       event.preventDefault();
       post({do: "stop"});
@@ -818,6 +823,7 @@ async function start() {
   addEventListener("pagehide", () => { if (voice.wanted()) voice.stop(true); });
   wire();
   wireWorld();
+  wireSnapshots();
   wireDepth();
   keys();
   listen();

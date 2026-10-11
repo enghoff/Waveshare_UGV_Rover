@@ -35,11 +35,14 @@ the console up and preserves its required arguments.
 - `drive_world.js` holds world-state data, lists, details and wiring.
 - `drive_world_map.js` draws placed entities, observations and uncertainty.
 - `drive_world_observations.js` owns the paged observation grid and zoom view.
+- `drive_snapshots.js` draws and wires the snapshot popup.
 - `drive_web.py` serves HTTPS/WebSocket traffic and static assets.
 - `drive_session.py` holds the rover connection and state snapshots.
+- `drive_snapshots.py` is the snapshot popup's server half: its connection,
+  arming and list.
 - `omni_bridge.py` connects browser audio to the hosted realtime model.
 
-The world scripts load before `drive_web.js`, which calls `start()`. Assets are
+The world and snapshot scripts load before `drive_web.js`, which calls `start()`. Assets are
 read from disk per request, but deployed changes still use the normal restart and
 verification path.
 
@@ -142,6 +145,31 @@ under the pointer or discard an open detail view.
 Direct inspection and clearing are console controls, not voice tools. A model can
 read placed world state through the daemon's controlled tools and can ask the
 navigator to approach a selected thing.
+
+## Snapshots
+
+**snapshots**, beside "refit to map" and "clear map" on the map card, opens a list
+of what the rover has kept: the map, the world state measured in it and where the
+rover stood (see [the daemon](../rover_daemon/README.md#snapshots)). Each row has
+its name, when it was taken, its things and looks, whether it is the map the rover
+is on now, the pose -- "unconfirmed" when the rover's place was not believed when
+it was taken -- and its size on disk without the pictures it shares. **save now**
+keeps the present state under the date and time; the name box renames it on Enter
+or on leaving the box. A space typed there is part of the name; Escape still stops
+the rover.
+
+**restore** and **delete** are pressed twice, like clearing the map: the first
+press arms that row's button for `CLEAR_ARM_S`, and the arming is the console's,
+so every open browser shows the same armed button. Restore is refused while the
+rover is moving. A restore takes up to two minutes -- the rover's pose has to land
+on the map that comes back -- and goes on the popup's own connection, so the stop
+button and the status poll never wait behind it. Its result is said in the popup
+and on the notice line, with the name of the snapshot that kept the state it
+replaced; the driving map is redrawn and the world popup lets go of what it held.
+
+The list is fetched from `/snapshots.json` when its tag moves, and asked for every
+few seconds while the popup is open, so a snapshot an agent takes appears without
+a press.
 
 ## Voice
 

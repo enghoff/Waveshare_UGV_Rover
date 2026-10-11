@@ -105,6 +105,12 @@ def test_schemas():
                # A copy of the whole store on the rover's disk, for M4's
                # scoring; served on loopback only (`LOCAL_ONLY`).
                "world_snapshot",
+               # The rover's whole state kept and put back -- the store, the map
+               # and where the rover stood. Putting one back replaces the map and
+               # the world at once, which is a person's decision for the reason
+               # clearing the map is; see rover_snapshots.py.
+               "snapshot_list", "snapshot_save", "snapshot_rename",
+               "snapshot_restore", "snapshot_delete",
                "world_state_entities", "world_state_entity", "world_state_frame",
                "world_state_observations", "world_state_search",
                "world_state_summary",

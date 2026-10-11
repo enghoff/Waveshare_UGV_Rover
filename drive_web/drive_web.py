@@ -69,7 +69,8 @@ Only the standard library, plus [rover_tools.py](../voice_chat/rover_tools.py)
 for the wire and [console_model.py](../voice_chat/console_model.py) for the
 pacing and the English. The page is [drive_web.html](drive_web.html) beside this
 file, with its stylesheet in [drive_web.css](drive_web.css), three
-`drive_world*.js` modules for the world-state popup, and
+`drive_world*.js` modules for the world-state popup,
+[drive_snapshots.js](drive_snapshots.js) for the snapshot popup, and
 [drive_web.js](drive_web.js) for everything else. Assets are read from disk on
 every request, so editing one needs no restart.
 """
@@ -116,6 +117,8 @@ ASSETS = {
     "/drive_world_observations.js": (
         os.path.join(HERE, "drive_world_observations.js"),
         "application/javascript; charset=utf-8"),
+    "/drive_snapshots.js": (os.path.join(HERE, "drive_snapshots.js"),
+                            "application/javascript; charset=utf-8"),
     "/drive_web.js": (os.path.join(HERE, "drive_web.js"),
                       "application/javascript; charset=utf-8"),
 }
@@ -310,6 +313,12 @@ class Handler(BaseHTTPRequestHandler):
             # as a line under the tiles.
             self._send(json.dumps(self.session.world_observations(before)).encode(),
                        "application/json; charset=utf-8")
+        elif path == "/snapshots.json":
+            # The snapshot list, fetched when its tag moves, for the network
+            # list's reason; immutable because the URL carries the tag.
+            self._send(json.dumps(self.session.snap_rows).encode(),
+                       "application/json; charset=utf-8",
+                       "public, max-age=31536000, immutable")
         elif path == "/wifi.json":
             # A list of networks, kept out of the state for the same reason the
             # pictures are: it is kilobytes, it changes a few times an hour, and the

@@ -1041,9 +1041,101 @@ def test_the_run_button_starts_a_run_and_shows_the_rovers_answer() -> None:
     check("a run the rover reports is what the page is given",
           session.snapshot()["autonomy"]["via"], "api")
 
+def test_the_snapshot_popup_names_arms_and_restores() -> None:
+    """Snapshots on the console: a list, a save, and two acts pressed twice.
+
+    The arming is the part a browser cannot be trusted with -- two of them are
+    often open -- so it is checked here, on the session, along with what a restore
+    hands back to the rest of the page: the map and the world popup are both
+    drawn from what was replaced, and must be asked for again.
+    """
+    try:
+        import drive_web
+        from console_model import Reply
+    except ImportError as exc:
+        SKIP.append(f"the snapshot popup ({type(exc).__name__})")
+        return
+
+    class Fake:
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append((name, arguments or {}))
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.snap_link, session.picture = Fake(), Fake()
+    sent = session.snap_link.sent
+    session.act({"do": "snapshots", "what": "open"})
+    check("opening the popup asks for the list", sent[-1][0], "snapshot_list")
+    row = {"id": "20261011-120000-abcd", "name": "before the drive",
+           "entities": 97, "observations": 821}
+    session.handle(Reply("snapshot_list", {}, {"ok": True, "snapshots": [row],
+                                              "free_bytes": 6e11}, 0.1))
+    state = session.snapshot()["snapshots"]
+    check("...and the list is served beside the state, not in it",
+          (state["count"], bool(state["gen"]), session.snap_rows), (1, True, [row]))
+
+    session.act({"do": "snapshots", "what": "save"})
+    check("save now takes one", sent[-1], ("snapshot_save", {"name": ""}))
+    session.act({"do": "snapshots", "what": "save"})
+    check("...and a second press while it runs is not sent",
+          [name for name, _ in sent].count("snapshot_save"), 1)
+    session.handle(Reply("snapshot_save", {}, {"ok": True, "snapshot": dict(
+        row, id="20261011-130000-beef", name="snapshot 2026-10-11 13:00")}, 1.4))
+    check("...and says what it kept", session.snapshot()["snapshots"]["note"],
+          "saved -- snapshot 2026-10-11 13:00: 97 things, 821 looks, 1 s")
+
+    sent.clear()
+    session.act({"do": "snapshots", "what": "restore", "id": row["id"]})
+    check("the first press of restore sends nothing", sent, [])
+    check("...and arms that row's restore",
+          session.snapshot()["snapshots"]["armed"],
+          {"what": "restore", "id": row["id"]})
+    session.act({"do": "snapshots", "what": "delete", "id": row["id"]})
+    check("a press of another act arms that one instead",
+          (sent, session.snapshot()["snapshots"]["armed"]["what"]), ([], "delete"))
+    session.busy_since = time.monotonic()
+    session.act({"do": "snapshots", "what": "restore", "id": row["id"]})
+    session.act({"do": "snapshots", "what": "restore", "id": row["id"]})
+    check("a restore is refused while the rover is moving",
+          (sent, "moving" in session.snapshot()["snapshots"]["error"]), ([], True))
+    session.busy_since = None
+    session.act({"do": "snapshots", "what": "restore", "id": row["id"]})
+    session.act({"do": "snapshots", "what": "restore", "id": row["id"]})
+    check("the second press restores", sent, [("snapshot_restore", {"id": row["id"]})])
+    check("...and the header says so", session.snapshot()["snapshots"]["doing"],
+          "restoring")
+
+    session.world_payload = {"entities": [{"id": "object:1"}]}
+    session.handle(Reply("snapshot_restore", {"id": row["id"]}, {
+        "ok": True, "restored": row, "map": {"here": False, "settled": True},
+        "world": {"entities": 97, "observations": 821},
+        "undo": {"name": "before restoring before the drive"}}, 6.2))
+    note = session.snapshot()["snapshots"]["note"]
+    check("a restore says where the rover was put and what came back",
+          note, "restored -- before the drive: rover placed where it stood then, "
+                "97 things, 821 looks; previous state kept as before restoring "
+                "before the drive -- 6 s")
+    check("...on the main page as well", session.snapshot()["notice"]["text"], note)
+    check("...and the map is drawn again",
+          [name for name, _ in session.picture.sent][-1], "map_png")
+    check("...and the world popup lets go of what was replaced",
+          session.world_payload, {})
+
+    session.act({"do": "snapshots", "what": "delete", "id": row["id"]})
+    session.act({"do": "snapshots", "what": "delete", "id": row["id"]})
+    session.handle(Reply("snapshot_delete", {}, {"ok": False,
+                                                 "error": "a snapshot is being "
+                                                          "saved or restored"}, 0.1))
+    check("a refusal is said on the error line",
+          session.snapshot()["snapshots"]["error"],
+          "a snapshot is being saved or restored")
+
 
 TESTS = (
     test_the_refit_button_says_what_happened,
+    test_the_snapshot_popup_names_arms_and_restores,
     test_web_console,
     test_the_depth_lamp_is_coloured_from_the_camera,
     test_stopping_an_unwatched_rover,

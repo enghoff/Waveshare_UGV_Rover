@@ -100,6 +100,8 @@ class SessionActions:
             self.wifi_join(str(action.get("ssid") or ""))
         elif what == "world":
             self.world_act(action)
+        elif what == "snapshots":
+            self.snap_act(action)
 
     def watch_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
         if self.watch is None:

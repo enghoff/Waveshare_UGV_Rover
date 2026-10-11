@@ -180,6 +180,11 @@ class RoverWorld:
         navigator = getattr(self, "nav", None)
         if navigator is None or self._world_ready():
             return
+        if getattr(self, "_world_restoring", False):
+            # A snapshot is being put back, and the map identity moves part way
+            # through it while the store still holds the rows it is about to
+            # replace. The restore asks this itself once both are back.
+            return
         try:
             told = navigator.status().get("map_id")
         except Exception:

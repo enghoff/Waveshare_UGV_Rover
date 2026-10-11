@@ -95,6 +95,22 @@ class HeadingCheck(object):
         self._heading = None
         self._xy = None
 
+    def forget(self):
+        """Start again as though no check had run.
+
+        For a rover whose place on the map was replaced rather than corrected --
+        a snapshot restored (rover_daemon/rover_snapshots.py) -- where the last
+        correction was measured from a pose the rover no longer holds, and the
+        jump would otherwise be counted as driving.
+        """
+        self.offset = None
+        self.misplaced = None
+        self.turned_deg = self.travelled_m = 0.0
+        self.last = None
+        self._checked = {}
+        self._heading = None
+        self._xy = None
+
     def saw(self, pose):
         """A pose the inspector read, so turning between looks is counted."""
         if not isinstance(pose, dict) or pose.get("heading_deg") is None:

@@ -1,6 +1,6 @@
 """The page itself: every pane its tabs offer, what scrolls, and what is served.
 
-The console is markup, a stylesheet and four scripts, so these read them as text.
+The console is markup, a stylesheet and five scripts, so these read them as text.
 A tab with no pane behind it and a popup that scrolls
 its whole body rather than its lists are both faults a browser would show and no
 other check would. So is a stylesheet the server does not know how to hand over,
@@ -60,16 +60,17 @@ def test_the_page_draws_every_pane_its_tabs_offer() -> None:
               f'id="{name}"' in html, True)
 
 
-def test_the_map_offers_two_acts_and_the_script_can_find_them_both() -> None:
-    """The map card had five controls and has two, and both of those do something.
+def test_the_map_offers_its_acts_and_the_script_can_find_them() -> None:
+    """The map card had five controls and has three, and each of them does something.
 
     Three went on 2026-09-05 and the argument was the popup's own: the map
     redraws itself every few seconds, so a "refresh" button could only ever fetch
     what the console had a moment ago; "describe surroundings" put into words
     what the picture above it was already showing; and turning the map to the
     rover's heading made the room swing under the reader on every turn. What is
-    left is the two things that are acts rather than views -- putting the rover
-    back on the map, and throwing the map away.
+    left is the things that are acts rather than views -- putting the rover back
+    on the map, throwing the map away, and, since 2026-10-11, the snapshots that
+    keep the map and the world so that throwing them away can be undone.
 
     The half of this worth automating is the other half: an element removed from
     the markup while the script still reaches for it is a page whose script dies
@@ -81,9 +82,10 @@ def test_the_map_offers_two_acts_and_the_script_can_find_them_both() -> None:
     html, js = _console("html"), _console("js")
     row = html[html.index('id="mapCard"'):html.index('id="cameraCard"')]
     buttons = re.findall(r'<button id="([A-Za-z]+)"', row)
-    check("the map card offers exactly two buttons", len(buttons), 2)
+    check("the map card offers exactly three buttons", len(buttons), 3)
     check("...one that fits the rover to the map", "refitPose" in buttons, True)
-    check("...and one that throws the map away", "clearMap" in buttons, True)
+    check("...one that throws the map away", "clearMap" in buttons, True)
+    check("...and one that keeps it and puts it back", "snapshots" in buttons, True)
     for gone in ("roverUp", "refreshMap", "describe"):
         check(f"nothing on the page is called {gone} any more",
               f'id="{gone}"' in html, False)
@@ -93,6 +95,27 @@ def test_the_map_offers_two_acts_and_the_script_can_find_them_both() -> None:
     for name in sorted(set(re.findall(r'\$\("([A-Za-z][A-Za-z0-9_]*)"\)', js))):
         check(f"the page has an element called {name}",
               f'id="{name}"' in html, True)
+
+def test_the_snapshot_popup_is_all_there_and_takes_no_key() -> None:
+    """Every element the snapshot script reaches for is in the markup, and the
+    popup leaves the keyboard to the stop key -- save a space typed into a name.
+
+    Restoring and deleting are armed on the server rather than confirmed in the
+    page: `confirm()` blocks the script that holds the stop button.
+    """
+    html, js = _console("html"), _console("snapshots.js")
+    for name in sorted(set(re.findall(r'\$\("([A-Za-z][A-Za-z0-9_]*)"\)', js))):
+        check(f"the page has an element called {name}",
+              f'id="{name}"' in html, True)
+    check("the snapshot popup asks nothing of a dialog", "confirm(" in js, False)
+    check("...and listens for no key but Enter in a name",
+          re.findall(r'event\.key === "([A-Za-z ]+)"', js), ["Enter"])
+    main = _console("js")
+    check("a space typed into a name is part of the name, not a stop",
+          'classList.contains("snap-name")' in main, True)
+    check("...and the page draws the popup and wires it",
+          ("drawSnapshots(next.snapshots)" in main, "wireSnapshots()" in main),
+          (True, True))
 
 
 def test_the_world_popup_scrolls_its_lists_not_its_body() -> None:
@@ -416,7 +439,8 @@ def test_the_page_brings_its_stylesheet_and_script_with_it() -> None:
                   ("/drive_world.js", "javascript", b"drawWorld"),
                   ("/drive_world_map.js", "javascript", b"drawWorldMap"),
                   ("/drive_world_observations.js", "javascript",
-                   b"drawWorldObservations"))
+                   b"drawWorldObservations"),
+                  ("/drive_snapshots.js", "javascript", b"drawSnapshots"))
         for path, kind, inside in wanted:
             connection.request("GET", path)
             reply = connection.getresponse()
@@ -432,8 +456,9 @@ def test_the_page_brings_its_stylesheet_and_script_with_it() -> None:
               'href="/drive_web.css"' in page, True)
         scripts = [page.index(f'src="/{name}"') for name in
                    ("drive_world.js", "drive_world_map.js",
-                    "drive_world_observations.js", "drive_web.js")]
-        check("...and loads every world module before the main script",
+                    "drive_world_observations.js", "drive_snapshots.js",
+                    "drive_web.js")]
+        check("...and loads every popup's module before the main script",
               scripts, sorted(scripts))
     finally:
         connection.close()
@@ -478,7 +503,7 @@ def test_the_console_is_written_in_the_encoding_it_is_served_in() -> None:
     here = os.path.dirname(os.path.abspath(__file__))
     for name in ("drive_web.html", "drive_web.css", "drive_web.js",
                  "drive_world.js", "drive_world_map.js",
-                 "drive_world_observations.js"):
+                 "drive_world_observations.js", "drive_snapshots.js"):
         with open(os.path.join(here, name), "rb") as handle:
             raw = handle.read()
         try:
@@ -496,7 +521,8 @@ TESTS = (
     test_the_console_is_written_in_the_encoding_it_is_served_in,
     test_the_evidence_bar_narrows_both_views_and_says_what_it_hid,
     test_the_thinning_keeps_the_best_placed_thing_of_each_patch,
-    test_the_map_offers_two_acts_and_the_script_can_find_them_both,
+    test_the_map_offers_its_acts_and_the_script_can_find_them,
+    test_the_snapshot_popup_is_all_there_and_takes_no_key,
     test_the_world_popup_scrolls_its_lists_not_its_body,
     test_the_observation_stream_is_tiled_and_opens_one_at_a_time,
     test_the_search_box_narrows_the_views_rather_than_owning_one,

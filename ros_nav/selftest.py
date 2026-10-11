@@ -39,6 +39,7 @@ from test_odometry import TESTS as ODOMETRY_TESTS
 from test_planning import TESTS as PLANNING_TESTS
 from test_refit import TESTS as REFIT_TESTS
 from test_scan import TESTS as SCAN_TESTS
+from test_snapshot import TESTS as SNAPSHOT_TESTS
 from test_way_round import TESTS as WAY_ROUND_TESTS
 
 
@@ -46,7 +47,8 @@ def main():
     for test in (*CHASSIS_TESTS, *ODOMETRY_TESTS, *SCAN_TESTS, *BRIDGE_TESTS,
                  *CONFIG_TESTS, *PLANNING_TESTS, *CONTROL_TESTS, *REFIT_TESTS,
                  *MAPRESTORE_TESTS, *MEASURE_TESTS, *AUTONOMY_GUARD_TESTS,
-                 *WAY_ROUND_TESTS, *CALIBRATE_TESTS, *CHANGE_WATCH_TESTS):
+                 *WAY_ROUND_TESTS, *CALIBRATE_TESTS, *CHANGE_WATCH_TESTS,
+                 *SNAPSHOT_TESTS):
         test()
     print("\n%d passed, %d failed" % (test_harness.PASSED, test_harness.FAILED))
     return 1 if test_harness.FAILED else 0

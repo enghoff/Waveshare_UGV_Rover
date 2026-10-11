@@ -68,7 +68,12 @@ ROS_NAV_PORT = 8773
 # client; LAN callers are still refused these code-execution calls.
 LOCAL_ONLY = ("run_script", "start_script", "script_stop", "list_api",
               # Writes a 200 MB copy of the world store to the rover's disk.
-              "world_snapshot")
+              "world_snapshot",
+              # The same copy and the map beside it, and the three acts on the
+              # copies that follow: one replaces the rover's map and world, one
+              # destroys a copy for good. See rover_snapshots.py.
+              "snapshot_save", "snapshot_restore", "snapshot_delete",
+              "snapshot_rename")
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
 

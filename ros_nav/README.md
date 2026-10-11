@@ -131,6 +131,29 @@ Use the daemon's `clear_map` call to start a new map. That also advances the
 world-state map session, so semantic placements from old coordinates are not
 treated as current positions.
 
+### Snapshots
+
+A snapshot (the daemon's `snapshot_save`, the console's "snapshots") keeps the map
+beside the world state measured in it, and the bridge does the map's half in
+[`nav_snapshot.py`](nav_snapshot.py). `{"op": "snapshot_map", "dir": ...}` has
+slam_toolbox serialise the graph it holds now into the snapshot's directory --
+not a copy of `~/.ugv/map/`, which a parked rover may not have rewritten for hours
+-- with a note naming the map, the pose and whether that pose was believed. The
+saved map is not touched. Only a directory directly under `~/.ugv/snapshots/` is
+accepted.
+
+`{"op": "restore_map", "dir": ...}` takes the move mutex, as `refit` does, and
+loads the snapshot's graph. On the map the rover is on now, with its place
+believed, the rover is kept where it is; otherwise it is put where the snapshot
+says it stood. Once the pose lands, the graph and note are installed as the saved
+map under the snapshot's identity (`mapstore.install`, the one replacement of the
+saved map by a different one besides `clear_map`), so a boot comes back to it.
+From there it is a restore like a boot's: a pose the mapper did not land on, or
+one the snapshot itself did not believe, leaves `map_settled` false, and the first
+look at the lidar is taken at once rather than in five minutes and withdraws
+"settled" where the scan does not lie on the map. A load that never lands leaves
+the saved map untouched.
+
 To save an additional visual map manually:
 
 ```bash

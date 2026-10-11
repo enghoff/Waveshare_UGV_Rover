@@ -463,6 +463,15 @@ The daemon exposes control calls on TCP 8769 for the console and diagnostics:
 - `world_inspect`
 - `world_state_check`
 
+The store is also kept and put back as part of a snapshot, beside the map it was
+measured in (`snapshot_save` and the rest, in
+[the daemon](../rover_daemon/README.md#snapshots)). [snapshot.py](snapshot.py) is
+this component's half: sqlite's own backup out and back into the live connection,
+the pictures shared by hard link -- which depends on a stored frame never being
+rewritten in place -- and the identifier counters kept so a name issued after the
+snapshot is never issued again, or a new generation where the store was cleared
+in between.
+
 There was a `world_map_session` here and it has been removed. It read as a
 question and was an instruction: every call minted a new session, which is to say
 it told the rover that everything it had located belonged to a map that no longer

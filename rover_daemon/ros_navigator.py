@@ -72,6 +72,11 @@ STOP_TIMEOUT_S = 3.0
 # minute in the worst case. The bridge has its own thirty-second limit on each of
 # those two, so this is the point at which a silent socket is a dead bridge.
 REFIT_TIMEOUT_S = 90.0
+# A snapshot's copy of the graph is one serialisation, which the bridge allows
+# thirty seconds; putting one back is a deserialisation with the same allowance
+# and then up to a minute for the rover's pose to land (nav_map.LANDED_S).
+SNAPSHOT_MAP_TIMEOUT_S = 45.0
+RESTORE_MAP_TIMEOUT_S = 120.0
 # A move is answered by Nav2 when Nav2 is done, and a long route across a house
 # legitimately takes minutes. This is not a schedule -- the bridge has its own
 # time allowance per goal, worked out from the goal -- it is the point at which a
@@ -686,6 +691,47 @@ class RosNavigator:
         answer.pop("ok", None)
         answer.setdefault("fitted", False)
         answer.setdefault("why", "")
+        return answer
+
+    def snapshot_map(self, directory: str) -> dict[str, Any]:
+        """Have the graph the mapper holds now written into a snapshot's directory.
+
+        Answers with `saved` and the note written beside the graph -- the map's
+        identity, where the rover was and whether that was believed -- or with
+        `saved` false and why. Nothing about the saved map changes.
+        """
+        answer = self.ask({"op": "snapshot_map", "dir": directory},
+                          SNAPSHOT_MAP_TIMEOUT_S)
+        answer.pop("kind", None)
+        if not answer.pop("ok", False):
+            answer["saved"] = False
+            answer["why"] = str(answer.get("why") or answer.get("error")
+                                or "the navigation stack did not answer")
+        return answer
+
+    def restore_map(self, directory: str,
+                    here: bool | None = None) -> dict[str, Any]:
+        """Make a snapshot's graph the map, and put the rover on it.
+
+        `here` keeps the rover where it is (only on the same map), False puts it
+        where the snapshot says it stood, None lets the bridge decide; see
+        ros_nav/nav_snapshot.py. `touched` in the answer says whether the mapper
+        was asked to load anything, which is what separates a refusal from a
+        load that went wrong.
+        """
+        request: dict[str, Any] = {"op": "restore_map", "dir": directory}
+        if here is not None:
+            request["here"] = bool(here)
+        answer = self.ask(request, RESTORE_MAP_TIMEOUT_S)
+        answer.pop("kind", None)
+        if not answer.pop("ok", False):
+            answer["restored"] = False
+            # A bridge that did not answer at all may have been part way through
+            # a load, so it counts as touched: the caller then keeps what it made
+            # to undo this rather than tidying it away.
+            answer.setdefault("touched", "error" in answer)
+            answer["why"] = str(answer.get("why") or answer.get("error")
+                                or "the navigation stack did not answer")
         return answer
 
     def reset_lidar(self) -> dict[str, Any]:

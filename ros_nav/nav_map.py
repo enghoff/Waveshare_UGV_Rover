@@ -681,12 +681,14 @@ class NavMap:
         with self.map_lock:
             return self.saved.note_pose(self.map_id, self.pose_deg(), odom)
 
-    def load_graph(self, pose, drop_trail=False):
+    def load_graph(self, pose, drop_trail=False, stem=None):
         """Load the saved graph and put the rover on it near `pose`.
 
         Returns `(ok, why, landed)`. `pose` is `(x_m, y_m, heading_deg)` in the
         map frame, and `landed` is where the rover's own transform actually
-        arrived -- None if it never arrived at all.
+        arrived -- None if it never arrived at all. `stem` is a graph kept
+        somewhere other than the saved map -- a snapshot's, in nav_snapshot.py --
+        and the saved map's own when left out.
 
         **`landed` is the difference between a map that could not be read and a
         map that was read and anchored badly, and conflating those two cost the
@@ -726,7 +728,7 @@ class NavMap:
             # than passing for landed -- see `MOVED_S`.
             before = self.pose_deg()
             request = DeserializePoseGraph.Request()
-            request.filename = self.saved.stem
+            request.filename = self.saved.stem if stem is None else stem
             request.match_type = request.START_AT_GIVEN_POSE
             request.initial_pose.x = float(pose[0])
             request.initial_pose.y = float(pose[1])

@@ -15,6 +15,7 @@ from rover_camera import RoverCamera, VisionLink
 from rover_depth import RoverDepth
 from rover_nav import CAMERA_FOV_DEG, RoverNav
 from rover_recall import RoverRecall
+from rover_snapshots import RoverSnapshots
 from rover_util import _level      # noqa: F401
 from rover_wifi import RoverWifi
 from rover_world import RoverWorld
@@ -66,7 +67,7 @@ def approach_settle_s(was: float | None, below: float) -> float:
 
 
 class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDepth,
-            RoverAutonomy):
+            RoverAutonomy, RoverSnapshots):
     """The rover's state and everything that may be done to it.
 
     One lock covers the board and the model of where things are pointed. The

@@ -104,6 +104,9 @@ from nav_explore import NavExplore
 # and `refit.py` beside it.
 from nav_map import NavMap
 from nav_moves import NavMoves
+# And the map's half of a snapshot: the graph copied out beside the world state,
+# and a kept one loaded back. See nav_snapshot.py.
+from nav_snapshot import NavSnapshot
 # And likewise: where the rover has been is a list and a rule about when the
 # coordinates in it mean anything, neither of which needs ROS -- see trail.py for
 # the clear that put a straight 5 m line through the middle of the map.
@@ -116,7 +119,7 @@ HOST = "127.0.0.1"
 PORT = 8773
 
 
-class NavBridge(NavMoves, NavExplore, NavMap, Node):
+class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, Node):
     """Everything the daemon needs to know about, kept current by subscription.
 
     The node holds no navigation logic. It caches what arrives -- the map, the
@@ -767,6 +770,20 @@ class Handler(socketserver.StreamRequestHandler):
                 window_deg=_maybe(request.get("window_deg")),
                 min_score=_maybe(request.get("min_score")))
             self.write({"kind": "reply", "ok": True, **result})
+        elif op == "snapshot_map":
+            # The graph as it is now, into a snapshot's directory. Seconds on a
+            # large graph, like a save, and it moves nothing.
+            result = node.snapshot_map(str(request.get("dir") or ""))
+            self.write({"kind": "reply", "ok": bool(result.get("saved")),
+                        **result})
+        elif op == "restore_map":
+            # A snapshot's graph made the map. Takes the move mutex like `refit`,
+            # and can take a minute: the load waits for the rover's pose to land.
+            here = request.get("here")
+            result = node.restore_map(str(request.get("dir") or ""),
+                                      None if here is None else bool(here))
+            self.write({"kind": "reply", "ok": bool(result.get("restored")),
+                        **result})
         elif op == "live_layer":
             # Read, or with "enabled", switch the planner's live obstacle layer.
             # Not a move, and quick.
