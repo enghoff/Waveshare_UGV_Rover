@@ -69,6 +69,15 @@ MIN_CELLS = 6
 LARGE_M = 0.6
 MIN_RANGE_M = 0.12
 MAX_RANGE_M = 6.0
+#: **Only the scan within this range is counted.** Further out a degree and a
+#: quarter of heading moves a beam past SLACK_CELLS, and a wall seen edge-on
+#: from across a room is "seen through": on 2026-10-11 a corridor wall was
+#: reported gone from 4.5 m away. Replayed through both days at 4.5 m, every
+#: scan still judged against the map out to MAX_RANGE_M, the controls stayed
+#: clean and scene 1 gave up that wall and gained two of its true changes at
+#: furniture size, among them where an armchair had stood; at 3.5 m control 1
+#: reported a wall gone, at 5 m the corridor wall came back.
+TALLY_MAX_M = 4.5
 STEP_M = RES_M / 2.0
 #: **A scan has to fit what the watch already knows before it is counted.** Of
 #: its hits that land where something is already known -- solid, or seen
@@ -258,8 +267,11 @@ class ChangeWatch:
         if not self._fits(hits):
             self.refused += 1
             return False
-        steps = np.arange(int(np.max(r) / STEP_M) + 1) * STEP_M + STEP_M
-        inside = steps[None, :] < (r - self.res)[:, None]
+        if TALLY_MAX_M < MAX_RANGE_M:
+            near = r < TALLY_MAX_M
+            hits = self._cells(x + r[near] * np.cos(a[near]), y + r[near] * np.sin(a[near]))
+        steps = np.arange(int(min(np.max(r), TALLY_MAX_M) / STEP_M) + 1) * STEP_M + STEP_M
+        inside = steps[None, :] < np.minimum(r - self.res, TALLY_MAX_M)[:, None]
         px = x + steps[None, :] * np.cos(a)[:, None]
         py = y + steps[None, :] * np.sin(a)[:, None]
         passes = self._cells(px[inside], py[inside])

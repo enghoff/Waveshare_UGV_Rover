@@ -151,7 +151,10 @@ Every 5 cm cell of the map keeps two tallies, one for the visit in progress and
 one for the visit before it: in how many scans a beam ended in the cell and in
 how many one passed through (`change_watch.py`). A visit to a cell ends after
 five minutes unseen. A cell solid in one visit and seen through in the other has
-changed, with 10 cm of slack for the pose; changed cells are grouped, and a group
+changed, with 10 cm of slack for the pose, and only the scan within 4.5 m is
+counted: further out a degree and a quarter of heading is more than the slack,
+and on 2026-10-11 a corridor wall seen edge-on from across the living room read
+as seen through. Changed cells are grouped, and a group
 is reported once its evidence spans 20 s, so a person walking past is not one,
 and was gathered from places at least 0.5 m apart. On 2026-10-11 the rover stood
 27 s with its pose 10 cm and 3 degrees out and beams running along a hall wall

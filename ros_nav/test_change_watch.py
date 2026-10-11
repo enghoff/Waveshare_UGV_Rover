@@ -211,6 +211,24 @@ def test_a_change_is_news_once() -> None:
           [g["large"] for g in logged], [False, True])
 
 
+def test_what_lies_far_off_is_not_counted() -> None:
+    """**2026-10-11, 14:31: a corridor wall reported gone from 4.5 m away.**
+    Beams running along a wall edge-on from across a room pass through its face
+    with a degree of heading, so a wall seen that way from far off reads as
+    seen through. Within 4.5 m a degree and a quarter stays inside the 10 cm of
+    slack; beyond it the scan is not counted, hits or passes."""
+    section("the scan beyond 4.5 m")
+    watch = new_watch()
+    watch.add_scan(0.3, 2.0, 0.0, scan(0.3, 2.0, 0.0, ROOM), BEAMS, 0.0)
+
+    def cell(x, y):
+        return (int((y - watch.y0) / watch.res), int((x - watch.x0) / watch.res))
+    check("floor 3 m off is seen through", watch.cur_pass[cell(3.3, 2.02)] > 0, True)
+    check("...floor 5 m off is not", int(watch.cur_pass[cell(5.3, 2.02)]), 0)
+    check("...nor the wall 5.7 m off", int(watch.cur_hits[cell(5.99, 2.02)]), 0)
+    check("the wall beside it is", watch.cur_hits[cell(0.01, 2.02)] > 0, True)
+
+
 def visit_misplaced(watch, segments, t0, dx, dy, dturn_deg, seconds=60.0):
     """A visit scanned truly but laid on the map at a pose that is off -- the
     rover moved by hand, or a restore that put it the wrong way round, while
@@ -359,6 +377,7 @@ def test_a_scan_that_misses_the_map_is_refused() -> None:
 
 
 TESTS = (
+    test_what_lies_far_off_is_not_counted,
     test_a_scan_that_misses_the_map_is_refused,
     test_a_change_seen_from_one_place_is_not_reported,
     test_a_scan_from_before_the_clock_was_set_is_not_counted,
