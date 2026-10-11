@@ -76,20 +76,25 @@ def main():
     if report.get("at", 0) < end:
         print("  (its last report is older than the end of the window: run again in 30 s)")
     # The watch logs a group again when it drops out of one report and comes back
-    # in a later one, so the same change, the same kind within 0.3 m, counts once.
+    # in a later one, so the same change, the same kind within 0.3 m, counts once;
+    # and again when it grows to furniture size, which then counts in its place.
     counted = []
     for row in logged:
-        again = any(c["kind"] == row["kind"] and math.hypot(c["x_m"] - row["x_m"],
-                                                            c["y_m"] - row["y_m"]) < 0.3
-                    for c in counted)
-        if not again:
+        same = [i for i, c in enumerate(counted)
+                if c["kind"] == row["kind"]
+                and math.hypot(c["x_m"] - row["x_m"], c["y_m"] - row["y_m"]) < 0.3]
+        again = bool(same)
+        if not same:
             counted.append(row)
+        elif row["large"] and not counted[same[0]]["large"]:
+            counted[same[0]] = row
         print("%s  %-4s %-9s at (%6.2f, %6.2f)  %.2f m across, %.3f m2; seen so from %s, "
               "otherwise at %s%s"
               % (clock(row["logged_at"]), row["kind"],
                  "FURNITURE" if row["large"] else "small", row["x_m"], row["y_m"],
                  row["extent_m"], row["area_m2"], clock(row["seen_from"]),
-                 clock(row.get("was_otherwise_at")), "  (again)" if again else ""))
+                 clock(row.get("was_otherwise_at")),
+                 ("  (grown)" if row in counted else "  (again)") if again else ""))
     logged = counted
     large = [r for r in logged if r["large"]]
     print("%d furniture-sized change%s logged, %d smaller"

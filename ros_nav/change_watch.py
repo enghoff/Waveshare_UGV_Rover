@@ -89,10 +89,12 @@ FIT_REFRESH_SCANS = 30
 #: and the watch logged a wall new and two lengths of bed gone. Of the hits
 #: beyond MAP_FIT_FAR_M -- walls, mostly; what is near is what moves -- at least
 #: MAP_FIT_MIN must land within MAP_FIT_SLACK_CELLS of what the mapper calls
-#: occupied. On that day's recordings good poses fitted at a median of 0.95 to
-#: 1.0, with at most 2% of scans under 0.6; armchairs moved to beside the rover
-#: at 0.87; the bad bedroom pose at 0.41.
-MAP_FIT_MIN = 0.6
+#: occupied. On the two days' recordings good poses fitted at a median of 0.94
+#: to 1.0, with 1.5% of scans under 0.7; armchairs moved to beside the rover at
+#: 0.93 and above. The bad bedroom pose fitted at 0.63 to 0.67 for the half minute before
+#: the mapper's correction and 0.45 after it, and the reports came from the
+#: half minute before: a gate at 0.6, as first set, let them through.
+MAP_FIT_MIN = 0.7
 MAP_FIT_FAR_M = 1.5
 MAP_FIT_SLACK_CELLS = 2
 MAP_FIT_MIN_HITS = 20
@@ -369,10 +371,15 @@ class ChangeWatch:
     def first_seen(found, already, near_m=0.3):
         """The groups in `found` not already reported: no group in `already` of
         the same kind within `near_m`. A group grows and shifts a little as the
-        visit goes on, and the same armchair must not be news every report."""
+        visit goes on, and the same armchair must not be news every report.
+        But one reported small that has grown to furniture size is news again:
+        on 2026-10-10 an armchair's old place was logged small and had grown to
+        0.95 m by the end of the run, and the count, which takes the
+        furniture-sized changes from the log, never saw it."""
         fresh = []
         for g in found:
             if not any(o["kind"] == g["kind"]
+                       and (o.get("large", True) or not g.get("large", False))
                        and math.hypot(o["x_m"] - g["x_m"], o["y_m"] - g["y_m"]) <= near_m
                        for o in already):
                 fresh.append(g)

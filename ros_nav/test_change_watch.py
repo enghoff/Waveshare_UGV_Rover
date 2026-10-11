@@ -198,6 +198,17 @@ def test_a_change_is_news_once() -> None:
           len(logged), 1)
     check("...but logged again after an hour",
           cw.ChangeWatch.news([moved], [], logged, 3700.0), [moved])
+    # 2026-10-10: an armchair's old place logged small, 0.95 m by the run's end.
+    small = dict(a, extent_m=0.3, large=False)
+    grown = dict(a, x_m=1.15, extent_m=0.95, large=True)
+    logged, previous = [], []
+    for at, found in ((0.0, [small]), (30.0, [grown]), (60.0, [dict(grown, x_m=1.2)]),
+                      (90.0, [dict(small, x_m=1.2)]), (120.0, [grown])):
+        for g in cw.ChangeWatch.news(found, previous, logged, at):
+            logged.append(dict(g, logged_at=at))
+        previous = found
+    check("a change logged small is logged again once it is furniture-sized, and only once",
+          [g["large"] for g in logged], [False, True])
 
 
 def visit_misplaced(watch, segments, t0, dx, dy, dturn_deg, seconds=60.0):
@@ -318,9 +329,10 @@ def test_a_scan_that_misses_the_map_is_refused() -> None:
     watch's own check judges a scan against what the watch has seen, and a
     bedroom seen all day was solid near enough everywhere to let the bad scans
     through: a 1.55 m wall "new", two lengths of bed "gone". Against the
-    mapper's map the hits beyond 1.5 m, the walls, fitted at 0.41 where good
-    poses all day fitted at 0.95 to 1.0 and moved armchairs beside the rover at
-    0.87. A scan whose far hits mostly miss the map is refused."""
+    mapper's map the hits beyond 1.5 m, the walls, fitted at 0.63 to 0.67 for
+    the half minute the reports came from, where good poses fitted at a median
+    of 0.94 to 1.0 and moved armchairs beside the rover at 0.93 and above. A
+    scan whose far hits do not mostly land on the map is refused."""
     section("a scan that misses the mapper's walls")
     watch = new_watch()
     watch.set_map(*walls_grid(ROOM))
@@ -330,6 +342,13 @@ def test_a_scan_that_misses_the_map_is_refused() -> None:
     check("0.6 m and 10 degrees out, most scans are refused", refused > 0.8 * n, True)
     check("...as missing the map", watch.off_map > 0.8 * n, True)
     check("...and nothing is reported", kinds(watch.changes()), [])
+    # The bedroom's scans before the correction: two in three on the walls.
+    on = np.linspace(0.5, 5.5, 65)
+    off = np.linspace(1.0, 5.0, 35)
+    xs, ys = np.concatenate([on, off]), np.concatenate([np.zeros(65), np.full(35, 2.0)])
+    check("far hits two in three on the walls are refused", watch._on_map(xs, ys), False)
+    xs, ys = np.concatenate([on, off[:15]]), np.concatenate([np.zeros(65), np.full(15, 2.0)])
+    check("...four in five are taken", watch._on_map(xs, ys), True)
     watch = new_watch()
     watch.set_map(*walls_grid(ROOM))
     visit(watch, ROOM + box(2.0, 2.0), t0=0.0)

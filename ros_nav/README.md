@@ -172,7 +172,15 @@ quarter of an hour and the watch logged the charger room as changed. So each sca
 must also fit what the watch already knows, at least 60% of the hits that land on
 known cells landing on solid ones, and one that does not is refused and counted.
 Replayed 0.6 m and 20 degrees out, every scan of a 15-minute run was refused; at
-the true pose, 10 in 3,169. A scan dated more than a minute before the newest
+the true pose, 10 in 3,169. Nor was that enough: a room seen all day is solid
+near enough everywhere, and on 2026-10-11 the pose went half a metre out
+entering the bedroom and the watch logged a wall new and the bed gone. So a scan
+must also fit the mapper's own map, at least 70% of its hits beyond 1.5 m (the
+walls, mostly; what is near is what moves) within 10 cm of what the mapper calls
+occupied, and is otherwise refused and counted as `off_map`. Good poses on the
+two days' recordings fitted at a median of 0.94 to 1.0 with 1.5% of scans under
+0.7; the bedroom's bad pose fitted at 0.63 to 0.67, which a first gate at 0.6
+let through. A scan dated more than a minute before the newest
 it holds is set aside as well: after the power has been off the rover's clock
 reads 1970 until the network sets it, and on 2026-10-11 that minute's scans had
 joined the last visit and dated it 1970. It takes every third scan not turning faster than 40 degrees a second,
@@ -182,7 +190,9 @@ tallies, every two minutes and at exit), `<map_id>.json` (the changes found,
 every 30 s), which the bridge's `changes` op returns, and `<map_id>.log.jsonl`,
 each change once, when it is first found, which is what a run's changes are
 counted from afterwards; a change that drops out of a report and comes back is
-not logged again for an hour. It moves nothing, publishes
+not logged again for an hour, and one first logged small is logged again once it
+has grown to furniture size, which `experiments/m5_changes/control_count.py`
+then counts in its place. It moves nothing, publishes
 nothing, and nothing in the stack reads it, so it can stop without taking
 anything with it. It sees one plane about 20 cm up: paintings, table tops and
 shoes are not in it.
