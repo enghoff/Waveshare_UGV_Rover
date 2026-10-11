@@ -234,7 +234,36 @@ def test_a_scan_laid_at_the_wrong_pose_is_refused() -> None:
           ["GONE", "NEW"])
 
 
+def test_a_scan_from_before_the_clock_was_set_is_not_counted() -> None:
+    """**2026-10-11, 07:56: a change "otherwise at" 95.8 seconds after 1970.** The
+    rover's clock starts at 1970 after its power has been off and is set from
+    the network a minute or so after boot. The watch, loaded from disk, counted
+    that minute's scans into the visit it remembered -- they were not "more than
+    300 s" after it, but 56 years before -- and once the clock was set, closed
+    that visit as the reference with the 1970 time on it. A scan dated before
+    what the watch already holds is a clock that is wrong, not a visit."""
+    import os
+    import tempfile
+    section("a boot before the clock is set")
+    day = 1791600000.0
+    watch = new_watch()
+    visit(watch, ROOM + box(2.0, 2.0), t0=day)
+    path = os.path.join(tempfile.mkdtemp(), "watch.npz")
+    watch.save(path, map_id="abc")
+    back, _ = cw.ChangeWatch.load(path)
+    visit(back, ROOM + box(4.0, 2.0), t0=60.0, seconds=20.0)
+    check("the minute before the clock is set counts nothing", back.scans, watch.scans)
+    check("...and says so", back.stale, 60)
+    visit(back, ROOM + box(4.0, 2.0), t0=day + 43200.0)
+    found = back.changes(large_only=True)
+    check("the move is still found once it is", sorted(c["kind"] for c in found),
+          ["GONE", "NEW"])
+    check("...against the visit before, at the time it ended",
+          min(c["was_otherwise_at"] for c in found) >= day, True)
+
+
 TESTS = (
+    test_a_scan_from_before_the_clock_was_set_is_not_counted,
     test_a_scan_laid_at_the_wrong_pose_is_refused,
     test_a_change_is_news_once,
     test_a_map_that_grows_keeps_what_was_learned,

@@ -41,6 +41,9 @@ RES_M = 0.05
 #: Long enough that a run moving about one room keeps one visit of it; short
 #: enough that the next run, or the owner's next arrangement, is a new one.
 VISIT_GAP_S = 300.0
+#: How far a scan's time may run back behind the newest the watch holds -- a
+#: network clock correction -- before it is taken for a clock not yet set.
+CLOCK_SLACK_S = 60.0
 MIN_OBS = 6
 SOLID = 0.6
 CLEAR = 0.1
@@ -124,6 +127,8 @@ class ChangeWatch:
         self.ref_time = np.full(shape, np.nan)
         self.scans = 0
         self.refused = 0
+        self.stale = 0
+        self._newest = None
         self._known = None
         self._known_age = 0
 
@@ -171,7 +176,19 @@ class ChangeWatch:
 
         `angles` are each beam's direction in the rover's frame. Each cell is
         counted once per scan however many beams fell in it, so that a near wall
-        does not outvote a far one."""
+        does not outvote a far one.
+
+        A scan dated more than CLOCK_SLACK_S before the newest one the watch
+        holds is not counted (None, and counted in `stale`): the rover's clock
+        reads 1970 for the first minute or so after its power has been off, and
+        such a scan would join the visit before it and date that visit 1970."""
+        if self._newest is None:
+            seen = self.cur_last[np.isfinite(self.cur_last)]
+            self._newest = float(seen.max()) if seen.size else -np.inf
+        if t < self._newest - CLOCK_SLACK_S:
+            self.stale += 1
+            return None
+        self._newest = max(self._newest, t)
         r = np.asarray(ranges, dtype=float)
         a = np.asarray(angles, dtype=float)
         ok = np.isfinite(r) & (r > MIN_RANGE_M) & (r < MAX_RANGE_M)

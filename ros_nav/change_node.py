@@ -19,7 +19,9 @@ pause, and says so in the report. So is navigation's drift check finding the
 scan fitting better somewhere else. Neither is enough alone: on 2026-10-10 a
 restore 170 degrees out stayed settled for a quarter of an hour, so each scan
 must also fit what the watch already knows (`change_watch.FIT_MIN`), and one
-that does not is refused and counted.
+that does not is refused and counted. A scan dated before what the watch
+already holds -- the minute after a cold boot, while the clock reads 1970 -- is
+set aside too, and counted in the report's `before_clock_set`.
 
 **What it writes.** `~/.ugv/changes/<map_id>.npz`, the tallies, every two
 minutes and at exit, so that the last visit survives a restart and a reboot;
@@ -181,9 +183,10 @@ class ChangeNode(Node):
         self.last_yaw = (stamp, yaw)
         n = len(msg.ranges)
         angles = [msg.angle_min + msg.angle_increment * i for i in range(n)]
-        if self.watch.add_scan(t.x, t.y, yaw, msg.ranges, angles, stamp) is False:
+        added = self.watch.add_scan(t.x, t.y, yaw, msg.ranges, angles, stamp)
+        if added is False:
             self.refused += 1
-        else:
+        elif added:
             self.fed += 1
 
     # --- what it writes ------------------------------------------------------
@@ -203,7 +206,7 @@ class ChangeNode(Node):
         report = {"map_id": self.map_id, "at": time.time(),
                   "counting": self.believed, "paused": self.why_paused,
                   "scans": self.watch.scans, "refused": self.watch.refused,
-                  "changes": found}
+                  "before_clock_set": self.watch.stale, "changes": found}
         tmp = self.path("json") + ".tmp"
         with open(tmp, "w") as out:
             json.dump(report, out)
