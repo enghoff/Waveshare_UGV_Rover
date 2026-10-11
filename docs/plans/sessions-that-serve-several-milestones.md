@@ -69,12 +69,15 @@ they need paired trials.
 
 ## What has to exist first
 
-All of it offline, on the recordings of 2026-10-10 and 11:
+What could be done offline, on the recordings of 2026-10-10 and 11, is done;
+what is left needs the owner's word or the shakedown.
 
 - **The counts agreed**: what counts as found, a false alarm and its budget,
   and the benchmark's questions and minimum improvement, all
   [proposed](../decisions/m5-sessions-are-counted-before-they-start.md) and
-  waiting on the owner; then the session script counts them by script.
+  waiting on the owner. The scripts that count them are written and tried on
+  scene 1 (`score_session.py`, and `arm_replay.py` for each arm on its own
+  scans).
 - **The session script on the floor.** It is written
   ([`session.py`](../../experiments/m5_changes/README.md)) and its route
   planned leg by leg clear of the rug, 33 m for both loops; it has not yet
