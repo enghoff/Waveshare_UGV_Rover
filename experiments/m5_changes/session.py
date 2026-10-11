@@ -101,6 +101,17 @@ def note(name, step, **what):
     return record
 
 
+def report():
+    """The change watch's current report, trimmed to the changes: kept at the end
+    of every step, because whether a change held up once its place was seen from
+    another viewpoint is read from the next step's (the counts' decision)."""
+    r = bridge({"op": "changes"})
+    return {"at": r.get("at"), "counting": r.get("counting"),
+            "changes": [{k: c.get(k) for k in ("kind", "x_m", "y_m", "extent_m", "large",
+                                               "seen_from", "seen_until")}
+                        for c in r.get("changes") or []]}
+
+
 def stopped(name):
     return os.path.exists(path_of(name, ".stop"))
 
@@ -179,7 +190,7 @@ def loop(name, which):
             drive(name, step, label, x, y)
         time.sleep(DWELL_S)
         note(name, step, viewpoint=label, **pose_check())
-    note(name, step, end=True, battery=battery())
+    note(name, step, end=True, battery=battery(), report=report())
 
 
 def start(name):
@@ -187,9 +198,9 @@ def start(name):
         raise SystemExit("a session called %s is already recorded; pick another name" % name)
     check = pose_check()
     pct = battery()
-    report = bridge({"op": "changes"}).get("report", {})
-    note(name, "start", battery=pct, watch_counting=report.get("counting"),
-         watch_paused=report.get("paused"), **check)
+    watch = bridge({"op": "changes"})
+    note(name, "start", battery=pct, watch_counting=watch.get("counting"),
+         watch_paused=watch.get("paused"), **check)
     if not (check["trusted"] and check["settled"]):
         raise SystemExit("navigation does not trust its position: refit or turn first")
     # The map as the session found it, so that a pose that goes wrong can be
@@ -220,7 +231,15 @@ def wait(name, minutes=20.0):
     while time.time() - t0 < 60 * minutes and not os.path.exists(path_of(name, ".go")) \
             and not stopped(name):
         time.sleep(5)
-    note(name, "wait", end=True, waited_s=round(time.time() - t0), battery=battery())
+    # What the watch knows when the owner has finished staging, which is where
+    # both arms of the benchmark start from when each is replayed on its own
+    # scans (the counts' decision).
+    nav = call("nav_status")
+    tallies = os.path.expanduser("~/.ugv/changes/%s.npz" % nav.get("map_id"))
+    if os.path.exists(tallies):
+        shutil.copy2(tallies, path_of(name, "-watch-after-wait.npz"))
+    note(name, "wait", end=True, waited_s=round(time.time() - t0), battery=battery(),
+         report=report())
 
 
 def run(name, minutes=10.0):
@@ -250,7 +269,8 @@ def run(name, minutes=10.0):
                 break
         time.sleep(5)
     st = call("autonomy_status")
-    note(name, "run", end=True, run=run_id, why=str(st.get("why") or (st.get("run") or {}).get("ended"))[:300],
+    note(name, "run", end=True, run=run_id, report=report(),
+         why=str(st.get("why") or (st.get("run") or {}).get("ended"))[:300],
          spent=(st.get("run") or {}).get("spent"), battery=battery())
 
 
