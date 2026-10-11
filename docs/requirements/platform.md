@@ -157,10 +157,10 @@ and the host. See
 <a id="r-plat-12"></a>
 ### R-PLAT-12 — The map, the world state measured in it and the rover's place on it are kept and put back together
 
-- **State:** open
-- **Blocked by:** a save and a restore on the rover itself, with the rover's
-  pose, map identity and world counts read back over TCP 8769 afterwards and
-  again after a restart of the navigation stack
+- **State:** settled
+- **Evidence:** [../progress/2026-10-11-snapshots-on-the-rover.md](../progress/2026-10-11-snapshots-on-the-rover.md);
+  `rover_daemon/test_snapshots.py`, `ros_nav/test_snapshot.py`,
+  `world_state/test_snapshot.py`
 
 The world state is positions in the SLAM map's frame and bearings from poses in
 it, so a copy of one without the other is a room full of things in the wrong
@@ -172,9 +172,9 @@ or if a boot after a restore comes back to a different map from the one restored
 <a id="r-plat-13"></a>
 ### R-PLAT-13 — Restoring a snapshot keeps the state it replaces
 
-- **State:** open
-- **Blocked by:** the same restore on the rover as [R-PLAT-12](#r-plat-12),
-  undone by restoring the snapshot it kept
+- **State:** settled
+- **Evidence:** [../progress/2026-10-11-snapshots-on-the-rover.md](../progress/2026-10-11-snapshots-on-the-rover.md);
+  `rover_daemon/test_snapshots.py`
 
 A restore replaces the map and the world state at once, and either may be all
 there is of a morning's mapping. So the state as it stands is kept as a snapshot

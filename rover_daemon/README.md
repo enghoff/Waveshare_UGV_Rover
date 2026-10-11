@@ -65,7 +65,9 @@ that was believed, the occupancy grid, and the change watch's tallies for that
 map. One directory each under `~/.ugv/snapshots/<id>/`, with `snapshot.json`
 written last; see [`rover_snapshots.py`](rover_snapshots.py) for the layout. The
 pictures are hard links to the store's own write-once files, so a snapshot costs
-about the size of the database and takes a second or two, most of it the graph.
+its database and its graph: 607 MB and 9.6 s on 2026-10-11, about 7 s of it
+slam_toolbox writing a 264 MB graph, and a restore about 25 s
+([measured](../docs/progress/2026-10-11-snapshots-on-the-rover.md)).
 
 | Call | Does |
 |---|---|
