@@ -16,6 +16,7 @@ import argparse
 import datetime as dt
 import glob
 import json
+import math
 import os
 import time
 
@@ -74,13 +75,22 @@ def main():
              report.get("scans", 0), report.get("refused", 0), clock(report.get("at"))))
     if report.get("at", 0) < end:
         print("  (its last report is older than the end of the window: run again in 30 s)")
+    # The watch logs a group again when it drops out of one report and comes back
+    # in a later one, so the same change, the same kind within 0.3 m, counts once.
+    counted = []
     for row in logged:
+        again = any(c["kind"] == row["kind"] and math.hypot(c["x_m"] - row["x_m"],
+                                                            c["y_m"] - row["y_m"]) < 0.3
+                    for c in counted)
+        if not again:
+            counted.append(row)
         print("%s  %-4s %-9s at (%6.2f, %6.2f)  %.2f m across, %.3f m2; seen so from %s, "
-              "otherwise at %s"
+              "otherwise at %s%s"
               % (clock(row["logged_at"]), row["kind"],
                  "FURNITURE" if row["large"] else "small", row["x_m"], row["y_m"],
                  row["extent_m"], row["area_m2"], clock(row["seen_from"]),
-                 clock(row.get("was_otherwise_at"))))
+                 clock(row.get("was_otherwise_at")), "  (again)" if again else ""))
+    logged = counted
     large = [r for r in logged if r["large"]]
     print("%d furniture-sized change%s logged, %d smaller"
           % (len(large), "" if len(large) == 1 else "s", len(logged) - len(large)))
