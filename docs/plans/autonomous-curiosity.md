@@ -992,7 +992,9 @@ session 20. What is ahead, in order:
    each, counted from the change log: a change of furniture size in any of
    them is a false alarm. Control 1 (2026-10-11,
    [the run](../progress/2026-10-11-m5-control-1.md)) logged none; doors,
-   which do move, are named beside the count.
+   which do move, are named beside the count. Control 3 logged one false
+   alarm, a pose a little wrong; a change now has to be seen from two places
+   ([controls 2 to 4](../progress/2026-10-11-m5-controls-2-to-4.md)).
 2. **A first scripted scene.** The owner moves two or three large things, the
    armchair by the window, a bean bag, a floor lamp, within their rooms between
    two runs, and puts them back before a third: each should be reported gone
