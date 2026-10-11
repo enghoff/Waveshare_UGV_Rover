@@ -995,6 +995,9 @@ session 20. What is ahead, in order:
    which do move, are named beside the count. Control 3 logged one false
    alarm, a pose a little wrong; a change now has to be seen from two places
    ([controls 2 to 4](../progress/2026-10-11-m5-controls-2-to-4.md)).
+   Two clean controls on the fix, a third if anything looks wrong, and M5
+   goes on to the scene ([agreed](../decisions/m5-moves-on-after-two-clean-controls.md));
+   every later run still counts as a control.
 2. **A first scripted scene.** The owner moves two or three large things, the
    armchair by the window, a bean bag, a floor lamp, within their rooms between
    two runs, and puts them back before a third: each should be reported gone
