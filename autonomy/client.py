@@ -52,6 +52,7 @@ ALLOWED = frozenset({
     "world_state_check",         # whether one stored look shows a claimed thing
     "nav_status",                # every number the driving loop has
     "nav_grid",                  # the occupancy map, as numbers rather than a picture
+    "nav_changes",               # what the change watch found changed since places were last seen
     "battery",                   # volts, for the measured record
     "autonomy_status",           # whether the rover may move by itself, and why not
 })

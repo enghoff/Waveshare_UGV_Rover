@@ -1,0 +1,227 @@
+{
+  "about": "Going back to look at what the change watch says has changed: that it is chosen over a place that has not (M5, criterion 5), that a change looked at is worth nothing until it changes again (criterion 6), and the refusals in between.",
+  "maps": {
+    "flat": {
+      "comment": "Six metres by three, mapped. Top right is a cupboard with its door shut: floor inside, wall all round, so nothing in it can be seen from anywhere the rover can stand. The rover is at (0.55, 1.45).",
+      "rows": [
+        "############################################################",
+        [9, "#............................................#.............#"],
+        "#............................................###############",
+        [3, "#..........................................................#"],
+        "#....R.....................................................#",
+        [14, "#..........................................................#"],
+        "############################################################"
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "name": "an armchair gone from its place is looked at from where the rover stands",
+      "why": "A furniture-sized change two metres away, in view: the scan says something changed and only a look says what, and from here the camera can see the place without the rover moving.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {
+        "chose": {"type": "investigate_change"},
+        "terms": [{"match": {"type": "investigate_change"}, "field": "travel_cost", "at_most": 0.0}]
+      }
+    },
+    {
+      "name": "something new across the room is driven to and looked at",
+      "why": "Nearly five metres off, too far to see well from here: the rover goes to stand within the certified band of it, as it would for a thing it wanted to place better.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "NEW", "x_m": 5.4, "y_m": 0.6, "extent_m": 0.8, "area_m2": 0.15, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {
+        "chose": {"type": "investigate_change", "near": [4.4, 0.8, 1.5]},
+        "terms": [{"match": {"type": "investigate_change"}, "field": "travel_cost", "at_least": 0.2}]
+      }
+    },
+    {
+      "name": "a changed place outranks a place equally far that was confirmed lately",
+      "why": "M5's criterion 5. The armchair's old place and a thing placed to 0.12 m, both 2 m from the rover and both in view. The thing has nothing left to gain from another look; the change has everything.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "entities": [
+        {"id": "object:8", "at": [2.45, 1.9], "uncertainty_m": 0.12, "major_deg": 90}
+      ],
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {
+        "chose": {"type": "investigate_change"},
+        "order": [{"type": "investigate_change"}, {"type": "improve_geometry", "target": "object:8"}]
+      }
+    },
+    {
+      "name": "a change looked at since it was seen is worth nothing",
+      "why": "M5's criterion 6. The look was taken after the watch began seeing the change, so another would learn nothing until the place changes again, and the rover is not held by one formerly novel thing.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "examined": [
+        {"kind": "GONE", "x_m": 2.45, "y_m": 1.05, "at": 1757320600.0, "outcome": "looked"}
+      ],
+      "expect": {
+        "chose": "nothing",
+        "terms": [{"match": {"type": "investigate_change"}, "field": "gain", "at_most": 0.0}]
+      }
+    },
+    {
+      "name": "a change looked at before it was seen again is news again",
+      "why": "The look came before the watch began seeing this change: whatever it showed was the place as it was, not as it is.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "examined": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "at": 1757320400.0, "outcome": "looked"}
+      ],
+      "expect": {"chose": {"type": "investigate_change"}}
+    },
+    {
+      "name": "a look at the same place for a change of the other kind does not count",
+      "why": "Something gone and something new are two changes even where they overlap; a look at one is not a look at the other.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "NEW", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "examined": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "at": 1757320600.0, "outcome": "looked"}
+      ],
+      "expect": {"chose": {"type": "investigate_change"}}
+    },
+    {
+      "name": "an attempt that took no look halves what the next is worth",
+      "why": "The drive failed or a person stopped it: worth trying again, for less.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "examined": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "at": 1757320600.0, "outcome": "no look", "code": "failed"}
+      ],
+      "expect": {
+        "chose": {"type": "investigate_change"},
+        "terms": [{"match": {"type": "investigate_change"}, "field": "gain", "at_most": 0.37},
+                  {"match": {"type": "investigate_change"}, "field": "gain", "at_least": 0.36}]
+      }
+    },
+    {
+      "name": "two attempts that took no look and the change waits to be reported anew",
+      "why": "A place the rover keeps failing to reach or see is not tried for the rest of the run on the same evidence.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "examined": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "at": 1757320600.0, "outcome": "no look", "code": "failed"},
+        {"kind": "GONE", "x_m": 2.55, "y_m": 0.95, "at": 1757320700.0, "outcome": "no look", "code": "stopped"}
+      ],
+      "expect": {
+        "chose": "nothing",
+        "vetoed": [{"type": "investigate_change", "veto": "attempts spent"}]
+      }
+    },
+    {
+      "name": "a change smaller than furniture is not offered",
+      "why": "Doors and the edges of things: M5 counts furniture-sized changes, and a rover that went to look at every small one would look at nothing else.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.4, "area_m2": 0.04, "large": false,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {"chose": "nothing", "not_offered": [{"type": "investigate_change"}]}
+    },
+    {
+      "name": "a change in the shut cupboard is offered and refused",
+      "why": "Nowhere the rover can stand sees into it. Said in the record rather than left out, so it is not mistaken for a change nobody noticed.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "NEW", "x_m": 5.2, "y_m": 2.6, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {
+        "chose": "nothing",
+        "vetoed": [{"type": "investigate_change", "veto": "unreachable"}]
+      }
+    },
+    {
+      "name": "the same change a little along costs no switch",
+      "why": "A change's middle moves as the watch adds cells to it; going on with it is not changing its mind.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "previous_goal": {"id": "investigate_change:GONE@2.70,1.10", "type": "investigate_change",
+                        "target": "change:GONE@2.7,1.1",
+                        "change": {"kind": "GONE", "x_m": 2.7, "y_m": 1.1}},
+      "expect": {
+        "chose": {"type": "investigate_change"},
+        "terms": [{"match": {"type": "investigate_change"}, "field": "switching_cost", "at_most": 0.0}]
+      }
+    },
+    {
+      "name": "a change of the other kind at the same place is a switch",
+      "why": "The goal it was on was a different change: leaving it costs what changing its mind costs.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "previous_goal": {"id": "investigate_change:NEW@2.50,1.00", "type": "investigate_change",
+                        "target": "change:NEW@2.5,1.0",
+                        "change": {"kind": "NEW", "x_m": 2.5, "y_m": 1.0}},
+      "expect": {
+        "terms": [{"match": {"type": "investigate_change"}, "field": "switching_cost", "at_least": 0.15}]
+      }
+    },
+    {
+      "name": "until it is accepted, a change is recorded and not acted on",
+      "why": "The plan asks shadow acceptance of every new goal type before it moves the rover: the run records what it would have done about the change, and does something else.",
+      "map": "flat",
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {
+        "chose": "nothing",
+        "vetoed": [{"type": "investigate_change", "veto": "in shadow acceptance"}]
+      }
+    },
+    {
+      "name": "the M0a protocol does not go and look at changes",
+      "why": "The frozen protocol runs hypothesis inspections and nothing else (R-AUT-12).",
+      "map": "flat",
+      "weights": {"m0a_protocol": true, "investigate_changes": true},
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {"vetoed": [{"type": "investigate_change", "veto": "the M0a protocol"}]}
+    }
+  ]
+}

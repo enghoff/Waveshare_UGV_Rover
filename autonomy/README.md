@@ -155,7 +155,7 @@ the rover works out what would be worth doing and writes down the answer. On the
 Orin against the real house that is **about 0.6 s for twenty-five candidates**,
 and it moves nothing.
 
-**Two kinds of goal, which is what the plan enables at this phase.**
+**Three kinds of goal**: the two the plan enabled at M2, and M5's first.
 
 `explore_frontier` is somewhere to stand where the scanner would see ground
 nobody has mapped. Which gap is worth driving to is not decided here: it is
@@ -220,6 +220,28 @@ Nothing is predicted better than **0.10 m**, whatever the arithmetic says. The
 model knows about bearings and not about the rover's own pose, the width of the
 thing, or the box drawn round it moving between frames — and a tenth of a metre
 is the best this rover has ever managed on a tape-measured pair.
+
+`investigate_change` is a look at something the change watch says has changed
+since the place was last seen (`ros_nav/change_watch.py`, read through the
+daemon's `nav_changes`). The scan says that something changed and nothing about
+what; a look aimed at the place says what, and puts the lidar on it from a
+viewpoint of its own. Only furniture-sized changes are offered, the ones M5
+counts. Each is named after the record placed nearest it, within 0.6 m, or is
+something unknown -- and the name is a guess: on 2026-10-11 the store held 663
+unlabelled records and each change in scene 1 had three or four within 0.35 m,
+the same object recorded several times over (R-WS-17), so every record within
+reach is kept beside the name and counted in the reason. The look is taken from where the rover stands when the place
+is in reach, otherwise from the nearest place within the certified band with
+nothing mapped in the way, and always level, since a change is at the lidar's
+height. **Once looked at, a change is worth nothing until the watch reports it
+anew**: every attempt is written down (`decide.EXAMINED_MARK`), a look taken
+since the watch began seeing the change makes its gain zero, an attempt that
+took no look halves it, and after two such attempts it is refused. That is M5's
+criteria 5 and 6: a changed place outranks an equally distant one confirmed
+lately, which has nothing left to gain, and the rover is not held by one
+formerly novel thing (`scenarios/changes.json`). Its value is the change's size
+against the watch's own 0.6 m line for furniture (`useful_change_m`), which
+nothing measured has yet tested.
 
 **The score, with every term written down:**
 
@@ -292,7 +314,8 @@ IDLE -> SELECT -> PLAN -> EXECUTE -> EVALUATE -> IDLE
 `scoring.consider` a shadow run records, differing only in that the answer can
 now be acted on. **PLAN** turns the goal into a short list of admitted
 operations — a frontier goal is a drive, a geometry goal is a drive that ends
-facing the thing and then a look aimed at it — and checks every one of them
+facing the thing and then a look aimed at it, a change the same with the look
+aimed at where the change is — and checks every one of them
 against the daemon's own list before the first is dispatched. **EXECUTE** sends
 them one at a time and waits for the ones that are not over when the call
 returns, renewing the permission as it polls. A look waits up to five seconds
@@ -547,10 +570,12 @@ leaves two accounts of the running system with one of them maintained.
 - **The recorder is not a service.** It is run by hand for as long as somebody
   wants a recording. Nothing starts it at boot, so a rover left alone records
   nothing and decides nothing, and retention is not run on a schedule either.
-- **Four of the six goal types do not exist.** Inspecting a semantic gap,
-  revisiting something stale, investigating a change and searching for something
-  missing all need attribute claims, which M4 left for later, and M5's temporal
-  semantics. What is here is the geometric half.
+- **Three of the six goal types do not exist.** Inspecting a semantic gap,
+  revisiting something stale and searching for something missing need attribute
+  claims, which M4 left for later, and more of M5's temporal semantics than the
+  change watch gives. Investigating a change is here, and has not yet been
+  carried out on the floor: it is shown on the acceptance set and on replayed
+  snapshots of 2026-10-11 only.
 - **A thing seen once and never placed is never proposed.** One bearing is a
   direction and not a position, so there is nowhere to plan a viewpoint around;
   what such a thing needs is for the rover to be somewhere else, which is what

@@ -266,8 +266,8 @@ def test_nothing_after_the_answer_acts_on_which_thing_it_was():
     check("after the check the executive only reads",
           [name for name in after if name not in
            ("autonomy_status", "autonomy_permit", "nav_status", "nav_grid",
-            "battery", "world_state_summary", "world_state_entities",
-            "world_building")], [])
+            "nav_changes", "battery", "world_state_summary",
+            "world_state_entities", "world_building")], [])
     check("...and moves nothing", len(attempt.rover.moves), 1)
     got = attempt.turn()
     # With nothing else to do the run then drives back to where it started,

@@ -657,6 +657,24 @@ class RoverNav:
                     "error": "this navigator does not publish an occupancy map"}
         return grid()
 
+    def _tool_nav_changes(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """What has changed since places were last seen. A control call, not a
+        model tool.
+
+        The change watch's report as the navigation bridge reads it
+        (`ros_nav/change_node.py`): each change, gone or new, where and how big,
+        and whether the watch is counting at all. Written for
+        [autonomy/goals.py](../autonomy/goals.py), whose `investigate_change`
+        goes and looks at one; a model is told nothing it could act on by it.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": NO_DRIVING}
+        changes = getattr(self.nav, "changes", None)
+        if not callable(changes):
+            return {"ok": False,
+                    "error": "this navigator does not watch for changes"}
+        return changes()
+
     def _tool_map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """The map as base64 PNG in the reply. A control call, not a model tool.
 

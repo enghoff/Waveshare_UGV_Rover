@@ -6,10 +6,10 @@ candidates in the same order for ever -- which is what makes a decision built on
 them replayable, and it is why the situation is read once and passed in rather
 than fetched where it is needed.
 
-Two kinds of goal, which is what Milestone M2 enables. A third,
-`inspect_hypothesis` -- M0a's check that something stands where a placement says
--- lives in [`hypotheses.py`](hypotheses.py) and is generated only under the M0a
-protocol (`scoring.consider`):
+Three kinds of goal: the two Milestone M2 enabled, and the first of M5's.
+Another, `inspect_hypothesis` -- M0a's check that something stands where a
+placement says -- lives in [`hypotheses.py`](hypotheses.py) and is generated only
+under the M0a protocol (`scoring.consider`):
 
 **`explore_frontier`** -- go and stand where the map stops, so the scanner sees
 past it. The choosing is `frontier.py`'s, the same module `explore` ranks with,
@@ -23,6 +23,10 @@ place leave the same long thin uncertainty however many times they are repeated:
 the useful viewpoint is the one whose ray crosses the error ellipse's long axis.
 That is the arithmetic in `_from_viewpoint`, and it is what makes this a goal
 rather than a wish.
+
+**`investigate_change`** -- go and look at what the change watch says has
+changed, named after the record nearest it, and stop wanting to once it has been
+looked at. See `investigate_change` below.
 
 ## What it will not propose
 
@@ -182,6 +186,26 @@ DEPTH_HALF_VIEW_DEG = 17.0
 #: does not move the gimbal at all.
 LOOK_TILTS_DEG = (20.0, 0.0)
 
+#: How many changes are worth ranking in one pass: a bound on work. Largest
+#: first, so what is dropped is the smallest.
+CHANGE_LIMIT = 6
+
+#: A record this near a change names it. The change watch places a change at
+#: the middle of the cells that changed; on 2026-10-10 the armchair moved was
+#: found 0.1 m from its record, and an armchair is about this across.
+NAME_M = 0.6
+
+#: An attempt at a change of the same kind this near is an attempt at the same
+#: change. A group's middle wanders as the visit adds cells to it -- the watch
+#: itself treats 0.3 m as the same group from one report to the next -- and a
+#: second change of one kind within half a metre is not one this rover can tell
+#: from the first.
+EXAMINED_M = 0.5
+
+#: Attempts at one change that took no look before it is not tried again until
+#: the watch reports it anew; each halves what the next is worth.
+CHANGE_ATTEMPTS = 2
+
 
 class Candidate:
     """One thing the rover could do, with everything a decision needs about it.
@@ -248,7 +272,8 @@ def generate(situation: Situation,
     score afterwards, and a stable input is what makes a tie break the same way
     twice. `only` is an M4 trial's targets: see `improve_geometry`.
     """
-    return [*explore_frontier(situation), *improve_geometry(situation, only)]
+    return [*explore_frontier(situation), *improve_geometry(situation, only),
+            *investigate_change(situation)]
 
 
 # --- going where the map stops ----------------------------------------------
@@ -769,3 +794,191 @@ def _fold(degrees: float) -> float:
     """An angle folded into -90..90, which is all a line's direction means."""
     folded = (degrees + 90.0) % 180.0 - 90.0
     return folded
+
+
+# --- going back to where something changed ----------------------------------
+
+def investigate_change(situation: Situation) -> list[Candidate]:
+    """A look at each furniture-sized change the change watch reports.
+
+    **The scan says that something changed; a look says what.** The change
+    watch (`ros_nav/change_watch.py`) finds a place solid in one visit and seen
+    through in the other, and knows nothing about what stood there. So each
+    change it reports is a goal: stand where the camera can see the place, and
+    take a look aimed at it -- which also puts the lidar on the place from a
+    viewpoint of its own. The record nearest the change, within `NAME_M`, names
+    it; a change with none is something unknown.
+
+    **Once looked at, a change is worth nothing until it changes again.** A
+    look taken since the watch began seeing it so is the knowledge refreshed,
+    and the goal's gain is zero, so the rover is not held by one formerly novel
+    thing (M5, criterion 6). An attempt that took no look -- the drive failed,
+    or a person stopped it -- halves what the next is worth, and after
+    `CHANGE_ATTEMPTS` the change waits for the watch to report it anew. Read
+    from `situation.examined`, so a replay refuses what the run refused.
+
+    Only furniture-sized changes, the ones M5 counts: smaller ones are mostly
+    doors and the edges of things, and a rover that went to look at each would
+    look at nothing else.
+    """
+    reach = situation.reach
+    if reach is None:
+        return []
+    report = situation.change_report
+    found = [one for one in situation.changes
+             if one.get("large") and one.get("x_m") is not None]
+    found.sort(key=lambda one: (-float(one.get("extent_m") or 0.0),
+                                float(one["x_m"]), float(one["y_m"])))
+    generation = (situation.world_generation
+                  if situation.world_generation != refs.UNKNOWN else None)
+    return [_change_goal(situation, reach, change, report, generation)
+            for change in found[:CHANGE_LIMIT]]
+
+
+def _change_goal(situation: Situation, reach: mapgrid.Reach,
+                 change: dict[str, Any], report: dict[str, Any],
+                 generation: str | None) -> Candidate:
+    """The goal for one change: a look from where the rover stands when it is
+    in reach, else from the nearest place to stand within the certified band,
+    else a refused candidate that says there is nowhere."""
+    x, y = float(change["x_m"]), float(change["y_m"])
+    kind = str(change.get("kind") or "")
+    extent = float(change.get("extent_m") or 0.0)
+    near = _records_near(situation, x, y)
+    named = near[0] if near else None
+    looked, tries = _attempts_at(situation, change)
+    gain = 0.0 if looked else extent * 0.5 ** tries
+    if named:
+        what = named["id"] + (f" ({named['label']})" if named["label"] else "")
+    else:
+        what = "something"
+    seen_s = (situation.at - float(change["seen_from"])
+              if change.get("seen_from") is not None and situation.at else None)
+    why = (f"{what} {'gone from' if kind == 'GONE' else 'new at'} "
+           f"({x:.2f}, {y:.2f}), {extent:.2f} m across"
+           + (f", seen so for {seen_s / 60:.0f} min" if seen_s is not None else ""))
+    if len(near) > 1:
+        why += f"; named after the nearest of {len(near)} records within {NAME_M} m"
+    if looked:
+        why += ("; looked at since it was seen so, so nothing more is known "
+                "by looking again until it changes again")
+    elif tries:
+        why += f"; {tries} attempt{'s' if tries > 1 else ''} took no look"
+    detail = {"kind": kind, "change_at": {"x_m": round(x, 3), "y_m": round(y, 3)},
+              "extent_m": extent, "named": named["id"] if named else None,
+              "named_label": named["label"] if named else None,
+              "named_at_m": named["gap_m"] if named else None,
+              "records_near": near[:4],
+              "seen_from": change.get("seen_from"),
+              "seen_until": change.get("seen_until"),
+              "was_otherwise_at": change.get("was_otherwise_at"),
+              "watch_counting": report.get("counting"),
+              "report_age_s": report.get("age_s"),
+              "looked_at_since": looked, "attempts_since": tries}
+    ident = f"investigate_change:{kind}@{x:.2f},{y:.2f}"
+    common = dict(type="investigate_change", target=f"change:{kind}@{x:.1f},{y:.1f}",
+                  refs=[refs.world(generation, named["id"])] if named else (),
+                  gain_kind="change_unexamined", gain_value=gain,
+                  gain_detail=detail, risk="drives_on_mapped_floor")
+    aim = {"x_m": round(x, 3), "y_m": round(y, 3)}
+    facts = {"change": {"kind": kind, **aim, "seen_from": change.get("seen_from")},
+             "change_attempts": tries, "look_at": aim,
+             # Level: a change is at the lidar's height, 20 cm off the floor.
+             "look_tilt_deg": LOOK_TILTS_DEG[1]}
+
+    def goal(view_x: float, view_y: float, walk_m: float, range_m: float,
+             expects: str, **more: Any) -> Candidate:
+        heading = math.degrees(math.atan2(y - view_y, x - view_x))
+        time_s = GOAL_OVERHEAD_S + walk_m / SPEED_MS + LOOK_S
+        place = {"x_m": round(view_x, 3), "y_m": round(view_y, 3),
+                 "heading_deg": round(heading, 1)}
+        return Candidate(
+            id=ident, why=why, expects=expects.format(heading=heading),
+            action=[{"call": "drive_to", "params": place},
+                    {"call": "world_inspect", "params": {"aim_at": aim}}],
+            travel_m=walk_m, time_s=time_s,
+            energy_wh=time_s * NOMINAL_DRAW_W / 3600.0,
+            constraints={**facts, "reachable_m": walk_m,
+                         "on_free_floor": reach.is_free(view_x, view_y),
+                         "range_m": round(range_m, 2), "goal": place, **more},
+            **common)
+
+    where = situation.where
+    if where is not None:
+        hx, hy = where
+        range_m = math.hypot(x - hx, y - hy)
+        if (BAND_NEAR_M <= range_m <= REACH_FAR_M
+                and reach.clear_line(hx, hy, x, y, ignore_within_m=SURFACE_M)):
+            return goal(hx, hy, 0.0, range_m,
+                        f"a look aimed at ({x:.2f}, {y:.2f}), {range_m:.1f} m "
+                        f"away, from where the rover stands",
+                        needs_movement=False, in_reach=True)
+
+    # The cheapest place within the certified band with nothing mapped in the
+    # way, nearest walk first as `reach.ring` lists them.
+    for view_x, view_y, walk_m in reach.ring(x, y, SEARCH_NEAR_M, SEARCH_FAR_M):
+        range_m = _gap((view_x, view_y, walk_m), x, y)
+        if not BAND_NEAR_M <= range_m <= BAND_FAR_M:
+            continue
+        if not reach.clear_line(view_x, view_y, x, y, ignore_within_m=SURFACE_M):
+            continue
+        return goal(view_x, view_y, walk_m, range_m,
+                    f"a look from ({view_x:.2f}, {view_y:.2f}) facing "
+                    "{heading:.0f} degrees, " + f"{range_m:.1f} m from the change",
+                    needs_movement=walk_m > 0.05)
+
+    # Nowhere to look from: offered, so that the refusal is in the record.
+    return Candidate(
+        id=ident,
+        why=why + "; but nowhere within the certified band can the rover stand "
+                  "and see it",
+        expects="nothing: there is nowhere to take the look from",
+        action=[],
+        constraints={**facts, "reachable_m": None, "on_free_floor": False,
+                     "needs_movement": True, "goal": aim},
+        **common)
+
+
+def _records_near(situation: Situation, x: float, y: float) -> list[dict[str, Any]]:
+    """The records placed within `NAME_M` of a change in this map session,
+    nearest first. **The nearest names the change, and it is a guess**: on
+    2026-10-11 the store held 663 records and each change in scene 1 had three
+    or four within 0.35 m, the same object recorded several times over
+    (R-WS-17), so the others are kept beside it rather than thrown away."""
+    session = situation.map_session
+    out = []
+    for entity in situation.entities:
+        placement = entity.get("placement") or {}
+        if placement.get("x_m") is None or placement.get("y_m") is None:
+            continue
+        if (session is not None
+                and entity.get("placement_map_session") not in (None, session)):
+            continue
+        gap = math.hypot(float(placement["x_m"]) - x, float(placement["y_m"]) - y)
+        if gap <= NAME_M:
+            out.append({"id": str(entity.get("id") or ""),
+                        "label": str(entity.get("label") or ""), "gap_m": round(gap, 2),
+                        "looks": entity.get("observation_count")})
+    out.sort(key=lambda one: (one["gap_m"], one["id"]))
+    return out
+
+
+def _attempts_at(situation: Situation, change: dict[str, Any]) -> tuple[bool, int]:
+    """Whether this change has been looked at since the watch began seeing it
+    so, and how many attempts at it since then took no look."""
+    since = change.get("seen_from")
+    since = float(since) if since is not None else None
+    looked, tries = False, 0
+    for one in situation.examined:
+        if one.get("kind") != change.get("kind") or one.get("x_m") is None:
+            continue
+        if math.hypot(float(one["x_m"]) - float(change["x_m"]),
+                      float(one["y_m"]) - float(change["y_m"])) > EXAMINED_M:
+            continue
+        if since is not None and float(one.get("at") or 0.0) < since:
+            continue
+        if one.get("outcome") == "looked":
+            looked = True
+        else:
+            tries += 1
+    return looked, tries

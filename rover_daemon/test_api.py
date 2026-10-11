@@ -50,6 +50,9 @@ def test_schemas():
                # picture `show_map` draws and none at all for 28 kB of cells;
                # what wants the cells is the autonomy component's chooser.
                "nav_grid",
+               # What the change watch found changed, for the same chooser: a
+               # model has no use for a list of cells gone and new.
+               "nav_changes",
                # Replugging the lidar in software, which is a control call for the
                # same reason wifi_join is: it is the right thing for a person
                # watching a stale map and the wrong thing for a model, since it

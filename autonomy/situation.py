@@ -120,6 +120,25 @@ class Situation:
         return dict(self.body.get("world") or {})
 
     @property
+    def change_report(self) -> dict[str, Any]:
+        """The change watch's report as it was read: whether it is counting,
+        when it was written, and `changes`, each a group gone or new with where
+        and how big (`ros_nav/change_watch.py`). Empty when nothing answered."""
+        return dict(self.body.get("changes") or {})
+
+    @property
+    def changes(self) -> list[dict[str, Any]]:
+        return list(self.change_report.get("changes") or [])
+
+    @property
+    def examined(self) -> list[dict[str, Any]]:
+        """Every look at a change attempted lately, as `decide.prepare` read
+        them from the record: which change, when, and whether the look was
+        taken. In the situation so that a change already looked at is worth
+        nothing from the record alone -- see `goals.investigate_change`."""
+        return list(self.body.get("examined") or [])
+
+    @property
     def nav(self) -> dict[str, Any]:
         return dict(self.body.get("nav") or {})
 
@@ -368,6 +387,16 @@ class Situation:
                                       or "the daemon did not answer"})
 
         body["map"] = _try(client, "nav_grid")
+
+        # The change watch's report, trimmed to what a goal can use. A daemon or
+        # a bridge that has none leaves it saying why, which offers no change
+        # rather than an empty house.
+        report = _try(client, "nav_changes")
+        body["changes"] = ({key: report.get(key) for key in
+                            ("at", "age_s", "counting", "paused", "changes")}
+                           if report.get("ok") else
+                           {"error": report.get("error")
+                                     or "the change watch did not answer"})
         return cls(body)
 
 

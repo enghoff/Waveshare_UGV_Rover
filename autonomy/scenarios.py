@@ -220,9 +220,15 @@ def build(scenario: dict[str, Any], maps: dict[str, Any]) -> Situation:
                      resolution_m=(room.get("resolution_m", 0.1)
                                    if isinstance(room, dict) else 0.1),
                      **fields)
-    for name in ("cooled", "previous_goal"):
+    for name in ("cooled", "previous_goal", "examined"):
         if name in scenario:
             body[name] = scenario[name]
+    # What the change watch reports, as `nav_changes` answers: the groups only,
+    # since a reviewer cares about what changed, not about the report's frame.
+    if "changes" in scenario:
+        body["changes"] = {"at": body["at"] - 10.0, "age_s": 10.0,
+                           "counting": True, "paused": "",
+                           "changes": scenario["changes"]}
     return Situation(body)
 
 

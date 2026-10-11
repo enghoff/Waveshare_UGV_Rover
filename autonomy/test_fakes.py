@@ -172,6 +172,9 @@ class FakeRover(client.ReadOnly):
         #: published one, which is a state the rover really has -- for the first
         #: revolution after a restart -- and one every caller must handle.
         self.room = list(room) if room else None
+        #: What the change watch reports changed, as `nav_changes` answers.
+        #: Nothing, until a test says something moved.
+        self.changes: list[dict] = []
         #: The driving loop's running commentary, oldest first. The last is what
         #: it is saying now; the ones before it are what a poller that named a
         #: sequence number gets back under `missed`.
@@ -282,6 +285,10 @@ class FakeRover(client.ReadOnly):
             return {"ok": False,
                     "error": "slam_toolbox has not published a map yet"}
         return a_map(self.room)
+
+    def _nav_changes(self, _arguments):
+        return {"ok": True, "at": self.clock() - 10.0, "age_s": 10.0,
+                "counting": True, "paused": "", "changes": list(self.changes)}
 
     def _battery(self, _arguments):
         return {"ok": True, "volts": self.volts, "percent": 85}

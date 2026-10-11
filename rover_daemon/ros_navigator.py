@@ -590,6 +590,15 @@ class RosNavigator:
         answer.pop("trail", None)
         return answer
 
+    def changes(self):
+        """What the change watch last found changed on this map: the bridge's
+        reading of `change_node`'s report, passed through, with how old it is.
+        For the autonomy component, which goes and looks at a change
+        (`autonomy/goals.investigate_change`)."""
+        answer = self.ask({"op": "changes"}, MAP_TIMEOUT_S)
+        answer.pop("kind", None)
+        return answer
+
     def known_box(self):
         """Where the map is, in map metres, off the grid the last picture used.
 

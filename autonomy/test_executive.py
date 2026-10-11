@@ -793,6 +793,61 @@ def test_a_look_that_fails_ends_the_turn_after_the_drive():
     session.close()
 
 
+def _a_change_beside(rover, dx=0.8, **more):
+    """A furniture-sized change `dx` east of where the fake rover stands."""
+    pose = rover._nav_status({})["pose"]
+    return {"kind": "GONE", "x_m": round(pose["x_m"] + dx, 2), "y_m": pose["y_m"],
+            "extent_m": 0.7, "area_m2": 0.12, "large": True,
+            "seen_from": rover.clock() - 300.0, "seen_until": rover.clock() - 10.0,
+            **more}
+
+
+def test_a_change_is_looked_at_once_and_then_worth_nothing():
+    """M5's criteria 5 and 6 carried out: the rover looks at what the change
+    watch says changed, aimed and level, and a change looked at since it was
+    seen offers nothing to look at again."""
+    rover = test_fakes.ActingRover(room=ROOM, entities=[])
+    rover.changes = [_a_change_beside(rover)]
+    session = Session(rover)
+    session.executive.weights = scoring.Weights(investigate_changes=True)
+    _arriving(session)
+    got = session.executive.once()
+    check("the turn looked at the change", got["outcome"], "succeeded")
+    calls = session.calls(got["episode"])
+    check("...from where it stands, turning the gimbal and not the rover",
+          [one["call"] for one in calls], ["world_inspect"])
+    look = calls[0]["params"]
+    check("...aimed at the change", look.get("aim_at"),
+          {"x_m": rover.changes[0]["x_m"], "y_m": rover.changes[0]["y_m"]})
+    check("...level", look.get("tilt_deg"), 0.0)
+    marked = decide_mod.examined(session.store)
+    check("the attempt is written down as a look taken",
+          [(one["kind"], one["outcome"]) for one in marked], [("GONE", "looked")])
+    import situation as situation_mod
+    here = decide_mod.prepare(session.store, situation_mod.Situation.read(rover))
+    check("...after which the change is worth nothing",
+          [one.gain_value for one in goals.investigate_change(here)], [0.0])
+    session.close()
+
+
+def test_a_look_at_a_change_that_fails_is_an_attempt_for_less():
+    rover = test_fakes.ActingRover(room=ROOM, entities=[])
+    rover.changes = [_a_change_beside(rover)]
+    session = Session(rover)
+    session.executive.weights = scoring.Weights(investigate_changes=True)
+    _arriving(session)
+    session.rover.inspection = {"ok": False, "error": "the camera did not open"}
+    got = session.executive.once()
+    check("the look failed", got["outcome"], "interrupted")
+    check("...written down as an attempt that took no look",
+          [one["outcome"] for one in decide_mod.examined(session.store)], ["no look"])
+    import situation as situation_mod
+    here = decide_mod.prepare(session.store, situation_mod.Situation.read(rover))
+    check("...so the next is worth half",
+          [one.gain_value for one in goals.investigate_change(here)], [0.35])
+    session.close()
+
+
 # --- what the loop cannot do -------------------------------------------------
 
 def test_the_executive_cannot_move_the_rover_except_through_a_permit():
@@ -956,6 +1011,8 @@ def test_a_goal_that_got_nowhere_is_not_chosen_again():
 
 
 TESTS = (test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands,
+         test_a_change_is_looked_at_once_and_then_worth_nothing,
+         test_a_look_at_a_change_that_fails_is_an_attempt_for_less,
          test_an_m4_trial_looks_only_at_its_targets,
          test_a_look_from_where_the_rover_stands_turns_the_gimbal_not_the_rover,
          test_a_relook_that_fails_does_not_end_the_attempt,

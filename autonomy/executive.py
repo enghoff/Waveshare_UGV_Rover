@@ -412,6 +412,8 @@ class Executive:
                     cooling.after_failed_drive(
                         places, candidate["constraints"].get("goal"), stop.why,
                         now=self.now())))
+            if candidate["type"] == "investigate_change":
+                self.examined(episode, candidate, "no look", stop.code)
             if request is not None and "answered" not in request:
                 self.answered(episode, request, {
                     "outcome": "unresolved", "code": stop.code,
@@ -433,9 +435,10 @@ class Executive:
              ) -> list[dict[str, Any]]:
         """The admitted operations that would carry this goal out, in order.
 
-        **Two goal types, and neither of them is `explore`.** A frontier goal is
+        **Three goal types, and none of them is `explore`.** A frontier goal is
         a drive to the place the chooser picked; a geometry goal is a drive to
-        the viewpoint and then one look from it. The rover's own frontier run is
+        the viewpoint and then one look from it; a change is the same, the look
+        aimed at where the change is. The rover's own frontier run is
         not used even for the frontier goal, because a run that chooses its own
         next goal is a movement this episode could not attribute -- and because
         [R-NAV-6](../docs/requirements/navigation.md#r-nav-6) is failing.
@@ -455,7 +458,7 @@ class Executive:
         if heading is not None:
             drive["params"]["heading_deg"] = float(heading)
         steps = [drive]
-        if (candidate["type"] == "improve_geometry"
+        if (candidate["type"] in ("improve_geometry", "investigate_change")
                 and _gimbal_faces_it(candidate["constraints"], here)):
             # **The gimbal turns to the thing, not the rover.** A look from
             # where the rover stands used to be a turn on the spot and then the
@@ -490,6 +493,18 @@ class Executive:
             # Tilted level only when the thing needs it to be in the depth
             # camera's view (goals.LOOK_TILTS_DEG); the resting tilt moves
             # nothing, and saying so would move the gimbal there and back.
+            tilt = candidate["constraints"].get("look_tilt_deg")
+            if tilt is not None and float(tilt) != goals.LOOK_TILTS_DEG[0]:
+                look["tilt_deg"] = float(tilt)
+            steps.append({"action": "world_inspect", "params": look})
+        if candidate["type"] == "investigate_change":
+            # A look aimed at where the change is, level, filed like any other:
+            # what stands there now, or that nothing does, is the world state's
+            # to work out. Recorded, not settled, for the reason above.
+            look = {"settle": False}
+            aim = candidate["constraints"].get("look_at")
+            if isinstance(aim, dict):
+                look["aim_at"] = aim
             tilt = candidate["constraints"].get("look_tilt_deg")
             if tilt is not None and float(tilt) != goals.LOOK_TILTS_DEG[0]:
                 look["tilt_deg"] = float(tilt)
@@ -765,6 +780,19 @@ class Executive:
                 self.store.mark(decide_mod.COOLED_MARK, decide_mod._dumps(now_cooled))
                 measured["put_aside"] = True
                 what += "; put aside for a while"
+        elif candidate["type"] == "investigate_change":
+            change = candidate["constraints"].get("change") or {}
+            still = _change_near(after, change)
+            measured.update({"frame_id": (looked or {}).get("frame_id"),
+                             "change_still_reported": still is not None,
+                             "change_extent_after_m": (still or {}).get("extent_m")})
+            self.examined(episode, candidate, "looked", "",
+                          frame_id=(looked or {}).get("frame_id"))
+            what = (f"looked at the change at ({change.get('x_m')}, "
+                    f"{change.get('y_m')})"
+                    + ("; the change watch still reports it"
+                       if still is not None else
+                       "; the change watch no longer reports it"))
         else:
             was = _unknown_m2(before)
             now = _unknown_m2(after)
@@ -774,6 +802,19 @@ class Executive:
             what = _said_frontier(was, now)
         self.store.append(episode, events.measured("the attempt", **measured))
         return {"what": what, **measured}
+
+    def examined(self, episode: str, candidate: dict[str, Any], outcome: str,
+                 code: str, **more: Any) -> None:
+        """Write down an attempt at a change, however it ended, where the next
+        deliberation reads it (`decide.EXAMINED_MARK`): a look taken makes the
+        change worth nothing until the watch reports it anew, and an attempt
+        without one halves what it is worth (`goals.investigate_change`)."""
+        change = candidate["constraints"].get("change") or {}
+        self.store.mark(decide_mod.EXAMINED_MARK, json.dumps({
+            "kind": change.get("kind"), "x_m": change.get("x_m"),
+            "y_m": change.get("y_m"), "seen_from": change.get("seen_from"),
+            "episode": episode, "outcome": outcome, "code": code, **more}),
+            at=self.now())
 
     # --- an inspection's own record --------------------------------------------
 
@@ -1122,6 +1163,23 @@ def _within_pan(aim: Any, here: situation_mod.Situation | None) -> bool:
                                       float(aim["x_m"]) - where[0]))
     off = abs((bearing - float(heading) + 180.0) % 360.0 - 180.0)
     return off <= PAN_INSTEAD_OF_TURN_DEG
+
+
+def _change_near(here: situation_mod.Situation,
+                 change: dict[str, Any]) -> dict[str, Any] | None:
+    """The change of this kind the watch reports nearest this one, within
+    `goals.EXAMINED_M`, or None."""
+    if change.get("x_m") is None:
+        return None
+    best, gap_best = None, goals.EXAMINED_M
+    for one in here.changes:
+        if one.get("kind") != change.get("kind") or one.get("x_m") is None:
+            continue
+        gap = math.hypot(float(one["x_m"]) - float(change["x_m"]),
+                         float(one["y_m"]) - float(change["y_m"]))
+        if gap <= gap_best:
+            best, gap_best = one, gap
+    return best
 
 
 def _uncertainty(here: situation_mod.Situation, target: str) -> float | None:

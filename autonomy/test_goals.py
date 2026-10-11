@@ -636,7 +636,56 @@ def test_the_same_situation_produces_the_same_list_twice() -> None:
     check("...and there are some", bool(first), True)
 
 
+def _with_changes(changes, entities=()):
+    body = a_situation(ROOM, entities=list(entities))
+    body["changes"] = {"at": body["at"] - 10.0, "age_s": 10.0, "counting": True,
+                       "changes": changes}
+    return Situation(body)
+
+
+def _a_change(kind="GONE", x=2.4, y=0.75, extent=0.7, **more):
+    return {"kind": kind, "x_m": x, "y_m": y, "extent_m": extent,
+            "area_m2": 0.12, "large": extent >= 0.6,
+            "seen_from": 1757320500.0, "seen_until": 1757320790.0, **more}
+
+
+def test_a_change_is_named_after_the_record_nearest_it() -> None:
+    """M5's third step: a change attached to the world record nearest it. On
+    2026-10-10 the armchair moved was found 0.1 m from its record."""
+    chair = a_thing("object:539", 2.5, 0.8)
+    chair["label"] = "armchair"
+    lamp = a_thing("object:540", 2.9, 0.75)
+    far = a_thing("object:541", 3.4, 0.75)
+    found = goals.investigate_change(_with_changes([_a_change()], [lamp, chair, far]))
+    check("one goal, named after the nearer of two records within reach of it",
+          [(one.gain_detail["named"], one.gain_detail["named_label"]) for one in found],
+          [("object:539", "armchair")])
+    check("...said in its reason", "object:539 (armchair) gone from" in found[0].why, True)
+    check("...with the other record near it kept beside it, and counted",
+          ([one["id"] for one in found[0].gain_detail["records_near"]],
+           "the nearest of 2 records" in found[0].why),
+          (["object:539", "object:540"], True))
+    check("...and carried as a reference to the record",
+          any("object:539" in ref for ref in found[0].refs), True)
+    alone = goals.investigate_change(_with_changes([_a_change(x=1.0, y=0.4)], [far]))
+    check("a change with no record within 0.6 m is something unknown",
+          (alone[0].gain_detail["named"], alone[0].why.startswith("something")),
+          (None, True))
+
+
+def test_a_change_is_looked_at_level_and_aimed_at_where_it_is() -> None:
+    found = goals.investigate_change(_with_changes([_a_change()]))
+    facts = found[0].constraints
+    check("the look is aimed at the change", facts["look_at"], {"x_m": 2.4, "y_m": 0.75})
+    check("...level, since a change is at the lidar's height",
+          facts["look_tilt_deg"], goals.LOOK_TILTS_DEG[1])
+    check("...and what it is about travels with it",
+          facts["change"]["kind"], "GONE")
+
+
 TESTS = (test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands,
+    test_a_change_is_named_after_the_record_nearest_it,
+    test_a_change_is_looked_at_level_and_aimed_at_where_it_is,
          
     test_it_cannot_reach_the_rover,
     test_a_doorway_onto_unmapped_ground_is_worth_driving_to,

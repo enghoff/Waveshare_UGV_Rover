@@ -76,6 +76,12 @@ UNREACHABLE_MARK = "unreachable"
 #: already answered, or already spent, is refused from the record.
 INSPECTION_MARK = "inspection"
 INSPECTIONS_READ = 500
+#: One row per attempt at a change (`goals.investigate_change`), appended by the
+#: executive when the attempt ends however it ends: which change, and whether a
+#: look was taken. Read into every situation so that a change already looked at
+#: is worth nothing from the record alone.
+EXAMINED_MARK = "change_examined"
+EXAMINED_READ = 200
 
 
 def prepare(store: store_mod.EpisodeStore,
@@ -97,6 +103,7 @@ def prepare(store: store_mod.EpisodeStore,
         if float(one.get("until") or 0.0) > here.at]
     here.body["previous_goal"] = _loads(store.marked(GOAL_MARK)) or {}
     here.body["inspections"] = inspections(store)
+    here.body["examined"] = examined(store)
     return here
 
 
@@ -104,6 +111,16 @@ def inspections(store: store_mod.EpisodeStore) -> list[dict[str, Any]]:
     """Every inspection attempt the record holds, oldest first."""
     out = []
     for row in reversed(store.marks(INSPECTION_MARK, limit=INSPECTIONS_READ)):
+        body = _loads(row["value"])
+        if isinstance(body, dict):
+            out.append({"at": row["at"], **body})
+    return out
+
+
+def examined(store: store_mod.EpisodeStore) -> list[dict[str, Any]]:
+    """Every attempt at a change the record holds lately, oldest first."""
+    out = []
+    for row in reversed(store.marks(EXAMINED_MARK, limit=EXAMINED_READ)):
         body = _loads(row["value"])
         if isinstance(body, dict):
             out.append({"at": row["at"], **body})
@@ -121,8 +138,11 @@ def _goal_of(preferred: dict[str, Any] | None) -> dict[str, Any]:
     if preferred is None:
         return {}
     body = preferred["candidate"]
-    return {"id": body["id"], "type": body["type"], "target": body["target"],
-            "goal": body["constraints"].get("goal")}
+    out = {"id": body["id"], "type": body["type"], "target": body["target"],
+           "goal": body["constraints"].get("goal")}
+    if body["constraints"].get("change"):
+        out["change"] = body["constraints"]["change"]
+    return out
 
 
 def deliberate(store: store_mod.EpisodeStore,

@@ -97,8 +97,10 @@ class Weights:
 
     __slots__ = ("version", "purpose", "w_time", "w_travel", "w_energy",
                  "switching_cost", "min_gain", "room_m2",
-                 "useful_uncertainty_m", "time_scale_s", "travel_scale_m",
+                 "useful_uncertainty_m", "useful_change_m", "time_scale_s",
+                 "travel_scale_m",
                  "geofence", "m0a_protocol", "go_further", "trial_targets",
+                 "investigate_changes",
                  "source")
 
     def __init__(self, **fields: Any) -> None:
@@ -146,11 +148,12 @@ class Weights:
 DEFAULTS: dict[str, Any] = {
     # Bumped whenever anything below changes, so that two decisions scored
     # differently can be told apart in the record without diffing them.
-    "version": "4",
+    "version": "5",
 
     # Per goal type, and 1.0 everywhere until the owner declares a purpose.
     "purpose": {"default": 1.0, "explore_frontier": 1.0,
-                "improve_geometry": 1.0, "inspect_hypothesis": 1.0},
+                "improve_geometry": 1.0, "inspect_hypothesis": 1.0,
+                "investigate_change": 1.0},
 
     # What a minute of the rover's time and ten metres of its driving are worth
     # against a whole unit of knowledge. Both at 0.3 so that a goal has to be
@@ -188,6 +191,12 @@ DEFAULTS: dict[str, Any] = {
     # of one errand.
     "room_m2": 20.0,
     "useful_uncertainty_m": 0.30,
+    # 0.6 m is the change watch's own line for furniture (`LARGE_M` in
+    # ros_nav/change_watch.py): a change that size, not yet looked at, is worth
+    # half a unit, as a small room of new floor is. Nothing measured yet says
+    # how often a change looked at turns out worth knowing; when the M5
+    # sessions do, this is where it goes.
+    "useful_change_m": 0.60,
     "time_scale_s": 60.0,
     "travel_scale_m": 10.0,
 
@@ -224,6 +233,13 @@ DEFAULTS: dict[str, Any] = {
     # to records outside the set would spend the battery on attempts that cannot
     # be scored against the tape (docs/plans/autonomous-curiosity.md, M4).
     "trial_targets": None,
+
+    # Whether a change the watch reports may be acted on. Off: the goal is
+    # generated, scored and refused, so every run records what it would have
+    # done about each change -- the shadow acceptance the plan asks of a new
+    # goal type before it moves the rover. Turned on in the rover's scoring.json
+    # once that is accepted; the acceptance set scores it as if on.
+    "investigate_changes": False,
 }
 
 DEFAULT = Weights()
@@ -344,6 +360,16 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
                                 f"{cooling.UNREACHABLE_M} m of here "
                                 f"{(situation.at - float(failed['since'])) / 60:.0f}"
                                 f" min ago: {failed.get('why')}")})
+    if candidate.type == "investigate_change" and not weights.investigate_changes:
+        out.append({"veto": "in shadow acceptance",
+                    "why": "going to look at a change is recorded and not acted "
+                           "on until it has been accepted (investigate_changes)"})
+    if (candidate.type == "investigate_change"
+            and int(facts.get("change_attempts") or 0) >= goals_mod.CHANGE_ATTEMPTS):
+        out.append({"veto": "attempts spent",
+                    "why": f"{facts['change_attempts']} attempts at this change "
+                           f"took no look; it waits for the change watch to "
+                           f"report it anew"})
     out.extend(_inspection_vetoes(candidate, weights))
     return out
 
@@ -503,6 +529,17 @@ def _the_same_goal(candidate: goals_mod.Candidate,
     """
     if previous.get("id") and candidate.id == previous["id"]:
         return True
+    if candidate.type == "investigate_change" and previous.get("type") == candidate.type:
+        # A change is the same change a little along: its middle moves as the
+        # watch adds cells to it (`goals.EXAMINED_M`).
+        was = previous.get("change") or {}
+        goes = candidate.constraints.get("change") or {}
+        if was.get("x_m") is None or goes.get("x_m") is None:
+            return False
+        return (was.get("kind") == goes.get("kind")
+                and ((goes["x_m"] - was["x_m"]) ** 2
+                     + (goes["y_m"] - was["y_m"]) ** 2) ** 0.5
+                <= goals_mod.EXAMINED_M)
     if candidate.target or previous.get("target"):
         return bool(previous.get("target")) and candidate.target == previous["target"]
     was, goes = previous.get("goal"), candidate.constraints.get("goal")
@@ -536,6 +573,13 @@ def _gain(candidate: goals_mod.Candidate, weights: Weights
         note = (f"{value:.2f} m taken off where the thing is, counted against "
                 f"the {float(weights.useful_uncertainty_m):.2f} m tolerance the "
                 f"acceptance run declared")
+    elif candidate.gain_kind == "change_unexamined":
+        gain = _saturate(value, float(weights.useful_change_m))
+        note = (f"a {value:.2f} m change nobody has looked at, counted against "
+                f"the {float(weights.useful_change_m):.2f} m that is furniture"
+                if value > 0.0 else
+                "the change has been looked at since it was seen, so looking "
+                "again would learn nothing until it changes again")
     elif candidate.gain_kind == "hypothesis_doubt":
         # Already a unit: one for a place nothing has checked, a half for one
         # whose only attempt could not answer, and half again for a viewpoint
