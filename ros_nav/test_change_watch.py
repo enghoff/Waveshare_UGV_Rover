@@ -292,6 +292,12 @@ def test_a_change_seen_from_one_place_is_not_reported() -> None:
     visit(watch, seen, t0=3660.0, seconds=30.0)
     check("driving round the room then reports it",
           sorted(c["kind"] for c in watch.changes(large_only=True)), ["GONE", "NEW"])
+    # A file saved before the viewpoints were kept loads with none: unknown is
+    # not yet seen from two places. Deployed on 2026-10-11 it read as seen from
+    # everywhere, and the wall from control 3 was back in the report.
+    for name in cw.VIEW_ARRAYS:
+        getattr(watch, name)[...] = np.inf if name.endswith("0") else -np.inf
+    check("a visit whose viewpoints are not known reports nothing", watch.changes(), [])
 
 
 TESTS = (

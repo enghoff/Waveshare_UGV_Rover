@@ -295,13 +295,18 @@ class ChangeWatch:
                     continue
                 # Seen gone from where the beams passed through, new from where
                 # they ended.
+                # Only cells whose viewpoints are known: one loaded from a file
+                # older than them has none, which is not yet seen at all.
                 by = "pass" if kind == "GONE" else "hit"
+                x0 = getattr(self, by + "_x0")[rows, cols]
+                known = np.isfinite(x0)
+                if not known.any():
+                    continue
                 spread = math.hypot(
-                    float(getattr(self, by + "_x1")[rows, cols].max()
-                          - getattr(self, by + "_x0")[rows, cols].min()),
-                    float(getattr(self, by + "_y1")[rows, cols].max()
-                          - getattr(self, by + "_y0")[rows, cols].min()))
-                if not spread >= VIEW_SPREAD_M:
+                    float(getattr(self, by + "_x1")[rows, cols][known].max() - x0[known].min()),
+                    float(getattr(self, by + "_y1")[rows, cols][known].max()
+                          - getattr(self, by + "_y0")[rows, cols][known].min()))
+                if spread < VIEW_SPREAD_M:
                     continue
                 extent = self.res * max(np.ptp(cols) + 1, np.ptp(rows) + 1)
                 if large_only and extent < LARGE_M:
