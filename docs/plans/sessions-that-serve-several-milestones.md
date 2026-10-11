@@ -82,9 +82,11 @@ All of it offline, on the recordings of 2026-10-10 and 11:
   ([`session.py`](../../experiments/m5_changes/README.md)) and its route
   planned leg by leg clear of the rug, 33 m for both loops; it has not yet
   driven, and the shakedown is its first run.
-- **Changes named:** each change attached to the world record nearest it.
-- **The executive's goal of investigating a change**, and criteria 5 and 6
-  shown on replayed snapshots before the hardware is asked.
+- **The executive's look at a change, turned on.** It is built, and criteria 5
+  and 6 are shown on the acceptance set and on scene 1's replayed decisions
+  ([2026-10-11](../progress/2026-10-11-m5-investigate-change.md)); it is in
+  shadow acceptance, so the shakedown's run records what it would do, and
+  turning it on (`investigate_changes`) before session 1 is the owner's call.
 - **The false-alarm budget set** (criterion 3), with the plan's proposal that an
   apparent change is a reason to look again.
 - **The benchmark's question sets and scoring**, predeclared.

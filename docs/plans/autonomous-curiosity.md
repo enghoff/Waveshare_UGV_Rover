@@ -492,14 +492,16 @@ rooms with the expected outcome written beside each.
 
 ### What is still ahead
 
-- **Four goal types are missing**, and they are the semantic ones:
+- **Three goal types are missing**, and they are the semantic ones:
   `inspect_uncertain_entity` (gaps about what a thing is, which wait for
   attribute claims: *Attribute claims, later*, under Phase 4),
-  `revisit_stale_entity`, `investigate_change` and `search_for_missing_entity`
-  (the last three need M5 temporal and visibility semantics). Each needs shadow
-  acceptance of its own, and the fixed acceptance set must be extended before
-  any of them is enabled for movement. Skill-practice goals wait until a skill
-  metric exists.
+  `revisit_stale_entity` and `search_for_missing_entity` (both need more of M5's
+  temporal and visibility semantics). Each needs shadow acceptance of its own,
+  and the fixed acceptance set must be extended before any of them is enabled
+  for movement. `investigate_change` exists since 2026-10-11, its acceptance
+  set extended (`autonomy/scenarios/changes.json`), and is in shadow acceptance:
+  generated, scored and refused in every run until `investigate_changes` is
+  turned on. Skill-practice goals wait until a skill metric exists.
 - **A thing seen once and never placed is never proposed**, because one bearing
   gives no position to plan a viewpoint around. The pool of unplaced sightings
   is invisible to the choosing, and closing that needs the observation history
@@ -1011,9 +1013,14 @@ session 20. What is ahead, in order:
    armchair by the window, a bean bag, a floor lamp, within their rooms between
    two runs, and puts them back before a third: each should be reported gone
    and new where it went, then back, and nothing else.
-3. **Changes named.** A change attached to the world record nearest it (the
-   armchair's was 0.1 m off), and a door told from furniture; then a change
-   becomes something for the executive to go and look at (criteria 5 and 6).
+3. **Changes named.** A change is attached to the world record nearest it,
+   within 0.6 m, and is something for the executive to go and look at, which
+   stops being worth anything once looked at (criteria 5 and 6): built on
+   2026-10-11 as the goal `investigate_change` ([autonomy/README.md](../../autonomy/README.md)),
+   in shadow acceptance until the sessions' runs have recorded what it would
+   do. The name is a guess while the world state holds the same object as
+   several records (three or four within 0.35 m of each change in scene 1;
+   criterion 4). Still ahead: a door told from furniture.
 
 M3's remaining sessions are recorded for these, at the owner's request
 (2026-10-10). Its re-drives of the charger room, another room and the whole flat
