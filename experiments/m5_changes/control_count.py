@@ -44,6 +44,48 @@ def clock(t):
     return dt.datetime.fromtimestamp(t).strftime("%m-%d %H:%M:%S")
 
 
+def latest_map():
+    reports = glob.glob(os.path.join(CHANGES, "*.json"))
+    return os.path.basename(max(reports, key=os.path.getmtime))[:-len(".json")]
+
+
+def logged_between(map_id, start, end):
+    """The log's rows logged from `start` to `end`, in order."""
+    rows = []
+    try:
+        with open(os.path.join(CHANGES, map_id + ".log.jsonl")) as f:
+            for line in f:
+                row = json.loads(line)
+                if start <= row["logged_at"] <= end:
+                    rows.append(row)
+    except FileNotFoundError:
+        pass
+    return rows
+
+
+def counted(rows):
+    """Each change once: (the rows that count, and for each row logged, "" or
+    "again" or "grown").
+
+    The watch logs a group again when it drops out of one report and comes back
+    in a later one, so the same change, the same kind within 0.3 m, counts once;
+    and again when it grows to furniture size, which then counts in its place."""
+    kept, notes = [], []
+    for row in rows:
+        same = [i for i, c in enumerate(kept)
+                if c["kind"] == row["kind"]
+                and math.hypot(c["x_m"] - row["x_m"], c["y_m"] - row["y_m"]) < 0.3]
+        if not same:
+            kept.append(row)
+            notes.append("")
+        elif row["large"] and not kept[same[0]]["large"]:
+            kept[same[0]] = row
+            notes.append("grown")
+        else:
+            notes.append("again")
+    return kept, notes
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("start")
@@ -52,22 +94,10 @@ def main():
     a = p.parse_args()
     start = when(a.start)
     end = when(a.end) if a.end else time.time()
-    if a.map:
-        map_id = a.map
-    else:
-        reports = glob.glob(os.path.join(CHANGES, "*.json"))
-        map_id = os.path.basename(max(reports, key=os.path.getmtime))[:-len(".json")]
+    map_id = a.map or latest_map()
     with open(os.path.join(CHANGES, map_id + ".json")) as f:
         report = json.load(f)
-    logged = []
-    try:
-        with open(os.path.join(CHANGES, map_id + ".log.jsonl")) as f:
-            for line in f:
-                row = json.loads(line)
-                if start <= row["logged_at"] <= end:
-                    logged.append(row)
-    except FileNotFoundError:
-        pass
+    logged = logged_between(map_id, start, end)
 
     print("map %s, %s to %s" % (map_id, clock(start), clock(end)))
     print("watch now: %s, %d scans in all, %d refused as not fitting; report written %s"
@@ -75,27 +105,15 @@ def main():
              report.get("scans", 0), report.get("refused", 0), clock(report.get("at"))))
     if report.get("at", 0) < end:
         print("  (its last report is older than the end of the window: run again in 30 s)")
-    # The watch logs a group again when it drops out of one report and comes back
-    # in a later one, so the same change, the same kind within 0.3 m, counts once;
-    # and again when it grows to furniture size, which then counts in its place.
-    counted = []
-    for row in logged:
-        same = [i for i, c in enumerate(counted)
-                if c["kind"] == row["kind"]
-                and math.hypot(c["x_m"] - row["x_m"], c["y_m"] - row["y_m"]) < 0.3]
-        again = bool(same)
-        if not same:
-            counted.append(row)
-        elif row["large"] and not counted[same[0]]["large"]:
-            counted[same[0]] = row
+    kept, notes = counted(logged)
+    for row, note in zip(logged, notes):
         print("%s  %-4s %-9s at (%6.2f, %6.2f)  %.2f m across, %.3f m2; seen so from %s, "
               "otherwise at %s%s"
               % (clock(row["logged_at"]), row["kind"],
                  "FURNITURE" if row["large"] else "small", row["x_m"], row["y_m"],
                  row["extent_m"], row["area_m2"], clock(row["seen_from"]),
-                 clock(row.get("was_otherwise_at")),
-                 ("  (grown)" if row in counted else "  (again)") if again else ""))
-    logged = counted
+                 clock(row.get("was_otherwise_at")), "  (%s)" % note if note else ""))
+    logged = kept
     large = [r for r in logged if r["large"]]
     print("%d furniture-sized change%s logged, %d smaller"
           % (len(large), "" if len(large) == 1 else "s", len(logged) - len(large)))

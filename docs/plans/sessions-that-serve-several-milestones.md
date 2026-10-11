@@ -78,8 +78,10 @@ All of it offline, on the recordings of 2026-10-10 and 11:
   much. Either the count is predeclared to say so beside each staged change, or
   the two viewpoints a place the survey loop gives are shown on replay to bring
   them up to size.
-- **The session script:** one command for steps 1 to 6, recording, loops, the
-  wait, the run, counts and the drive home, with the survey route fixed.
+- **The session script on the floor.** It is written
+  ([`session.py`](../../experiments/m5_changes/README.md)) and its route
+  planned leg by leg clear of the rug, 33 m for both loops; it has not yet
+  driven, and the shakedown is its first run.
 - **Changes named:** each change attached to the world record nearest it.
 - **The executive's goal of investigating a change**, and criteria 5 and 6
   shown on replayed snapshots before the hardware is asked.

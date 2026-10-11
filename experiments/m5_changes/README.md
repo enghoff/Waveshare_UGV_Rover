@@ -30,7 +30,8 @@ episode store and a copy of the world store:
 | Script | What it does |
 |---|---|
 | `bag_extract.py` | a recording (`ros_nav/record_drive.sh`) as arrays: scans, odom -> base_link, map -> odom. Run on the rover in the ROS environment |
-| `control_count.py START [END]` | what the live change watch logged in a window (a run): each change, its size, and when the place was last seen otherwise; on a control, every furniture-sized one is a false alarm unless shown to have moved. Run on the rover |
+| `control_count.py START [END]` | what the live change watch logged in a window (a run): each change, its size, and when the place was last seen otherwise; on a control, every furniture-sized one is a false alarm unless shown to have moved. A change logged again on growing to furniture size counts once, at that size. Run on the rover |
+| `session.py` | one session of [the plan](../../docs/plans/sessions-that-serve-several-milestones.md): `dry` plans every leg with Nav2's planner and says how near each comes to the dining table's rug, nothing moving; `all NAME` records, drives the survey loop (eight viewpoints, two or more a room, turning to face each before setting off), waits in the bedroom until `~/.ugv/sessions/NAME.go` exists, opens an autonomy run, drives the loop again, goes home and counts each step from the change log. Each step can be run alone; everything it did is in `~/.ugv/sessions/NAME.json`. Run on the rover, with `control_count.py` beside it |
 | `change_detect.py` | hit and pass-through counts per 5 cm map cell for two recordings; cells solid in one and seen through in the other, grouped and kept when seen across more than 20 s. Runs anywhere with numpy and scipy |
 
 ```
