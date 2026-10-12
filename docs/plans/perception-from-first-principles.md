@@ -9,7 +9,10 @@ maps, persistence filters and robot world models, which this document links
 rather than repeats. The same day, the owner's questions turned the principles
 into a specific architecture, how it would be built and whether it is feasible
 on this rover, and those sections were added; Codex's second reading of the
-whole was taken in the same afternoon ([what changed](#second-reading)). Five of the ideas are cheap enough to test on the
+whole was taken in the same afternoon ([what changed](#second-reading)). The
+architecture was then narrowed to one specific approach in
+[perceiving-by-prediction.md](perceiving-by-prediction.md), which holds where the
+two differ. Five of the ideas are cheap enough to test on the
 recordings the rover already holds; they come at the end, with their tests
 fixed in advance.
 
@@ -516,6 +519,10 @@ over movement; the daemon and Nav2 keep that
 The principles made specific, as worked out with the owner after this document
 was first written. Nothing here is built; each choice is a proposal with its
 reason, and the questions still open are listed at the end of the section.
+[Perceiving by prediction](perceiving-by-prediction.md) narrows this section
+to one approach and supersedes it where they differ: recall of stored RGB-D
+looks before any voxel grid, no learned predictor on the critical path, and
+gates against the method each part replaces.
 
 ### Keep the lidar map, and put what moves in front of it
 
