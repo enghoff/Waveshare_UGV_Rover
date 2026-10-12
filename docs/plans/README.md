@@ -13,6 +13,7 @@ or abandoned.
 | [sessions-that-serve-several-milestones.md](sessions-that-serve-several-milestones.md) | proposed 2026-10-11 | one supervised session per charge serving M5, the multi-day benchmark and later milestones together, around a fixed survey loop, with everything else on recordings |
 | [autonomous-curiosity-design.md](autonomous-curiosity-design.md) | proposed | the architecture the plan above implements |
 | [perception-that-keeps-what-it-learns.md](perception-that-keeps-what-it-learns.md) | proposed 2026-10-12; full-resolution evidence landed the same day (R-WS-19); the rest not built (R-WS-11, R-WS-12, R-WS-17, R-WS-18) | keeping what the cameras see at full resolution in a dense 3D field, and what models and the owner understand about it as claims with evidence |
+| [perception-from-first-principles.md](perception-from-first-principles.md) | proposed 2026-10-12, a design with hardware set aside; nothing built; five tests on recordings declared (R-NAV-9, R-NAV-11, R-WS-17, R-WS-18) | what brains and video world models suggest: predicting rather than describing, a fovea aimed where unsure, anchoring on what does not move, objects as paths, two memories joined by nightly replay |
 | [battery-charge-curve.md](battery-charge-curve.md) | recording the pack; nothing fitted yet (R-CTL-11) | making the battery percentage mean the share of a charge left |
 
 ## What a plan owes
