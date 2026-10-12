@@ -8,8 +8,8 @@ steps of this design, and its research sections already cover dense 3D feature
 maps, persistence filters and robot world models, which this document links
 rather than repeats. The same day, the owner's questions turned the principles
 into a specific architecture, how it would be built and whether it is feasible
-on this rover, and those sections were added; Codex was asked for a second
-reading of the whole. Five of the ideas are cheap enough to test on the
+on this rover, and those sections were added; Codex's second reading of the
+whole was taken in the same afternoon ([what changed](#second-reading)). Five of the ideas are cheap enough to test on the
 recordings the rover already holds; they come at the end, with their tests
 fixed in advance.
 
@@ -40,8 +40,9 @@ of video (Garrido et al., 2025). But they copy the nearest case they have seen
 rather than learn laws, they break conservation of mass and momentum about 40%
 of the time, and they forget a place within about a minute unless their memory
 is pinned to positions in 3D. For a robot that lives in one house, the first
-weakness hardly matters: its own house is the one world it will ever need to
-interpolate, and what falls outside it is exactly the surprise it should notice.
+weakness matters less than it sounds, since most of what it sees repeats; but
+the unusual events it most needs to notice are where such a model is weakest,
+so those are left to explicit memory and rules.
 
 Six principles follow, each a change in how the rover is built rather than a
 better model:
@@ -80,10 +81,11 @@ separate store. Every look is predicted before it is taken, by rendering an
 explicit 3D memory from the coming pose, and only the error is processed. Two
 learners divide the work: the memory learns in one shot by being written, and a
 network that generalises learns slowly, at night. [The verdict](#is-it-feasible-on-this-rover)
-is three tiers: the parts that fix today's measured failures are feasible in
-weeks; the 3D memory and prediction by rendering in months, once the camera's
-mounting is measured; the learned world model is a research gamble for want of
-video to learn from.
+is three tiers: prototypes of the parts that answer today's measured failures
+in weeks, though proving them needs truth that does not yet exist; the 3D memory
+and prediction by rendering in months, once the gimbal's pivots and pointing are
+modelled; and the learned world model a research gamble for want of video and
+commands to learn from.
 
 ## How an animal does it, from the eye inwards
 
@@ -209,7 +211,12 @@ rover saw one and by an explanation where it did not. A change is explained as
 the fewest events that account for it, a move, an arrival, a departure, under
 the rules that things do not vanish, do not pass through walls, and move when
 somebody is there to move them. Appearance is evidence for the explanation, not
-the identity itself.
+the identity itself. And an explanation stays a hypothesis: two
+indistinguishable chairs swapped while nobody looked cannot be told apart by the
+fewest events, so both readings are kept, with a look to settle them, rather
+than one joined to make the story tidy
+([R-WS-2](../requirements/world-state.md#r-ws-2),
+[R-WS-8](../requirements/world-state.md#r-ws-8)).
 
 ### Physics is a simulation run in the head
 
@@ -302,8 +309,9 @@ kinds of thing, how often they move, where they tend to be, what they afford;
 and a nightly replay that teaches the second from the first. The perception
 plan's night shift is this, and its small models trained on the night's claims
 are the neocortex. Identity should separate by context and complete on
-distinctive cues: the charger armchair's throw and boxes are the cue that would
-have kept its history together.
+distinctive cues: the charger armchair's throw and boxes are a cue that could
+have kept its history together, though a removable one, never an identity key
+on its own.
 
 ### Planning is imagining
 
@@ -415,19 +423,24 @@ and little labelled data is needed.** V-JEPA 2's action-conditioned version
 learned from 62 hours of unlabelled robot video to plan pick-and-place, 80% and
 65% successful, about 16 s an action (Assran et al., 2025). Dreamer 4 learned
 from mostly unlabelled Minecraft video to obtain diamonds from offline data
-alone (Hafner, Yan & Lillicrap, 2025). The rover's recordings already pair every
-picture and scan with the wheel odometry, IMU and commands that moved it.
+alone (Hafner, Yan & Lillicrap, 2025). The rover's recordings are not that kind
+of data yet: its 21 complete recordings, 4 h 35 min, hold the lidar, odometry
+and IMU, with no camera and no commands. Commands exist only for one day's turn
+trials, in separate files.
 
 What this means for the rover:
 
 - **Predict in a learned representation, not pixels**: that is where the
   physical intuitions appear, and it ignores the detail nothing can predict.
-- **Condition on the rover's own actions**, which its recordings already carry.
+- **Condition on the rover's own actions**, which means recording the commands
+  beside the camera, as it does not today.
 - **Anchor the model's memory in a 3D map, and keep what changes apart from what
   does not**: the perception plan's field is that memory.
 - **Train on its own house.** A model that only interpolates is at its best in a
-  narrow world seen over and over. The rover's house is exactly that, and the
-  rare events, a moved chair, a door, a bump, are what to keep and learn from.
+  narrow world seen over and over, and most of what the rover sees repeats. But
+  the rare events, a moved chair, a door, a bump, are both what it most needs to
+  notice and where such a model is weakest, so they are kept and learned from
+  deliberately, and checked by memory and rules rather than left to the model.
 - **Keep explicit rules and a checker** where learned models are weakest:
   things persist, walls are solid, the rover's own motion follows its
   kinematics. The model proposes; the map and the rules decide.
@@ -508,22 +521,42 @@ reason, and the questions still open are listed at the end of the section.
 
 slam_toolbox, Nav2 and the saved map stay as the scaffold. Where the room matches
 the map, the mapper's per-update corrections are mostly under 5 cm and the
-position check agrees to about 3 cm; its one measured failure, the shakedown, was
-the scan matcher fitting moved furniture as if it were walls
-([2026-10-12](../progress/2026-10-12-the-pose-among-moved-furniture.md)). Nav2,
-the refit and the change watch are built on that map, and no brain-style mapper
-has beaten a conventional one on a real robot.
+position check agrees to about 3 cm. Its measured failures are local: the
+shakedown, where the scan matcher fitted moved furniture as if it were walls
+([2026-10-12](../progress/2026-10-12-the-pose-among-moved-furniture.md)), and the
+bedroom on [2026-10-11](../progress/2026-10-11-bedroom-pose.md). Nav2, the refit
+and the change watch are built on that map, and no brain-style mapper has beaten
+a conventional one on a real robot.
 
-What changes is a filter between the lidar and the mapper that drops or thins
-the returns falling on map cells known to change, learned from how often each
-cell has been seen solid and seen through across visits. slam_toolbox cannot
-weight individual returns, so dropping them is the practical form. Three
-cautions: keep enough wall returns, since a room that is mostly furniture
-cannot be stripped bare; let trust fall quickly when a cell is seen to change,
-as the rats' does; and let a cell earn stability back when something new stays
-put, so the map is not frozen. It complements the setting navigation adopted
-after the shakedown, the scan matcher charging for distance from odometry
-(1333b68), which helps when odometry is right and not when it is not.
+What changes is a filter that keeps the mapper from matching against map cells
+known to change, learned from how often each cell has been seen solid and seen
+through across visits. Its contract matters more than its idea:
+
+- **The mapper alone gets the filtered scan**, on a topic of its own. The raw
+  `/scan` stays untouched for everything else that reads it today: the local
+  controller's obstacle layer, the global planner's live-obstacle layer, the
+  refit and position checks, the change watch and the recordings. Learned
+  stability never removes evidence from avoidance, from the checks, or from the
+  truth that later tests are scored against.
+- **A dropped return must not become free space.** slam_toolbox cannot weight
+  individual returns, so a dropped one is marked invalid, and how the installed
+  mapper treats an invalid sample is verified first: one read as maximum range
+  would draw a ray of free space through a real obstacle.
+- **The mask is chosen from a pose that may already be wrong**, so it can throw
+  away the very wall returns that would correct it and reinforce its own
+  mistake. It keeps a minimum coverage of returns by angle and by distance, falls
+  back to the raw scan whenever the pose is uncertain, and logs every return it
+  removes.
+- **Trust falls quickly and is earned back slowly**: a cell seen to change loses
+  its stability at once, as the rats' trust in a moved cue does, and a cell where
+  something new stays put earns it back, so the map is not frozen.
+
+It complements the setting navigation adopted after the shakedown, the scan
+matcher charging for distance from odometry (1333b68). That setting helps when
+odometry is right and resists a correction whether the correction is right or
+wrong: in replay it wobbled 0.6-0.9 m among the moved furniture before settling
+on the truth, and on the drive home it ended 0.47 m out where the live mapper
+ended 0.21 m out (the same entry).
 
 ### Recognising which place it is in
 
@@ -551,9 +584,9 @@ which the existing refit handles.
 
 The lidar stays the backbone for geometry: accurate to centimetres, cheap, and
 working in the dark. The camera cannot replace it: it rides a gimbal with a
-degree and a half of backlash, its offset from the rover's position has never
-been measured, and visual SLAM on an Orin Nano was measured dropping about 30%
-of frames at 424x240 ([the perception plan's sources](perception-that-keeps-what-it-learns.md#sources)).
+degree and a half of backlash and pivots that are not modelled, and visual SLAM
+on an Orin Nano was measured dropping about 30% of frames at 424x240
+([the perception plan's sources](perception-that-keeps-what-it-learns.md#sources)).
 What ends is the separation. Today pictures borrow the lidar's position after
 the fact and the lidar knows nothing the camera has seen. Joined, the two inform
 each other:
@@ -572,14 +605,18 @@ trusted for safety in motion, and every obstacle is still handled the same
 ([R-NAV-8](../requirements/navigation.md#r-nav-8)).
 
 **The join is a chain of transforms**, each picture's position in the map frame
-built from: the map to the rover, from SLAM and checked by a scan match at the
-shutter, as today ([R-WS-16](../requirements/world-state.md#r-ws-16)); the rover
-to the gimbal's base, never measured; the gimbal's pan and tilt, as commanded
-and corrected by the self-model; and the gimbal to each camera, measured for the
-depth camera to a tenth of a degree. The rover-to-gimbal offset can be measured
-against the lidar map itself, by photographing door frames and wall corners whose
-positions the map holds; it is also what [R-WS-11](../requirements/world-state.md#r-ws-11),
-a thing's height, waits on. Until it and the gimbal's pointing are corrected,
+built from: the map to the rover's frame, which is defined at the lidar rather
+than the chassis centre, from SLAM and checked by a scan match at the shutter as
+today ([R-WS-16](../requirements/world-state.md#r-ws-16)); the lidar to the
+camera, taped by the owner on 2026-10-01 at 23.5 cm above the floor and about
+2 cm ahead of the lidar's spin centre, on the centre line
+([R-WS-11](../requirements/world-state.md#r-ws-11), settled); the pan and tilt,
+as commanded and corrected by the self-model; and the camera to the depth
+camera, measured to about a centimetre and a tenth of a degree. What is missing
+is a full model of the two pivots: they sit behind and below the lens, so the
+camera swings about a centimetre within the gimbal's ±20 degrees, and nothing
+models that or carries its uncertainty. Every link carries its timestamp and its
+uncertainty. Until the pointing faults, backlash and gain, are corrected,
 anything the camera adds to the map is placed a few degrees out, a quarter of a
 metre at 3 m.
 
@@ -590,8 +627,10 @@ Five layers, all in the map's frame and keyed by its identity:
 - **Evidence**: each look's full picture, depth map, camera pose with its
   uncertainty, and time. Never rewritten; everything below is rebuilt from it.
 - **Voxels**: a sparse 5 cm grid from the floor to about 2 m. Each holds how
-  often it was seen solid and seen through, and when, an average visual feature
-  with the looks it came from, and a colour.
+  often it was seen solid and seen through, and when, kept apart from any
+  judgement of what is there. Its appearance is not one average, which would
+  blend different occupants, days and lighting into a ghost, but a few
+  prototypes by period and viewpoint, each with the observations it came from.
 - **Summary layers on the lidar grid's own 5 cm cells**, so that navigation can
   read them directly: something in the cell the lidar's slice misses, how often
   the cell has changed, ground that has stalled the wheels, and what kind of
@@ -626,9 +665,10 @@ From the safest outward:
 2. **Route planning**: the global planner's cost map already stacks the SLAM map,
    a live-obstacle layer this repository built (`ugv_behaviors::LiveObstacleLayer`)
    and the padding round obstacles, so a memory layer is a familiar kind of
-   plug-in. Its rules: it may only add cost, never clear what the lidar sees; it
-   fades with staleness, so a moved chair's old place frees itself; and it never
-   reaches the local controller, whose avoidance stays lidar-only.
+   plug-in. Its rules: it may only add cost, and fading never clears what the
+   live layer or the saved map holds; it fades with staleness, so a moved
+   chair's old place frees itself; and it never reaches the local controller,
+   whose avoidance stays on the raw lidar.
 3. **Choosing where to look and where to stand**: by 3D visibility, so the rover
    can tell whether the camera actually sees the thing past the table from a
    given spot, where today's viewpoint planner reasons in 2D.
@@ -640,23 +680,30 @@ From the safest outward:
    which known objects should be in view and where.
 2. **Compare.** What was observed minus what was predicted is all that is
    processed further.
-3. **Act on the shape of the error**, which says more than its size:
-   - *small everywhere*: nothing new. The rover stamps "seen, as expected" on
-     what it confirmed, and creates no new records. Today every picture adds
-     its regions as fresh records, about 40,000 from 6,300 pictures, and
-     re-describing what is already known is what keeps founding duplicates;
-   - *local, in a patch*: the world changed, something arrived, left or moved,
-     and it goes to the explaining step;
-   - *coherent across the whole view*, everything shifted alike: the world did
-     not change, the rover's pose is wrong. On the shakedown the 1.35 m error
+3. **Act on the shape of the error**, which says more than its size. Each shape
+   is a hypothesis to be weighed against its alternatives, not a verdict:
+   - *small everywhere*: nothing new. What was seen is filed as confirmation of
+     what was predicted, once its visibility is checked, rather than resolved
+     afresh. Today each picture's regions are kept as observations (40,352 from
+     6,312 pictures by 11:44 on 2026-10-12), and the resolver attaches each to a
+     thing it already holds or founds a new one, look by look; the founding is
+     where duplicates come from. The evidence is still kept either way;
+   - *local, in a patch*: probably a change, something arrived, left or moved,
+     and it goes to the explaining step. A nearer surface is often an occluder
+     rather than something new, and missing depth is unknown, not empty;
+   - *coherent across the whole view*, everything shifted alike: probably the
+     rover's pose, though calibration, a timing error at the shutter or a large
+     thing moving in front can do the same. On the shakedown the 1.35 m error
      would have shown as the whole living room offset, the moved armchairs as
      patches;
    - *where the prediction was uncertain*, unseen, stale or often-changing
-     places: worth learning, and where to look next.
+     places: worth learning, and where to look next, as long as the uncertainty
+     is one a look can reduce, not glare or noise that no look will.
 4. **Self-motion is predicted too**: a pan or a turn predicts how the image and
    the scan should shift, and the difference calibrates the gimbal and wheels.
 
-The store then grows with surprise rather than with time. The rover already has
+What is processed then grows with surprise rather than with time, while the
+evidence is kept as before. The rover already has
 two predictive pieces, both on the lidar side: the change watch compares each
 scan with what earlier visits saw, and the position check asks whether the scan
 fits the map where the rover believes it is. The camera side has none, which is
@@ -677,12 +724,18 @@ milliseconds on a GPU by estimate.
 high for walls, and for a thing decaying with time since it was last seen, at
 the rate its kind tends to move. A sofa unseen for a week is predicted firmly, a
 bean bag unseen since yesterday weakly, so a missing bean bag is mildly
-surprising and a missing sofa very. Surprise is the mismatch weighted by that
-confidence. The rover's pose uncertainty widens the tolerance at edges, where a
-degree of heading makes depth jump.
+surprising and a missing sofa very. Surprise is a predictive likelihood, each
+residual normalised by the spread the prediction expected, so that it can be
+checked for calibration, rather than confidence multiplied by an arbitrary
+feature distance. The rover's pose uncertainty widens the expected spread at
+edges, where a degree of heading makes depth jump. The failure runs both ways:
+a change of pose or exposure can make a stable scene surprising, and stale
+confidence can make a real move unsurprising.
 
-**Depth first, appearance second.** Measured farther than predicted means
-something has gone or is seen through; nearer, something new stands in front.
+**Depth first, appearance second.** Measured farther than predicted is evidence
+that something has gone only when the ray confidently passes through a volume
+that was occupied, with valid depth, a trusted pose and the place in view;
+otherwise it is unknown. Nearer is often an occluder rather than something new.
 Appearance is compared on learned features that tolerate lighting, since
 daylight against lamplight would otherwise look like change everywhere, and this
 camera's exposure is known to be unreliable.
@@ -708,9 +761,12 @@ particular, the neocortex slow and general, with replay between them.
 1. **One shared representation.** A pretrained, language-aligned foundation
    encoder, RADIO-B or DINOv3-B with a text head, turns each 16-pixel patch of a
    view into a feature compressed to about 128 numbers, and the depth camera
-   gives each patch a distance. It is frozen by day, so memory written on Monday
-   is comparable on Friday, and its features are a backend of their own, never
-   compared with today's vectors ([R-WS-4](../requirements/world-state.md#r-ws-4)).
+   gives each patch a distance. The memory's encoder stays fixed, so memory
+   written on Monday is comparable on Friday. If it is ever adapted, the adapted
+   one is a new backend: versioned together with its text head, compression,
+   crop, lens and calibration, and the memory is re-embedded before anything is
+   compared across the change. Its features are never compared with today's
+   vectors ([R-WS-4](../requirements/world-state.md#r-ws-4)).
 2. **The fast learner: the explicit memory above, written on every observation.**
    One ray-cast write into the voxels is the learning; nothing is retrained.
    RayFronts does this with RADIO features. An object slot opens tentatively on
@@ -721,24 +777,49 @@ particular, the neocortex slow and general, with replay between them.
 3. **The dependable predictor of the present: rendering plus small Bayesian
    filters, no network.** Each object slot runs a two-state filter, there or
    gone, with leave and return rates; things with little history borrow the
-   rates of their kind, so the dining chairs share theirs (Perpetua's model;
-   Saavedra-Ruiz et al., 2025). Where a missing thing went is predicted from
-   counts of where it has been found, seeded by the owner or a language model
-   (O-STaR's tables; Menon et al., 2026). The rates are fitted to intervals, not
-   to the moment a record was made, which is when the resolver noticed, not when
-   the thing moved. The self-model is a running regression of commanded against
-   measured motion. All of it updates in one step, predicts only what has been
-   seen, and can be checked for calibration.
+   rates of their kind, so the dining chairs share theirs. This is a
+   simplification of Perpetua, which also models false and missed detections
+   and warns that sparse histories leave the rates unidentifiable
+   (Saavedra-Ruiz et al., 2025). A home produces few moves: one staged day
+   cannot calibrate a house's rates or its daily rhythms, so the priors stay
+   wide, staged moves are kept apart from natural ones, and no filter can repair
+   a wrong association underneath it. Where a missing thing went is predicted
+   from counts of where it has been found, seeded by the owner or a language
+   model (O-STaR's tables; Menon et al., 2026). The rates are fitted to
+   intervals, not to the moment a record was made, which is when the resolver
+   noticed, not when the thing moved. The self-model is a running regression of
+   commanded against measured motion. All of it updates in one step and predicts
+   only what has been seen.
 4. **The generalising predictor: an action-conditioned transformer working on
    retrieved memory and predicting features, not pixels.** Its inputs are the
    current view's patch features, the action (the change of pose, the pan and
    tilt), and memory tokens, the features rendered from the voxels at the target
    pose with their confidences. Its output is the next view's patch features,
-   each with a predicted variance. It is trained by predicting the frozen
-   encoder's features of the view that actually came, the loss weighted by that
-   variance, first on public indoor video and then on the rover's own sequences,
-   at night, with older days replayed. About 100 million parameters, trained on
-   a rented GPU and run on the Orin on the charger or at a low rate. The memory
+   each with a predicted variance. It is trained by predicting the fixed
+   encoder's features of the view that actually came, first on public indoor
+   video and then on the rover's own sequences, at night, with older days
+   replayed. Four things make that training honest:
+   - *causal*: the memory tokens are rendered only from what was known before
+     the target view, with the map and pose as they stood then; rendering after
+     the target was absorbed leaks the answer, and so does splitting nearly
+     identical neighbouring frames between training and test, so splits are by
+     day;
+   - *the action is the command*: training on the pose change that happened
+     cannot teach what a command will do, and the recordings hold no commands
+     today;
+   - *a proper scoring rule*: the loss is the Gaussian negative log-likelihood,
+     each residual squared over its variance plus the log of the variance, so
+     that predicting a huge variance is not a way out, with calibration checked
+     on held-out days; a single mean and variance may not fit an unseen place
+     with several likely looks;
+   - *baselines it must beat*: copying the rendered memory alone, no memory,
+     and shuffled actions, scored separately on changed and newly uncovered
+     regions, so that well-predicted walls cannot hide failure on the rare
+     events the system is for.
+   About 100 million parameters, trained on a rented GPU and run on the Orin on
+   the charger or at a low rate; the size, the value of public video and the
+   running time on this Orin are hypotheses, not estimates anyone has measured.
+   The memory
    tokens are why it can stay small: the network never has to memorise the
    house, because the memory does that in one shot, and it learns what memory
    cannot supply, how the unseen parts of rooms usually look, occlusion,
@@ -748,13 +829,17 @@ particular, the neocortex slow and general, with replay between them.
    memory stay consistent (Xiao et al., 2025; Li et al., 2025).
 5. **When each learns.** On every observation: voxel writes, slot updates,
    counts, filter updates, the self-model's regression. Each night: refit each
-   kind's rates and daily rhythms; fine-tune a small adapter on the encoder with
-   pairs that geometry hands over for free, two views of the same voxel being
-   the same surface, the move that took a house-specific encoder's
-   re-identification of moved objects from 88.9% to 95.6% (BYE; Huang et al., 2024,
+   kind's rates and daily rhythms; train small heads on top of the fixed encoder,
+   for kinds of thing and for re-identification, the kind of house-specific
+   learning that took re-identification of moved objects from 88.9% to 95.6%
+   (BYE; Huang et al., 2024,
    [the perception plan's sources](perception-that-keeps-what-it-learns.md#sources));
-   train the predictor on the day's sequences. New weights are kept only if they
-   predict a held-out recent day better than the current ones.
+   and train the predictor on the day's sequences. The pairs that geometry
+   proposes, two views of one voxel as one surface, are candidates to be checked,
+   not free truth: across a move, an occlusion, a bad pose or a loop closure they
+   are wrong, and record 838 is the standing counterexample. New weights are kept
+   only if they predict a held-out recent day better than the current ones and
+   still pass the identity regression cases and a retrieval test on old days.
 6. **New and known places.** In a known place memory dominates: predictions are
    sharp and surprise means change. In a new place the memory is empty, the
    predictor runs on general priors with high uncertainty, and that uncertainty
@@ -768,14 +853,42 @@ feature similarity never licenses a geometric match or a deletion of free space
 ([R-WS-7](../requirements/world-state.md#r-ws-7),
 [R-WS-8](../requirements/world-state.md#r-ws-8)).
 
+### Smaller alternatives to compare first
+
+Before committing to the whole of this, each part should beat a simpler version
+of itself on the same evidence, so that a gain can be traced to the
+representation, the memory or the learned predictor:
+
+- **A bank of keyframes**: stored pictures with their depth and pose, indexed by
+  where they were taken, plus cautious object slots and visibility tests. It is
+  the cheapest form of prediction by recall, and the baseline everything else is
+  measured against.
+- **A surface or distance-field memory** (TSDF or surfels) as the geometric and
+  rendering baseline beside the voxels.
+- **Hydra**, which builds hierarchical 3D scene graphs of places, rooms and
+  objects incrementally, and whose current code targets the rover's Ubuntu 24.04
+  and ROS 2 Jazzy; its memory and speed on this Orin are unmeasured.
+- **Khronos**, for how it keeps an active window, associates fragments across
+  time and reconciles over the long term after loop closures, and for how it
+  handles empty space; it does not by itself cure re-identification across a
+  distant move.
+- **Gaussian splats**, as a photographic renderer rather than a trustworthy
+  record of occupancy, free space or lasting identity.
+
+None of them is an oracle for which physical object is which.
+
 ### Questions still open
 
 - Whether pictures can be anchored to the mapper's graph nodes, so they move
-  when a loop closure moves the map. slam_toolbox exposes its graph here only as
-  a saved file; the fallback is to rebuild everything derived from the evidence
-  whenever the map changes, affordable overnight.
-- The rover-to-gimbal offset and the gimbal's corrected pointing, which every
-  layer inherits.
+  when a loop closure moves the map. The installed slam_toolbox (2.8.5) shows its
+  live graph only as visualisation markers (`/slam_toolbox/graph_visualization`)
+  and as a saved file, with no structured per-node interface; whether the
+  markers carry the timestamps and node bindings anchoring needs is unproven.
+  Rebuilding from the same old map-frame poses would repeat the old error, so
+  the evidence keeps the raw odometry and timestamps, and each rebuild uses the
+  corrected trajectory and records the map's revision, not only its identity.
+- A full model of the gimbal's two pivots, and its corrected pointing, which
+  every layer inherits.
 - Whether a memory layer in the route planner earns its place or only blocks
   routes with stale furniture; replays can say before it is ever enabled.
 - Whether feature residuals survive the flat's lighting, and this camera's
@@ -789,23 +902,33 @@ feature similarity never licenses a geometric match or a deletion of free space
 
 ## Is it feasible on this rover
 
-**Mostly, in three tiers of confidence.**
+**Mostly, in three tiers, and building a prototype is a different claim from
+proving its benefit.**
 
-- **Feasible now, in weeks, with high confidence**: localising on stable cells,
-  explaining changes as moves, the self-model, aiming the full-resolution camera
-  where the rover is unsure, and nightly consolidation of rates and counts. They
-  answer the shakedown's measured failures, are cheap to compute, and are tested
-  on recordings first.
+- **Prototypes in weeks**: tentative object slots with move hypotheses, wide
+  priors shared by kind, counts of where things are found, the camera's
+  diagnostic sense of place, a stability filter that leaves the raw scan alone,
+  and a turning model on the logged trials. They answer the shakedown's measured
+  failures and are cheap to compute. What is not in weeks is proving them:
+  identity kept across an unseen move, continuous self-calibration and calibrated
+  rates of moving all need truth that does not exist yet, such as which scene-1
+  armchair went where, poses checked independently of the mapper, and more than
+  one day of moves.
 - **Feasible with effort, over months, with medium confidence**: the voxel layer
   and prediction by rendering or recall, which give most of "seeing is
   predicting" without a learned model. The limit is geometry rather than
-  compute: the transform chain above has to be measured first.
+  compute: the gimbal's pivots and pointing have to be modelled first. Its size
+  and speed are estimates until measured with the full running stack beside it:
+  feature width and precision, several prototypes per voxel, indexes,
+  provenance and free-space coverage all count.
 - **A research gamble**: the generalising predictor and imagined views. The
   systems that do this trained on tens to thousands of hours of video. The rover
-  holds 21 recordings totalling 4 h 35 min of lidar, odometry and IMU, with no
-  camera video, and about 6,300 pictures. Every drive is supervised and nothing
-  docks it, so data builds slowly. Worth trying once the first two tiers stand,
-  not as the foundation.
+  holds 21 complete recordings totalling 4 h 35 min of lidar, odometry and IMU,
+  with no camera video and no commands, and about 6,300 pictures. Most drives
+  are supervised, three controls ran unattended at the owner's word, and
+  nothing docks it, so data builds slowly. Worth trying once the first two tiers
+  stand, not as the foundation; a model of its size is neither shown impossible
+  on the Orin nor shown useful there.
 
 What would move the third tier is autonomy more than compute: a dock, so that the
 rover roams and records every day ([R-SAFE-6](../requirements/safety.md#r-safe-6)),
@@ -834,45 +957,82 @@ through the ordinary replay, deploy and verify cycle of the component it
 touches. Navigation's files belong to whichever session holds `ros_nav` at the
 time, so the first is a proposal to it.
 
-1. **Localising on stable cells.** Weight each lidar return by how stable its
-   cell has been, learned only from the recordings made before the shakedown,
-   so that the test does not already know the armchairs moved, and replay the
-   shakedown from the checkpoint before 08:00
-   ([R-NAV-11](../requirements/navigation.md#r-nav-11)). *It passes if* the pose
-   stays within 0.3 m of the refit's answer through 08:02:40, where the settings
-   the shakedown ran with ended 1.33 m out, stays within 5 cm of the live pose
-   elsewhere in the session, and makes no single correction over 0.15 m that
-   those settings did not. It is compared with the setting navigation adopted after
-   the shakedown, which tackles the same failure another way: the scan matcher
-   charging for distance from where odometry puts the rover, which in replay
-   ends 2 cm from the refit's answer
-   ([2026-10-12](../progress/2026-10-12-the-pose-among-moved-furniture.md)). The
-   two are not exclusive, and the comparison is whether stability adds anything
-   in rooms where odometry itself is poor. Navigation's session runs replays on
-   the rover one at a time, so this one is scheduled with it.
-2. **Explaining changes.** Pair each furniture-sized "gone" with a similar "new"
-   logged in the same window, as a move, under continuity rules (no move through
-   a wall, one object in one place). *It passes if*, on the shakedown and scene
-   1, it pairs the red bean bag's two places and each armchair's old and new
-   places, and on the seven controls proposes no move at all. This is what M5's
-   criterion 4 needs ([autonomous-curiosity.md](autonomous-curiosity.md#milestone-m5-the-rover-notices-useful-changes-without-filling-the-world-with-duplicates)).
-3. **Surprise.** For each look, compare its dense features with those of the
-   stored look taken nearest the same pose, and map the difference. *It passes
-   if* the places with the largest differences on the shakedown and scene 1
-   include every staged change, and on the controls none rises above the level
-   the staged changes reach.
-4. **A forward model of turning.** From every recorded turn, predict the scan's
-   rotation from the command and the gyro, and measure the rest. *It passes if*,
-   on turns held out by day, the predicted rotation is within 2 degrees of the
-   scan's in nine turns out of ten. It would also give
-   [R-NAV-9](../requirements/navigation.md#r-nav-9) the measurement it lacks.
+Codex's second reading found that some of the truth these tests need does not
+exist yet ([its review](#second-reading)): individual armchair correspondence in
+scene 1, poses checked independently of the mapper at every moment, turn trials
+from a second day, and change masks. So each test says what has to be frozen
+before it is run, and a test whose truth is missing reports what it found
+without passing or failing.
+
+1. **Localising on stable cells.** Weight the mapper's own copy of each scan by
+   how stable each cell has been, learned only from recordings made before the
+   shakedown, so that the test does not already know the armchairs moved, and
+   replay the shakedown from the checkpoint before 08:00 with the raw scan left
+   to everything else ([R-NAV-11](../requirements/navigation.md#r-nav-11)).
+   *Frozen first*: per-scan reference poses from the scan matched against the
+   map independently of the mapper, with the stretches where that match is
+   ambiguous marked unknown rather than used. *It passes if* it ends within
+   0.3 m and 3 degrees of the refit's answer over the stationary stretch
+   08:02:30-08:11, where the rover did not move and the refit is a fair
+   reference; it stays within 0.15 m of the reference poses at least as often as
+   the deployed setting does wherever they are known; it ends no worse than the
+   deployed setting's 0.47 m on the drive home; and it makes no correction over
+   0.15 m that neither the live mapper nor the deployed setting made. It reports
+   translation and heading, scan fit and coverage, every removed return and every
+   processing failure. The deployed setting, the scan matcher charging for
+   distance from odometry ([2026-10-12](../progress/2026-10-12-the-pose-among-moved-furniture.md)),
+   is the baseline; the two are not exclusive, and the question is whether
+   stability adds anything where odometry itself is poor. Navigation's session
+   runs replays on the rover one at a time, so this one is scheduled with it.
+2. **Explaining changes.** Pair each "gone" with a similar "new" in the same
+   window, as a move hypothesis, under continuity rules (no move through a wall,
+   one object in one place). *Frozen first*: the candidate change events with
+   their visual evidence, keeping the old places the watch logged only small (the
+   shakedown armchair's at 0.50 m, scene 1's at 0.35 and 0.40 m) rather than
+   requiring furniture-sized pairs; and either labels of which scene-1 armchair
+   went where, or "unresolved" accepted as an answer there. *It passes if* the
+   red bean bag keeps one ordered history across its move and record 838's two
+   armchairs are refused as one, the two frozen regression cases, judged
+   separately from any pairing; no move is paired wrongly where labels exist; and
+   on the seven controls it proposes no furniture move, with the doors closed
+   before control 1 and any person or lighting change labelled rather than
+   counted. A plausible pairing alone does not show that the histories stayed
+   pure. This is what M5's criterion 4 needs
+   ([autonomous-curiosity.md](autonomous-curiosity.md#milestone-m5-the-rover-notices-useful-changes-without-filling-the-world-with-duplicates)).
+3. **Surprise.** For each look, warp the stored look taken nearest the same pose
+   to it by its depth, and map the difference in depth and in dense features.
+   *Frozen first*: which staged changes were in view and scorable, how the
+   reference look is chosen, a flagging threshold tuned on scene 1 and then
+   fixed, a 0.6 m matching radius, and how looks that cannot be scored are
+   counted. *It passes if*, with that threshold, on the shakedown it flags every
+   staged change that was in view within 0.6 m, and on the controls it flags no
+   more than one look in twenty outside labelled doors, people and lighting
+   changes, with the share of looks it abstains on reported beside it.
+4. **A turning model.** On the 24 logged turn trials of 2026-10-10
+   (`captures/2026-10-10-turns/`), the only recordings with commands, predict
+   each whole turn's rotation from the command and the gyro, with the clocks of
+   command, gyro and scan aligned, and take the scan's rotation as the measure.
+   The gyro is input and the scan the target, never the gyro-integrated odometry
+   on both sides. *It passes if*, leaving one trial out at a time, the predicted
+   whole-turn angle is within 2 degrees of the scan's in nine turns out of ten,
+   and beats the calibrated gyro alone. The claim that it holds on a new day waits
+   for a second day's trials, frozen before they are scored. It would also give
+   [R-NAV-9](../requirements/navigation.md#r-nav-9) part of the measurement it
+   lacks.
 5. **A second opinion on place.** Describe each look's whole picture with a
    frozen place-recognition descriptor (DINOv2 features, as AnyLoc does; it
    found the right indoor place first time 75% of the time against 53% for
-   NetVLAD; Keetha et al., 2023), and ask whether it matches the stored looks from the
-   believed pose better than those from elsewhere. *It passes if* it flags the
-   shakedown's 08:01-08:11 stretch, when the pose was wrong, and flags no more
-   than one look in a hundred elsewhere in the recordings, when it was right.
+   NetVLAD; Keetha et al., 2023), and ask whether it matches stored looks from
+   the believed pose, taken with the same camera, gimbal angle and field of view,
+   better than those from elsewhere. References come from earlier days than the
+   looks scored. *Frozen first*: per-picture pose labels, right, wrong or
+   unknown, where the error grew from about 08:00:58 and the stationary stretch
+   08:02:30-08:11 is the clearly wrong one; and looks beside moved furniture
+   labelled apart from looks with a wrong pose. *It passes if* it flags the
+   stationary wrong stretch within its first five looks, and flags no more than
+   one correct-pose look in a hundred elsewhere, with false alarms per episode
+   reported beside it. It only ever flags; it never chooses or refits a map
+   ([R-NAV-3](../requirements/navigation.md#r-nav-3)).
 
 Further out, the house's own world model: an action-conditioned predictor in a
 learned representation, trained on all the rover's recordings, whose surprise
@@ -890,6 +1050,41 @@ have.
   history with a local vision model
   ([cosmos-reason2.md](../decisions/cosmos-reason2.md)).
 - Nothing is changed on the rover by this document.
+
+## Second reading
+
+Codex read the whole document at d2efc51 on 2026-10-12, read-only, against the
+code, the copied stores, its catalogue and the recordings' metadata; its review
+is kept outside the repository, in `tmp/codex-assistance-replies/`. It found the
+points from its review of the sister plan taken in correctly, and approved
+offline prototypes but not high confidence in weeks for dependable explanation
+of moves. Taken in:
+
+- **Facts corrected**: the camera's position relative to the lidar was taped on
+  2026-10-01 and R-WS-11 is settled; what is missing is a model of the gimbal's
+  pivots. The 40,352 rows are observations, which the resolver attaches to
+  things it holds or founds anew, not 40,000 new things. The mapper's live graph
+  is visible as markers. The recordings hold no camera and no commands. Controls
+  2-4 ran unattended, so not every drive was supervised.
+- **The stability filter's contract**: the mapper alone gets a filtered copy of
+  the scan; dropped returns must not turn into free space; the mask can
+  reinforce a wrong pose, so it keeps coverage, falls back to the raw scan when
+  the pose is uncertain and logs every removal.
+- **The encoder stays fixed**, or a changed one is a new backend and the memory
+  is rebuilt before comparison; geometry's pairs are candidates, not free truth.
+- **The predictor's training**: causal memory, commands rather than realised
+  motion, a proper likelihood, and baselines scored on changed regions.
+- **Surprise as a calibrated likelihood with a visibility model**, its shapes as
+  hypotheses; explanations of moves kept as hypotheses where two candidates are
+  indistinguishable.
+- **Every test given the truth it needs**, and told to report rather than pass
+  or fail where that truth does not exist.
+- **Feasibility split** into building prototypes and proving their benefit, and
+  **smaller alternatives** to compare first.
+
+It also asked that the scientific sections be read as inspiration from competing
+accounts of how brains and models work, not as proof that one mechanism or one
+error signal guarantees this architecture. That is how they are meant.
 
 ## Sources
 
@@ -1003,7 +1198,9 @@ Keetha et al., 2023, AnyLoc, https://arxiv.org/abs/2308.00688.
 Memory and prediction in the architecture:
 Saavedra-Ruiz et al., 2025, Perpetua, https://arxiv.org/abs/2507.18808;
 Menon et al., 2026, O-STaR, https://www.hrl.uni-bonn.de/publications/2026/menon26grc;
-Xiao et al., 2025, WorldMem, https://arxiv.org/abs/2504.12369.
+Xiao et al., 2025, WorldMem, https://arxiv.org/abs/2504.12369;
+Hydra, MIT-SPARK, https://github.com/MIT-SPARK/Hydra;
+slam_toolbox interfaces upstream, https://github.com/SteveMacenski/slam_toolbox#api (the installed 2.8.5 lacks the newer node and graph topics).
 
 Video and world models:
 Garrido et al., 2025, Intuitive physics understanding emerges from self-supervised pretraining on natural videos, https://arxiv.org/abs/2502.11831;
