@@ -431,8 +431,12 @@ heading check that confirms a look's pose
 wall, and a room with its furniture moved fails it. That started before
 navigation went wrong. Since the look at a change went live, the rover goes
 deliberately to the places where this happens, so those looks settle no
-identity. A gate judged on the far hits only, as the change watch's is, is to
-be replayed on the shakedown's looks first.
+identity. Replayed offline
+([2026-10-12](../progress/2026-10-12-heading-check-in-a-changed-room.md)): the far
+hits alone would have kept 29 of the 55 right looks refused, given no wrong one a
+direction, and never mistaken a carried rover for one in place. The proposal is
+that such a look takes navigation's heading, as an unchecked look does, which
+needs navigation's measure to report its far-hit fit as well.
 
 **1. What the full pictures add.** Kept since 2026-10-12. A sweep of the gimbal
 from the charger, without driving, then the next supervised session's looks.
