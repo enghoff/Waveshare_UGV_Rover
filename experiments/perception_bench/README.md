@@ -9,7 +9,10 @@ on the same evidence before their results can justify a rover change.
 The [M5 identity audit](shakedown_audit.md) is already measured: the red bean bag
 split across its move, and record 838 holds both armchairs even after refitting.
 The individual visual labels and resolver notes are in
-[shakedown_audit.json](shakedown_audit.json).
+[shakedown_audit.json](shakedown_audit.json). The two failures are explicit
+regression cases in [regression_cases.json](regression_cases.json), with the
+required outcomes and bad-pose exclusions. Their live memberships are measured;
+a faithful baseline replay is still required before testing a remedy.
 
 ## What is included
 
@@ -30,8 +33,15 @@ retained depth coverage, ROS bag locations, and scoring limits.
 [frame_index.json](frame_index.json) resolves **4,349 snapshot-scoped frame
 references**, representing **4,062 distinct pictures**. All their current-world
 JPEG paths existed on the rover when checked; existence is not a decode test.
-Stored metadata says 640 by 480 for every referenced picture. Whether the camera's
-original sensor resolution was retained is not established.
+Stored metadata says 640 by 480 for every referenced picture. These legacy
+labelled frames predate full-resolution retention and **none has a `.full.jpg`**.
+Since the deployment at approximately 12:05 IST on October 12, still looks retain
+a separate 2592 by 1944 view with `full_width`, `full_height`, `full_bytes` and
+`full_taken_at` (R-WS-19). Nine such files were verified in a later read-only
+inventory; they are newer unlabelled evidence, outside this frozen catalogue.
+Each frame and item now reports full-image availability separately from the
+640 by 480 perception frame. A paired resolution benchmark still needs labels
+for those new pictures.
 
 The frozen truth files under `ground_truth/` keep the ignored local measurement
 sources from becoming the only copy of their labels. The manifest also retains
@@ -91,7 +101,7 @@ The builders operate only on copied data and local files:
 
 ```powershell
 python experiments/perception_bench/audit_shakedown.py tmp/codex-m5-audit/metadata.json.gz --output experiments/perception_bench/shakedown_audit.json
-python experiments/perception_bench/build_manifest.py --metadata tmp/codex-m5-audit/metadata.json.gz --inventory tmp/codex-m5-audit/remote-inventory.json
+python experiments/perception_bench/build_manifest.py --metadata tmp/codex-m5-audit/metadata.json.gz --inventory tmp/codex-m5-audit/remote-inventory.json --full-inventory tmp/codex-m5-audit/full-image-inventory.json
 ```
 
 `build_manifest.py` also needs the two frozen local databases under

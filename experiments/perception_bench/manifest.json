@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "assembled_at_ist": "2026-10-12T12:13:49.747192+05:30",
+  "assembled_at_ist": "2026-10-12T12:25:35.969164+05:30",
   "requirements": [
     "R-WS-10",
     "R-WS-13",
@@ -172,6 +172,19 @@
       "exists_local": true,
       "sha256": "b047f05d1707448cfd2d31d3fe3ed397a4e48452c213fd02cb2e6203634ab601"
     }
+  },
+  "full_resolution_inventory": {
+    "source": "tmp\\codex-m5-audit\\full-image-inventory.json",
+    "sha256": "1981a6e4ab0afef81f671498ce196a3f4d8088e740bee96611b5242293a870a7",
+    "existing_full_files_checked": 9,
+    "checked_metadata_columns": [
+      "id",
+      "full_width",
+      "full_height",
+      "full_bytes",
+      "full_taken_at"
+    ],
+    "retention_change": "R-WS-19: still views after deployment at approximately 12:05 IST on 2026-10-12 retain a separate 2592x1944 full image; legacy audit frames predate this"
   },
   "counts": {
     "record_review": 79,
@@ -1196,6 +1209,7 @@
         "raw_depth_pictures_on_rover": 311,
         "raw_depth_pictures_local": 13,
         "jpeg_pictures_local": 54,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -2214,6 +2228,7 @@
         "raw_depth_pictures_on_rover": 311,
         "raw_depth_pictures_local": 13,
         "jpeg_pictures_local": 54,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -2407,6 +2422,7 @@
         "raw_depth_pictures_on_rover": 44,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 12,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -2601,6 +2617,7 @@
         "raw_depth_pictures_on_rover": 44,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 12,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -3342,6 +3359,7 @@
         "raw_depth_pictures_on_rover": 194,
         "raw_depth_pictures_local": 13,
         "jpeg_pictures_local": 39,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -4084,6 +4102,7 @@
         "raw_depth_pictures_on_rover": 194,
         "raw_depth_pictures_local": 13,
         "jpeg_pictures_local": 39,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -4401,6 +4420,7 @@
         "raw_depth_pictures_on_rover": 105,
         "raw_depth_pictures_local": 6,
         "jpeg_pictures_local": 18,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -4719,6 +4739,7 @@
         "raw_depth_pictures_on_rover": 105,
         "raw_depth_pictures_local": 6,
         "jpeg_pictures_local": 18,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -4756,6 +4777,7 @@
         "raw_depth_pictures_on_rover": 3,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -4794,6 +4816,7 @@
         "raw_depth_pictures_on_rover": 3,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -4934,6 +4957,7 @@
         "raw_depth_pictures_on_rover": 43,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -5220,6 +5244,7 @@
         "raw_depth_pictures_on_rover": 104,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -5448,6 +5473,7 @@
         "raw_depth_pictures_on_rover": 82,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -5678,6 +5704,7 @@
         "raw_depth_pictures_on_rover": 82,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -5867,6 +5894,7 @@
         "raw_depth_pictures_on_rover": 55,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -6057,6 +6085,7 @@
         "raw_depth_pictures_on_rover": 55,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -6130,6 +6159,7 @@
         "raw_depth_pictures_on_rover": 6,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -6170,6 +6200,7 @@
         "raw_depth_pictures_on_rover": 2,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -6292,6 +6323,7 @@
         "raw_depth_pictures_on_rover": 39,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -6416,6 +6448,7 @@
         "raw_depth_pictures_on_rover": 39,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -6571,6 +6604,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -6727,6 +6761,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -6952,6 +6987,7 @@
         "raw_depth_pictures_on_rover": 84,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -7178,6 +7214,7 @@
         "raw_depth_pictures_on_rover": 84,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -7329,6 +7366,7 @@
         "raw_depth_pictures_on_rover": 46,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -8160,6 +8198,7 @@
         "raw_depth_pictures_on_rover": 290,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 28,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -8993,6 +9032,7 @@
         "raw_depth_pictures_on_rover": 290,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 28,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -9182,6 +9222,7 @@
         "raw_depth_pictures_on_rover": 44,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -9372,6 +9413,7 @@
         "raw_depth_pictures_on_rover": 44,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -9595,6 +9637,7 @@
         "raw_depth_pictures_on_rover": 77,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 6,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -9819,6 +9862,7 @@
         "raw_depth_pictures_on_rover": 77,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 6,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -9930,6 +9974,7 @@
         "raw_depth_pictures_on_rover": 33,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -10163,6 +10208,7 @@
         "raw_depth_pictures_on_rover": 18,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 6,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -10401,6 +10447,7 @@
         "raw_depth_pictures_on_rover": 80,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -10641,6 +10688,7 @@
         "raw_depth_pictures_on_rover": 80,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -10852,6 +10900,7 @@
         "raw_depth_pictures_on_rover": 59,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -11064,6 +11113,7 @@
         "raw_depth_pictures_on_rover": 59,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -11097,6 +11147,7 @@
         "raw_depth_pictures_on_rover": 1,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -11213,6 +11264,7 @@
         "raw_depth_pictures_on_rover": 35,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -11293,6 +11345,7 @@
         "raw_depth_pictures_on_rover": 13,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -11725,6 +11778,7 @@
         "raw_depth_pictures_on_rover": 134,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 9,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -12159,6 +12213,7 @@
         "raw_depth_pictures_on_rover": 134,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 9,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -12516,6 +12571,7 @@
         "raw_depth_pictures_on_rover": 99,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -12652,6 +12708,7 @@
         "raw_depth_pictures_on_rover": 45,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -12790,6 +12847,7 @@
         "raw_depth_pictures_on_rover": 45,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -13353,6 +13411,7 @@
         "raw_depth_pictures_on_rover": 134,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 14,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -13917,6 +13976,7 @@
         "raw_depth_pictures_on_rover": 134,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 14,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -14112,6 +14172,7 @@
         "raw_depth_pictures_on_rover": 65,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -14308,6 +14369,7 @@
         "raw_depth_pictures_on_rover": 65,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -14363,6 +14425,7 @@
         "raw_depth_pictures_on_rover": 9,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -14479,6 +14542,7 @@
         "raw_depth_pictures_on_rover": 40,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -14597,6 +14661,7 @@
         "raw_depth_pictures_on_rover": 40,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -14682,6 +14747,7 @@
         "raw_depth_pictures_on_rover": 10,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -14922,6 +14988,7 @@
         "raw_depth_pictures_on_rover": 68,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -15164,6 +15231,7 @@
         "raw_depth_pictures_on_rover": 68,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -15333,6 +15401,7 @@
         "raw_depth_pictures_on_rover": 29,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 9,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -15503,6 +15572,7 @@
         "raw_depth_pictures_on_rover": 29,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 9,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -15534,6 +15604,7 @@
         "raw_depth_pictures_on_rover": 1,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -15823,6 +15894,7 @@
         "raw_depth_pictures_on_rover": 55,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -16114,6 +16186,7 @@
         "raw_depth_pictures_on_rover": 55,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -16247,6 +16320,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -16365,6 +16439,7 @@
         "raw_depth_pictures_on_rover": 14,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -16485,6 +16560,7 @@
         "raw_depth_pictures_on_rover": 14,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -16588,6 +16664,7 @@
         "raw_depth_pictures_on_rover": 12,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 8,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -16692,6 +16769,7 @@
         "raw_depth_pictures_on_rover": 13,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -16748,6 +16826,7 @@
         "raw_depth_pictures_on_rover": 6,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -17042,6 +17121,7 @@
         "raw_depth_pictures_on_rover": 82,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -17338,6 +17418,7 @@
         "raw_depth_pictures_on_rover": 82,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -17465,6 +17546,7 @@
         "raw_depth_pictures_on_rover": 37,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -17593,6 +17675,7 @@
         "raw_depth_pictures_on_rover": 37,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -17774,6 +17857,7 @@
         "raw_depth_pictures_on_rover": 64,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -17895,6 +17979,7 @@
         "raw_depth_pictures_on_rover": 21,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -17939,6 +18024,7 @@
         "raw_depth_pictures_on_rover": 1,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -18053,6 +18139,7 @@
         "raw_depth_pictures_on_rover": 21,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -18169,6 +18256,7 @@
         "raw_depth_pictures_on_rover": 21,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -18330,6 +18418,7 @@
         "raw_depth_pictures_on_rover": 38,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 16,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -18404,6 +18493,7 @@
         "raw_depth_pictures_on_rover": 8,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -18480,6 +18570,7 @@
         "raw_depth_pictures_on_rover": 8,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -18523,6 +18614,7 @@
         "raw_depth_pictures_on_rover": 4,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -18579,6 +18671,7 @@
         "raw_depth_pictures_on_rover": 12,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -18637,6 +18730,7 @@
         "raw_depth_pictures_on_rover": 12,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -18792,6 +18886,7 @@
         "raw_depth_pictures_on_rover": 44,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 22,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -18948,6 +19043,7 @@
         "raw_depth_pictures_on_rover": 44,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 22,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -19015,6 +19111,7 @@
         "raw_depth_pictures_on_rover": 14,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -19047,6 +19144,7 @@
         "raw_depth_pictures_on_rover": 1,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -19255,6 +19353,7 @@
         "raw_depth_pictures_on_rover": 66,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -19465,6 +19564,7 @@
         "raw_depth_pictures_on_rover": 66,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -19552,6 +19652,7 @@
         "raw_depth_pictures_on_rover": 10,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -19640,6 +19741,7 @@
         "raw_depth_pictures_on_rover": 10,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -19808,6 +19910,7 @@
         "raw_depth_pictures_on_rover": 52,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -19860,6 +19963,7 @@
         "raw_depth_pictures_on_rover": 12,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -19914,6 +20018,7 @@
         "raw_depth_pictures_on_rover": 12,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -20065,6 +20170,7 @@
         "raw_depth_pictures_on_rover": 53,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20123,6 +20229,7 @@
         "raw_depth_pictures_on_rover": 10,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20183,6 +20290,7 @@
         "raw_depth_pictures_on_rover": 10,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -20220,6 +20328,7 @@
         "raw_depth_pictures_on_rover": 2,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20302,6 +20411,7 @@
         "raw_depth_pictures_on_rover": 23,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20386,6 +20496,7 @@
         "raw_depth_pictures_on_rover": 23,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -20455,6 +20566,7 @@
         "raw_depth_pictures_on_rover": 12,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20495,6 +20607,7 @@
         "raw_depth_pictures_on_rover": 3,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20535,6 +20648,7 @@
         "raw_depth_pictures_on_rover": 5,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20573,6 +20687,7 @@
         "raw_depth_pictures_on_rover": 4,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20609,6 +20724,7 @@
         "raw_depth_pictures_on_rover": 3,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20721,6 +20837,7 @@
         "raw_depth_pictures_on_rover": 36,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20835,6 +20952,7 @@
         "raw_depth_pictures_on_rover": 36,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -20876,6 +20994,7 @@
         "raw_depth_pictures_on_rover": 5,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20934,6 +21053,7 @@
         "raw_depth_pictures_on_rover": 8,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -20994,6 +21114,7 @@
         "raw_depth_pictures_on_rover": 8,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -21081,6 +21202,7 @@
         "raw_depth_pictures_on_rover": 13,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -21169,6 +21291,7 @@
         "raw_depth_pictures_on_rover": 13,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -21230,6 +21353,7 @@
         "raw_depth_pictures_on_rover": 11,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -21326,6 +21450,7 @@
         "raw_depth_pictures_on_rover": 22,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -21392,6 +21517,7 @@
         "raw_depth_pictures_on_rover": 16,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -21432,6 +21558,7 @@
         "raw_depth_pictures_on_rover": 6,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -21474,6 +21601,7 @@
         "raw_depth_pictures_on_rover": 6,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -21527,6 +21655,7 @@
         "raw_depth_pictures_on_rover": 10,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -21581,6 +21710,7 @@
         "raw_depth_pictures_on_rover": 10,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -21616,6 +21746,7 @@
         "raw_depth_pictures_on_rover": 1,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -21648,6 +21779,7 @@
         "raw_depth_pictures_on_rover": 1,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -24815,6 +24947,7 @@
         "raw_depth_pictures_on_rover": 239,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -25466,6 +25599,7 @@
         "raw_depth_pictures_on_rover": 239,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -26176,6 +26310,7 @@
         "raw_depth_pictures_on_rover": 239,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -26854,6 +26989,7 @@
         "raw_depth_pictures_on_rover": 233,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 25,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -27535,6 +27671,7 @@
         "raw_depth_pictures_on_rover": 233,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 25,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -28576,6 +28713,7 @@
         "raw_depth_pictures_on_rover": 233,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 25,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -29767,6 +29905,7 @@
         "raw_depth_pictures_on_rover": 383,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 36,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -30962,6 +31101,7 @@
         "raw_depth_pictures_on_rover": 383,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 36,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -32216,6 +32356,7 @@
         "raw_depth_pictures_on_rover": 383,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 36,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -33994,6 +34135,7 @@
         "raw_depth_pictures_on_rover": 559,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 90,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -35778,6 +35920,7 @@
         "raw_depth_pictures_on_rover": 559,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 90,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -37919,6 +38062,7 @@
         "raw_depth_pictures_on_rover": 559,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 90,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -38037,6 +38181,7 @@
         "raw_depth_pictures_on_rover": 33,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -38159,6 +38304,7 @@
         "raw_depth_pictures_on_rover": 33,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -38556,6 +38702,7 @@
         "raw_depth_pictures_on_rover": 59,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -38770,6 +38917,7 @@
         "raw_depth_pictures_on_rover": 59,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -39041,6 +39189,7 @@
         "raw_depth_pictures_on_rover": 59,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -39248,6 +39397,7 @@
         "raw_depth_pictures_on_rover": 37,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -39461,6 +39611,7 @@
         "raw_depth_pictures_on_rover": 37,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -39911,6 +40062,7 @@
         "raw_depth_pictures_on_rover": 37,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -40271,6 +40423,7 @@
         "raw_depth_pictures_on_rover": 107,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -40637,6 +40790,7 @@
         "raw_depth_pictures_on_rover": 107,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -41300,6 +41454,7 @@
         "raw_depth_pictures_on_rover": 107,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -41566,6 +41721,7 @@
         "raw_depth_pictures_on_rover": 87,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -41838,6 +41994,7 @@
         "raw_depth_pictures_on_rover": 87,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -42287,6 +42444,7 @@
         "raw_depth_pictures_on_rover": 87,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -42609,6 +42767,7 @@
         "raw_depth_pictures_on_rover": 105,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -42935,6 +43094,7 @@
         "raw_depth_pictures_on_rover": 105,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -43500,6 +43660,7 @@
         "raw_depth_pictures_on_rover": 105,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -43830,6 +43991,7 @@
         "raw_depth_pictures_on_rover": 112,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -44164,6 +44326,7 @@
         "raw_depth_pictures_on_rover": 112,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -44557,6 +44720,7 @@
         "raw_depth_pictures_on_rover": 112,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       }
@@ -44649,6 +44813,7 @@
         "raw_depth_pictures_on_rover": 13,
         "raw_depth_pictures_local": 13,
         "jpeg_pictures_local": 26,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -44777,6 +44942,7 @@
         "raw_depth_pictures_on_rover": 14,
         "raw_depth_pictures_local": 14,
         "jpeg_pictures_local": 29,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -44861,6 +45027,7 @@
         "raw_depth_pictures_on_rover": 5,
         "raw_depth_pictures_local": 5,
         "jpeg_pictures_local": 6,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -45030,6 +45197,7 @@
         "raw_depth_pictures_on_rover": 15,
         "raw_depth_pictures_local": 15,
         "jpeg_pictures_local": 27,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -45183,6 +45351,7 @@
         "raw_depth_pictures_on_rover": 16,
         "raw_depth_pictures_local": 16,
         "jpeg_pictures_local": 29,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -45295,6 +45464,7 @@
         "raw_depth_pictures_on_rover": 7,
         "raw_depth_pictures_local": 7,
         "jpeg_pictures_local": 9,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -45501,6 +45671,7 @@
         "raw_depth_pictures_on_rover": 28,
         "raw_depth_pictures_local": 6,
         "jpeg_pictures_local": 11,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -45604,6 +45775,7 @@
         "raw_depth_pictures_on_rover": 9,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -45734,6 +45906,7 @@
         "raw_depth_pictures_on_rover": 19,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -45915,6 +46088,7 @@
         "raw_depth_pictures_on_rover": 29,
         "raw_depth_pictures_local": 6,
         "jpeg_pictures_local": 15,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -45987,6 +46161,7 @@
         "raw_depth_pictures_on_rover": 5,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46050,6 +46225,7 @@
         "raw_depth_pictures_on_rover": 7,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46105,6 +46281,7 @@
         "raw_depth_pictures_on_rover": 5,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46216,6 +46393,7 @@
         "raw_depth_pictures_on_rover": 17,
         "raw_depth_pictures_local": 4,
         "jpeg_pictures_local": 6,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46270,6 +46448,7 @@
         "raw_depth_pictures_on_rover": 4,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46385,6 +46564,7 @@
         "raw_depth_pictures_on_rover": 21,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46524,6 +46704,7 @@
         "raw_depth_pictures_on_rover": 13,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 6,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46578,6 +46759,7 @@
         "raw_depth_pictures_on_rover": 4,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46663,6 +46845,7 @@
         "raw_depth_pictures_on_rover": 12,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46724,6 +46907,7 @@
         "raw_depth_pictures_on_rover": 6,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46794,6 +46978,7 @@
         "raw_depth_pictures_on_rover": 3,
         "raw_depth_pictures_local": 1,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46848,6 +47033,7 @@
         "raw_depth_pictures_on_rover": 5,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46915,6 +47101,7 @@
         "raw_depth_pictures_on_rover": 1,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -46994,6 +47181,7 @@
         "raw_depth_pictures_on_rover": 10,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47048,6 +47236,7 @@
         "raw_depth_pictures_on_rover": 4,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47103,6 +47292,7 @@
         "raw_depth_pictures_on_rover": 1,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47190,6 +47380,7 @@
         "raw_depth_pictures_on_rover": 12,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47254,6 +47445,7 @@
         "raw_depth_pictures_on_rover": 7,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47353,6 +47545,7 @@
         "raw_depth_pictures_on_rover": 18,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47410,6 +47603,7 @@
         "raw_depth_pictures_on_rover": 0,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47471,6 +47665,7 @@
         "raw_depth_pictures_on_rover": 7,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47584,6 +47779,7 @@
         "raw_depth_pictures_on_rover": 6,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47670,6 +47866,7 @@
         "raw_depth_pictures_on_rover": 13,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -47858,6 +48055,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 7,
         "jpeg_pictures_local": 17,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -48710,6 +48908,7 @@
         "raw_depth_pictures_on_rover": 296,
         "raw_depth_pictures_local": 7,
         "jpeg_pictures_local": 43,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -49229,6 +49428,7 @@
         "raw_depth_pictures_on_rover": 173,
         "raw_depth_pictures_local": 7,
         "jpeg_pictures_local": 16,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -50448,6 +50648,7 @@
         "raw_depth_pictures_on_rover": 343,
         "raw_depth_pictures_local": 13,
         "jpeg_pictures_local": 42,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -50907,6 +51108,7 @@
         "raw_depth_pictures_on_rover": 160,
         "raw_depth_pictures_local": 4,
         "jpeg_pictures_local": 6,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -52320,6 +52522,7 @@
         "raw_depth_pictures_on_rover": 446,
         "raw_depth_pictures_local": 13,
         "jpeg_pictures_local": 69,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -52449,6 +52652,7 @@
         "raw_depth_pictures_on_rover": 41,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -53320,6 +53524,7 @@
         "raw_depth_pictures_on_rover": 291,
         "raw_depth_pictures_local": 16,
         "jpeg_pictures_local": 53,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -54076,6 +54281,7 @@
         "raw_depth_pictures_on_rover": 156,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 19,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -54464,6 +54670,7 @@
         "raw_depth_pictures_on_rover": 72,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 12,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -55174,6 +55381,7 @@
         "raw_depth_pictures_on_rover": 222,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 10,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -55729,6 +55937,7 @@
         "raw_depth_pictures_on_rover": 206,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 6,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -56707,6 +56916,7 @@
         "raw_depth_pictures_on_rover": 335,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 43,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -57157,6 +57367,7 @@
         "raw_depth_pictures_on_rover": 162,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 4,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -57488,6 +57699,7 @@
         "raw_depth_pictures_on_rover": 91,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 15,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -58127,6 +58339,7 @@
         "raw_depth_pictures_on_rover": 221,
         "raw_depth_pictures_local": 8,
         "jpeg_pictures_local": 37,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -58380,6 +58593,7 @@
         "raw_depth_pictures_on_rover": 80,
         "raw_depth_pictures_local": 2,
         "jpeg_pictures_local": 5,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -59224,6 +59438,7 @@
         "raw_depth_pictures_on_rover": 297,
         "raw_depth_pictures_local": 3,
         "jpeg_pictures_local": 37,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -59507,6 +59722,7 @@
         "raw_depth_pictures_on_rover": 84,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -59631,6 +59847,7 @@
         "raw_depth_pictures_on_rover": 20,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 26,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -59795,6 +60012,7 @@
         "raw_depth_pictures_on_rover": 21,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 34,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -59927,6 +60145,7 @@
         "raw_depth_pictures_on_rover": 24,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 26,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -60060,6 +60279,7 @@
         "raw_depth_pictures_on_rover": 17,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 23,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -60197,6 +60417,7 @@
         "raw_depth_pictures_on_rover": 24,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 26,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -60690,6 +60911,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -61218,6 +61440,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -61736,6 +61959,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -62263,6 +62487,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -62790,6 +63015,7 @@
         "raw_depth_pictures_on_rover": 31,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 1,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -63697,6 +63923,7 @@
         "raw_depth_pictures_on_rover": 75,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -64284,6 +64511,7 @@
         "raw_depth_pictures_on_rover": 53,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -64787,6 +65015,7 @@
         "raw_depth_pictures_on_rover": 36,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -65374,6 +65603,7 @@
         "raw_depth_pictures_on_rover": 44,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 3,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -65621,6 +65851,7 @@
         "raw_depth_pictures_on_rover": 27,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -65741,6 +65972,7 @@
         "raw_depth_pictures_on_rover": 9,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 0,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -66020,6 +66252,7 @@
         "raw_depth_pictures_on_rover": 19,
         "raw_depth_pictures_local": 0,
         "jpeg_pictures_local": 2,
+        "full_resolution_pictures_on_rover": 0,
         "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
         "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"
       },
@@ -66044,9 +66277,10 @@
   ],
   "frame_index_file": "frame_index.json",
   "raw_evidence_is_committed": false,
+  "regression_cases_file": "regression_cases.json",
   "gaps": [
     "Most raw pictures remain on rover or in ignored captures; the catalogue does not ship them.",
-    "Sensor-native camera resolution retention is not established; stored frame metadata usually says 640x480.",
+    "All labelled legacy frames predate full-image retention and have no .full.jpg. New still images after approximately 12:05 IST retain 2592x1944 evidence; nine files verified, but they lack benchmark truth and are not pooled into the legacy cases.",
     "Most frozen real search phrases have presence truth, not an exhaustive correct-record answer set.",
     "Record-level descriptions permit stray looks; they are not per-pixel or per-look pure labels.",
     "Identical dining chairs are labelled by kind; individual physical identity is unresolved.",

@@ -47,9 +47,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--metadata", type=Path, required=True)
     p.add_argument("--inventory", type=Path, required=True)
+    p.add_argument("--full-inventory", type=Path, required=True)
     args = p.parse_args()
     world = json.load(gzip.open(args.metadata, "rt", encoding="utf-8"))
     inventory = read(args.inventory)
+    full_inventory = read(args.full_inventory)
+    full_rows = {r["id"]: r for r in full_inventory["rows"]}
     snapshots = {"current_20261012": world}
     snapshot_sources = {"current_20261012": {"metadata_source": str(args.metadata),
         "metadata_sha256": sha(args.metadata), "backup_on_rover": "/tmp/codex-m5-audit-world.db",
@@ -90,6 +93,9 @@ def main():
             frame_index[key + "/" + fid] = {"frame_id": fid, "snapshot": key,
                 "recorded_path_on_rover": f["path"], "local_jpeg_paths": local,
                 "local_jpeg_checks": {path: image_checks[path] for path in local},
+                "full_image_path_on_rover": f["path"].replace(".jpg", ".full.jpg"),
+                "full_image_exists_on_rover": fid + ".full.jpg" in full_inventory["existing_full_files"],
+                "full_image_metadata": full_rows.get(fid),
                 "stored_raster_width": f.get("width"), "stored_raster_height": f.get("height"),
                 "stored_jpeg_bytes": f.get("bytes"), "sensor_native_resolution_retained": "not established",
                 "jpeg_exists_in_current_world_on_rover": current["jpeg_exists"] if current else None,
@@ -117,6 +123,7 @@ def main():
                 "raw_depth_pictures_on_rover": sum(frame_index[key + "/" + fid]["depth_exists_in_current_world_on_rover"] is True for fid in fids),
                 "raw_depth_pictures_local": sum(bool(frame_index[key + "/" + fid]["local_depth_paths"]) for fid in fids),
                 "jpeg_pictures_local": sum(bool(frame_index[key + "/" + fid]["local_jpeg_paths"]) for fid in fids),
+                "full_resolution_pictures_on_rover": sum(frame_index[key + "/" + fid]["full_image_exists_on_rover"] for fid in fids),
                 "poses_and_boxes": "SQLite observations.observer_pose_json and bbox_json in the named snapshot",
                 "vectors_and_masks": "SQLite observation BLOB columns; metadata export omits their bytes; use the full database"}
 
@@ -297,10 +304,15 @@ def main():
         "identity_scope": "Every record and observation ID is scoped to its source snapshot. Even generation equality does not prove IDs survived a rebuild.",
         "current_deployed_components": inventory["deploy_state"]["components"],
         "baseline_rerun_performed": False, "snapshots": snapshot_sources, "sources": sources,
+        "full_resolution_inventory": {"source": str(args.full_inventory), "sha256": sha(args.full_inventory),
+            "existing_full_files_checked": len(full_inventory["existing_full_files"]),
+            "checked_metadata_columns": full_inventory["checked_columns"],
+            "retention_change": "R-WS-19: still views after deployment at approximately 12:05 IST on 2026-10-12 retain a separate 2592x1944 full image; legacy audit frames predate this"},
         "counts": dict(Counter(i["kind"] for i in items)), "items": items,
         "frame_index_file": "frame_index.json", "raw_evidence_is_committed": False,
+        "regression_cases_file": "regression_cases.json",
         "gaps": ["Most raw pictures remain on rover or in ignored captures; the catalogue does not ship them.",
-                 "Sensor-native camera resolution retention is not established; stored frame metadata usually says 640x480.",
+                 "All labelled legacy frames predate full-image retention and have no .full.jpg. New still images after approximately 12:05 IST retain 2592x1944 evidence; nine files verified, but they lack benchmark truth and are not pooled into the legacy cases.",
                  "Most frozen real search phrases have presence truth, not an exhaustive correct-record answer set.",
                  "Record-level descriptions permit stray looks; they are not per-pixel or per-look pure labels.",
                  "Identical dining chairs are labelled by kind; individual physical identity is unresolved.",

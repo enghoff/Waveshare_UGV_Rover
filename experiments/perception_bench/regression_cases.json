@@ -1,0 +1,298 @@
+{
+  "source_audit": "experiments/perception_bench/shakedown_audit.json",
+  "labels_authority": "Codex visual review; owner supplied move history; new region labels not owner-confirmed",
+  "baseline_replay_verified": false,
+  "cases": [
+    {
+      "id": "red-bag-history-across-move",
+      "requirements": [
+        "R-WS-17"
+      ],
+      "physical_subject": "the same red bean bag, moved about 08:08 IST",
+      "before_move_regions": [
+        {
+          "observation_id": 100317,
+          "entity_id": "object:917",
+          "frame_id": "20261012-075811-ffac9d",
+          "bbox": [
+            0.2982,
+            0.5118,
+            0.4074,
+            0.6343
+          ],
+          "at_ist": "2026-10-12T07:58:12.327096+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": 3.986,
+          "note": "two looks 3.35 m apart crossed at 38.4 degrees, placing object:917 to within 0.472 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100324,
+          "entity_id": "object:917",
+          "frame_id": "20261012-075813-6775aa",
+          "bbox": [
+            0.0007,
+            0.429,
+            0.1089,
+            0.6039
+          ],
+          "at_ist": "2026-10-12T07:58:14.020094+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "points at object:917 as well, from the same group, appearance 0.64",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100406,
+          "entity_id": "object:917",
+          "frame_id": "20261012-080026-c33001",
+          "bbox": [
+            0.0624,
+            0.4515,
+            0.1857,
+            0.6181
+          ],
+          "at_ist": "2026-10-12T08:00:26.604346+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "points at object:917 as well, from the same group, appearance 0.72",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100541,
+          "entity_id": "object:917",
+          "frame_id": "20261012-080202-2a9522",
+          "bbox": [
+            0.0,
+            0.3223,
+            0.1483,
+            0.6582
+          ],
+          "at_ist": "2026-10-12T08:02:03.648267+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "two looks 3.35 m apart crossed at 38.4 degrees, placing object:917 to within 0.472 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100553,
+          "entity_id": "object:917",
+          "frame_id": "20261012-080204-8cbed1",
+          "bbox": [
+            0.0452,
+            0.3184,
+            0.3521,
+            0.7118
+          ],
+          "at_ist": "2026-10-12T08:02:05.531712+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": 1.377,
+          "note": "points at object:917 as well, from the same group, appearance 0.68",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        }
+      ],
+      "after_move_regions": [
+        {
+          "observation_id": 100675,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081441-685220",
+          "bbox": [
+            0.364,
+            0.481,
+            0.4846,
+            0.6475
+          ],
+          "at_ist": "2026-10-12T08:14:41.780547+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 3.436,
+          "note": "points at object:920 as well, from the same group, appearance 0.64",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100686,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081442-d53ea9",
+          "bbox": [
+            0.3948,
+            0.4657,
+            0.5355,
+            0.6545
+          ],
+          "at_ist": "2026-10-12T08:14:43.311964+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 2.958,
+          "note": "points at object:920 as well, from the same group, appearance 0.59",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100799,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081730-427288",
+          "bbox": [
+            0.6003,
+            0.4551,
+            0.6555,
+            0.6749
+          ],
+          "at_ist": "2026-10-12T08:17:30.462098+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 1.586,
+          "note": "two looks 0.948 m apart crossed at 16.9 degrees, placing object:920 to within 0.451 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100803,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081731-928cbe",
+          "bbox": [
+            0.6169,
+            0.37,
+            0.7079,
+            0.6981
+          ],
+          "at_ist": "2026-10-12T08:17:31.618735+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 1.344,
+          "note": "points at object:920 as well, from the same group, appearance 0.87",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100807,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081732-612412",
+          "bbox": [
+            0.6539,
+            0.2373,
+            0.8307,
+            0.7336
+          ],
+          "at_ist": "2026-10-12T08:17:32.785029+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 1.126,
+          "note": "two looks 0.948 m apart crossed at 16.9 degrees, placing object:920 to within 0.451 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100813,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081733-e5a0ec",
+          "bbox": [
+            0.7351,
+            0.0,
+            1.0,
+            0.7988
+          ],
+          "at_ist": "2026-10-12T08:17:34.187662+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "points at object:920 as well, from the same group, appearance 0.56",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        }
+      ],
+      "recorded_baseline": {
+        "records": [
+          "object:917",
+          "object:920"
+        ],
+        "failure": "same physical bag split into two unlinked identities"
+      },
+      "required_outcome": "retain one lasting physical identity and its ordered position history; old and new placements remain time-scoped; never fit them as one static position",
+      "pose_exclusions": "first record includes 08:02 bad-pose evidence; those poses must not count as trusted geometry"
+    },
+    {
+      "id": "two-armchairs-in-record-838-after-refit",
+      "requirements": [
+        "R-WS-18",
+        "R-WS-8"
+      ],
+      "different_physical_subject_regions": {
+        "charger_armchair": [
+          {
+            "observation_id": 100674,
+            "entity_id": "object:838",
+            "frame_id": "20261012-081441-685220",
+            "bbox": [
+              0.8328,
+              0.4334,
+              0.9294,
+              0.6478
+            ],
+            "at_ist": "2026-10-12T08:14:41.780547+05:30",
+            "phase": "after_refit",
+            "pose_recorded": true,
+            "range_m": null,
+            "note": "the bearing points at object:838 1.25 m away, appearance 0.63, and of the 11 regions in this look it is the one that fits it best, using 8% of what its bearing is allowed to be off by",
+            "jpeg_exists_on_rover": true,
+            "depth_exists_on_rover": true
+          }
+        ],
+        "balcony_armchair": [
+          {
+            "observation_id": 100838,
+            "entity_id": "object:838",
+            "frame_id": "20261012-081736-4564a8",
+            "bbox": [
+              0.2518,
+              0.5176,
+              0.3963,
+              0.6565
+            ],
+            "at_ist": "2026-10-12T08:17:37.645213+05:30",
+            "phase": "after_refit",
+            "pose_recorded": true,
+            "range_m": 2.526,
+            "note": "the bearing points at object:838 2.09 m away, appearance 0.72, and of the 11 regions in this look it is the one that fits it best, using 7% of what its bearing is allowed to be off by",
+            "jpeg_exists_on_rover": true,
+            "depth_exists_on_rover": true
+          },
+          {
+            "observation_id": 100847,
+            "entity_id": "object:838",
+            "frame_id": "20261012-081738-086bab",
+            "bbox": [
+              0.2209,
+              0.4977,
+              0.3641,
+              0.6694
+            ],
+            "at_ist": "2026-10-12T08:17:39.113137+05:30",
+            "phase": "after_refit",
+            "pose_recorded": true,
+            "range_m": 1.886,
+            "note": "the bearing points at object:838 1.54 m away, appearance 0.69, and of the 10 regions in this look it is the one that fits it best, using 14% of what its bearing is allowed to be off by",
+            "jpeg_exists_on_rover": true,
+            "depth_exists_on_rover": true
+          }
+        ]
+      },
+      "recorded_baseline": {
+        "record": "object:838",
+        "failure": "ordinary confident matches file both physical armchairs to one record"
+      },
+      "required_outcome": "different physical armchairs never share a lasting identity; leave ambiguous looks unresolved rather than force their association; geometry gates cannot be overridden by resemblance",
+      "pose_exclusions": "all these examples are after refit; rejecting only the earlier bad-pose window does not solve this case"
+    }
+  ]
+}
