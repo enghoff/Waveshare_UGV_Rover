@@ -42,6 +42,7 @@ class Node(object):
         self.turning_dps = turning_dps
         self.reaches = reaches
         self.asked = []
+        self.far_asked = []
         self.fits = []
 
     def pose_at(self, stamp, after_s=0.0):
@@ -52,7 +53,11 @@ class Node(object):
                 math.radians(self.turning_dps * after_s))
 
     def map_measure(self, window_m=None, window_deg=None, min_score=None,
-                    around=None, where=None, scan=None):
+                    around=None, where=None, scan=None, beyond_m=None):
+        if beyond_m is not None:
+            self.far_asked.append((window_m, window_deg, around, beyond_m, where))
+            return ({"trusted": False, "score": 0.8, "moved_m": 0.04}, Fit(False),
+                    None)
         self.asked.append((window_m, window_deg, around))
         self.measured_from = where
         fit = Fit(self.fits.pop(0) if self.fits else True)
@@ -83,6 +88,18 @@ def test_measure_pose_is_read_only_and_never_waits():
           (2, None, True))
 
     node = Node()
+    answer = nav_map.NavMap.measure_pose(node)
+    check("the far returns are searched again on their own, around the rover's "
+          "own pose, and reported beside the answer",
+          (node.far_asked, answer["far"]["score"], answer["trusted"]),
+          ([(nav_map.MEASURE_WINDOW_M, nav_map.MEASURE_WINDOW_DEG, None,
+             nav_map.MEASURE_FAR_M, None)], 0.8, True))
+    node = Node()
+    node.fits = [False, True]
+    nav_map.NavMap.measure_pose(node, (0.1, 0.0, -40.0))
+    check("...once, whichever search answered", len(node.far_asked), 1)
+
+    node = Node()
     node.move_mutex.acquire()
     answer = nav_map.NavMap.measure_pose(node)
     check("a move holding the mutex does not stop it measuring",
@@ -95,6 +112,8 @@ def test_measure_pose_is_read_only_and_never_waits():
     check("...from where it was half way through the scan's sweep",
           tuple(round(v, 3) for v in node.measured_from), (3.025, 4.0, 0.5))
     check("...and says how fast it was turning", answer["turn_dps"], 10.0)
+    check("...and its far returns are searched from the same moment",
+          tuple(round(v, 3) for v in node.far_asked[0][4]), (3.025, 4.0, 0.5))
     node = Node(driving=True)
     nav_map.NavMap.measure_pose(node, (0.1, 0.0, -40.0))
     check("handed the last correction on the move, it searches around that moment",
@@ -103,7 +122,8 @@ def test_measure_pose_is_read_only_and_never_waits():
     node = Node(driving=True, turning_dps=nav_map.MEASURE_MAX_TURN_DPS * 2)
     answer = nav_map.NavMap.measure_pose(node)
     check("a sweep turned faster than it can be matched is refused, unsearched",
-          (answer["trusted"], node.asked, "score" in answer), (False, [], False))
+          (answer["trusted"], node.asked, node.far_asked, "score" in answer),
+          (False, [], [], False))
     node = Node(driving=True, reaches=False)
     answer = nav_map.NavMap.measure_pose(node)
     check("so is one whose moment the transform tree no longer reaches",
@@ -127,4 +147,25 @@ def test_measure_pose_is_read_only_and_never_waits():
           (answer["trusted"], waited < nav_map.MEASURE_WAIT_S + 0.2), (False, True))
 
 
-TESTS = (test_measure_pose_is_read_only_and_never_waits,)
+def test_the_far_search_keeps_only_the_far_returns():
+    section("map_measure: the far search is fed only the returns beyond its line")
+    info = type("Info", (), {
+        "width": 100, "height": 100, "resolution": 0.1,
+        "origin": type("O", (), {"position": type("P", (), {"x": -5.0, "y": -5.0})()})()})()
+    node = type("N", (), {})()
+    node._lock = threading.Lock()
+    node.map_msg = type("M", (), {"info": info, "data": [0] * 10000})()
+    ranges = [1.0] * 180 + [3.0] * 180       # half the sweep near, half far
+    node.scan_msg = type("S", (), {"ranges": ranges, "angle_min": -math.pi,
+                                   "angle_increment": 2 * math.pi / 360,
+                                   "range_min": 0.1, "range_max": 8.0})()
+    node.pose_deg = lambda: (0.0, 0.0, 0.0)
+    whole, _fit, _where = nav_map.NavMap.map_measure(node, 0.5, 45.0)
+    far, _fit, _where = nav_map.NavMap.map_measure(
+        node, 0.5, 45.0, beyond_m=nav_map.MEASURE_FAR_M)
+    check("the whole scan is searched on all 360 returns, the far search on "
+          "the 180 beyond 1.5 m", (whole["points"], far["points"]), (360, 180))
+
+
+TESTS = (test_measure_pose_is_read_only_and_never_waits,
+         test_the_far_search_keeps_only_the_far_returns)

@@ -143,6 +143,16 @@ TICK_S = 1.0
 MEASURE_WINDOW_M = 0.5
 MEASURE_WINDOW_DEG = 45.0
 
+#: The far returns, searched again on their own and reported as `far` beside a
+#: measurement: the ones beyond the change watch's own line
+#: (change_watch.MAP_FIT_MIN is judged beyond 1.5 m), which are mostly walls.
+#: Moved furniture beside the rover fills the near returns, and on the M5
+#: shakedown of 2026-10-12 that refused 55 looks whose pose was right; scored on
+#: the far ones the pose fitted at 69-87%, within 10 cm, and no pose 30 cm or
+#: 15 degrees out did (docs/progress/2026-10-12-heading-check-in-a-changed-room.md).
+#: What to make of it is the caller's: world_state/headingcheck.py.
+MEASURE_FAR_M = 1.5
+
 #: The fastest turn a scan taken on the move is measured at, in degrees a second.
 #: A sweep takes a tenth of a second, so at this rate the rover turns three degrees
 #: during one, smeared evenly either side of the pose it is measured from -- the
@@ -879,8 +889,16 @@ class NavMap:
                         around=(here[0] + dx, here[1] + dy, here[2] + dh),
                         **moment)
             if fit is None or not fit.ok:
-                answer, _fit, _where = self.map_measure(
+                answer, fit, _where = self.map_measure(
                     MEASURE_WINDOW_M, MEASURE_WINDOW_DEG, **moment)
+            if fit is not None and isinstance(answer, dict):
+                # The same search on the far returns alone, around where the
+                # rover thinks it is (`MEASURE_FAR_M`). Reported beside the
+                # answer and judged by the caller.
+                far, _far_fit, _where = self.map_measure(
+                    MEASURE_WINDOW_M, MEASURE_WINDOW_DEG,
+                    beyond_m=MEASURE_FAR_M, **moment)
+                answer = dict(answer, far=far)
         finally:
             self.map_lock.release()
         if driving and isinstance(answer, dict):
@@ -1032,8 +1050,10 @@ class NavMap:
                 self.get_logger().info(why)
 
     def map_measure(self, window_m=None, window_deg=None, min_score=None,
-                    around=None, where=None, scan=None):
+                    around=None, where=None, scan=None, beyond_m=None):
         """Where the scan says the rover is. Returns `(answer, fit, where)`.
+
+        `beyond_m` keeps only the returns farther than that from the lidar.
 
         **The search and nothing else: this changes no state, moves no rover and
         writes no file.** Split out from `map_fit_now` so that the periodic drift
@@ -1067,6 +1087,8 @@ class NavMap:
         points = refit.points_of(scan.ranges, scan.angle_min,
                                  scan.angle_increment, scan.range_min,
                                  scan.range_max)
+        if beyond_m is not None:
+            points = [p for p in points if math.hypot(p[0], p[1]) > beyond_m]
         started = time.monotonic()
         fit = refit.fit(grid, points, where if around is None else around,
                         window_m=refit.WINDOW_M if window_m is None else window_m,
