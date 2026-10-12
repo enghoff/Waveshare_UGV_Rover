@@ -75,11 +75,13 @@ CAMERA_IDLE_S = 20.0
 # How many frames a one-shot picture asks the camera for. Named here as well as in
 # track_face_pi because it is in two error messages the model reads out loud.
 SNAPSHOT_FRAMES = 3
-# The native 4:3 mode used only by the camera_jpeg diagnostic when a calibration
+# The native 4:3 modes used only by the camera_jpeg diagnostic when a calibration
 # instrument asks for it. Normal pictures and tracking stay at self.size: changing
 # those would also change the detector and lens model. Keep this bounded rather
 # than turning a control call into an arbitrary high-bandwidth camera stream.
-DIAGNOSTIC_SNAPSHOT_SIZES = {(1280, 960)}
+# 2592x1944 is the sensor's own, which still looks also keep as evidence
+# (world_state/evidence.py); a grab of it took 0.39-0.41 s on 2026-10-12.
+DIAGNOSTIC_SNAPSHOT_SIZES = {(1280, 960), (2592, 1944)}
 
 
 class VisionLink:

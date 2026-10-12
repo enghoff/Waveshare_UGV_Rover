@@ -123,7 +123,60 @@ def test_a_check_look_takes_the_camera_before_it_tilts() -> None:
         store.close()
 
 
+def test_a_still_look_keeps_its_own_view_at_full_resolution() -> None:
+    """The full picture is kept only when it shows the look's own view: the
+    rover still, the gimbal where it was, and the sensor's own size."""
+    from test_fakes import a_capture
+
+    with tempfile.TemporaryDirectory() as directory:
+        calls = []
+
+        def pose():
+            calls.append(1)
+            return {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0}
+
+        store, eyes, inspector_ = a_seeing_inspector(
+            directory, [[a_sighting()] for _ in range(6)],
+            capture=a_capture(pan=20.0, tilt=-5.0), pose=pose)
+        big = JPEG + b"full"
+
+        def full(pan=20.0, tilt=-5.0, width=2592, ok=True):
+            return lambda: ({"ok": True, "jpeg": big, "width": width, "height": 1944,
+                             "pan": pan, "tilt": tilt, "taken_at": 1.0}
+                            if ok else {"ok": False, "error": "busy"})
+
+        inspector_.evidence = full()
+        kept = inspector_.inspect(fresh=True)
+        check("a still look keeps the full picture of its view",
+              (kept["original"], store.original(kept["frame_id"])), ("kept", big))
+        inspector_.evidence = full(pan=24.0)
+        turned = inspector_.inspect(fresh=True)
+        check("...but not once the gimbal has moved between the two",
+              ("pan changed" in turned["original"],
+               store.original(turned["frame_id"])), (True, None))
+        inspector_.evidence = full(width=1280)
+        check("...nor a picture of another size",
+              "another size" in inspector_.inspect(fresh=True)["original"], True)
+        inspector_.evidence = full(ok=False)
+        check("...and a camera that gave nothing costs the look nothing else",
+              [inspector_.inspect(fresh=True)[k] for k in ("ok", "original")],
+              [True, "busy"])
+
+        moving = [{"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0},
+                  {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0},
+                  {"x_m": 1.3, "y_m": 2.0, "heading_deg": 90.0}]
+        inspector_.pose = lambda: moving.pop(0) if len(moving) > 1 else moving[0]
+        inspector_.evidence = full()
+        check("...nor once the rover has driven off between the two",
+              "moved" in inspector_.inspect(fresh=True)["original"], True)
+        inspector_.evidence = None
+        check("a look with nothing to take it with asks for none",
+              inspector_.inspect(fresh=True)["original"], "")
+        store.close()
+
+
 TESTS = (test_a_fresh_look_is_recorded_even_when_the_room_has_not_changed,
+         test_a_still_look_keeps_its_own_view_at_full_resolution,
          test_a_check_look_takes_the_camera_before_it_tilts,
          test_a_check_look_keeps_its_depth_with_nothing_ranged,
          test_one_look_is_read_back_whole_with_its_vectors)

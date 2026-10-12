@@ -766,7 +766,40 @@ def test_clearing_the_world_takes_the_depth_maps_with_it() -> None:
         store.close()
 
 
+def test_a_look_keeps_its_full_picture_beside_its_frame() -> None:
+    """Since 2026-10-12 a still look keeps the same view at the camera's full
+    resolution beside the frame its models read (evidence.py)."""
+    from world_state import snapshot
+
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        frame_id = store.save_frame(JPEG, 640, 480)
+        big = JPEG + b"full"
+        check("a full picture is kept for a frame the store has",
+              store.save_original(frame_id, big, 2592, 1944, 123.5), True)
+        check("...and reads back by the frame's name", store.original(frame_id), big)
+        row = store.db.execute(
+            "SELECT full_width, full_height, full_bytes, full_taken_at FROM frames "
+            "WHERE id = ?", (frame_id,)).fetchone()
+        check("...with its size, bytes and moment on the frame's row",
+              tuple(row), (2592, 1944, len(big), 123.5))
+        check("the frame itself is untouched", store.frame(frame_id), JPEG)
+        check("a snapshot takes it with the frame",
+              f"{frame_id}.full.jpg" in snapshot._pictures(store.frames_dir), True)
+        check("none is kept for a frame the store never had",
+              store.save_original("20260101-000000-abcdef", big, 2592, 1944), False)
+        check("...nor under a name that is a path",
+              store.save_original("../escape", big, 2592, 1944), False)
+        check("a frame without one answers None",
+              store.original("nothing-like-this"), None)
+        cleared = store.clear()
+        check("clearing the world takes it along with the frame",
+              (cleared["frames_removed"], os.listdir(store.frames_dir)), (2, []))
+        store.close()
+
+
 TESTS = (
+    test_a_look_keeps_its_full_picture_beside_its_frame,
     test_the_depth_behind_a_look_is_kept_and_reads_back,
     test_a_look_with_no_depth_camera_keeps_no_depth_and_says_nothing,
     test_clearing_the_world_takes_the_depth_maps_with_it,

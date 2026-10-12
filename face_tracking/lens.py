@@ -112,6 +112,17 @@ LENS = {
     # today, not the 7 the sweep would need. See
     # docs/progress/2026-09-30-the-fisheye-lens-refitted.md.
     (640, 480): (12.637, (-0.0578, 0.0531), (323.3, 225.6)),
+    # The sensor's own mode, which still looks keep as evidence since 2026-10-12.
+    # **Not the 640x480 lens scaled up**, which is what `lens_for` would otherwise
+    # make of a 4:3 mode: the 640x480 picture is a 2580 by 1934 window of this one
+    # starting about a pixel and a half in, measured from matched features on
+    # 2026-10-12 (world_state/evidence.py, NATIVE_WINDOW). This entry is the lens
+    # above carried through that window -- 12.637 arcmin times 0.24812, the centre
+    # moved into the window, and the two terms rescaled for this mode's wider
+    # normalising radius -- so a point gives the same direction in either picture;
+    # rover_daemon/test_aiming.py checks it. 2048x1536 is another window again
+    # (2039 by 1529) and has no entry because nothing captures it.
+    (2592, 1944): (3.1355, (-0.058365, 0.054144), (1304.75, 911.04)),
     # Converted from the old template-match pair (9.65 and 9.50 pixels per degree,
     # which agree to 1.5% and so describe an equidistant lens at 9.575) and never
     # sweep-fitted. Treat the distortion term and the centre as guesses: this mode

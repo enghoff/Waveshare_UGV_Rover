@@ -611,7 +611,8 @@ class RoverWorld:
                 self._world_capture_oak if through_oak else self._world_capture,
                 self._world_pose, fov_deg=self.camera_fov_deg,
                 reach=self._world_reach, ranger=self._world_ranger(),
-                measure=self._world_measure)
+                measure=self._world_measure,
+                evidence=None if through_oak else self._world_capture_full)
             inspector.recording_grid = lambda: getattr(self, '_world_grid_cache', (None, None))[1]
             self._world_inspector_cache = inspector
         return inspector
@@ -757,6 +758,33 @@ class RoverWorld:
                 # `Rover.pan_approach`; the inspector decides what it is worth.
                 "pan_approach": approach,
                 "width": width, "height": height, "taken_at": taken_at}
+
+    def _world_capture_full(self) -> dict[str, Any]:
+        """The gimbal camera at its full 2592x1944, for the picture a still look
+        keeps beside the one its models read (world_state/evidence.py).
+
+        A one-shot grab through `_snapshot`, so it holds the camera's lock like
+        every other picture and closes the device again: 0.39-0.41 s on the rover,
+        measured 2026-10-12, the same as a 640x480 grab. Refused while face
+        tracking holds the camera, because the feed it holds is 640x480 and
+        opening a second one is impossible.
+        """
+        if self.device is None:
+            return {"ok": False, "error": "this rover has no camera attached"}
+        if self._tracking.is_set():
+            return {"ok": False, "error": "face tracking holds the camera"}
+        size = world_state.evidence.FULL_SIZE
+        got, why = self._snapshot(size=size)
+        for jpeg, at in reversed(got):
+            if jpeg.startswith(b"\xff\xd8"):
+                with self._lock:
+                    pan, tilt = self.pan, self.tilt
+                return {"ok": True, "jpeg": jpeg, "width": size[0], "height": size[1],
+                        "pan": round(pan, 1), "tilt": round(tilt, 1),
+                        "taken_at": time.time() - (time.monotonic() - at)}
+        return {"ok": False,
+                "error": why or f"the camera gave {len(got)} frames that were not "
+                                f"whole pictures"}
 
     def _world_pose(self) -> dict[str, Any] | None:
         """Where the rover is standing now, as SLAM has it, or None.
@@ -1199,10 +1227,16 @@ class RoverWorld:
         if why:
             return {"ok": False, "error": why}
         frame_id = str(arguments.get("frame_id") or "")
-        jpeg = self._world_store().frame(frame_id)
+        # `full` asks for the same view at the camera's full resolution, which a
+        # still look keeps beside its frame since 2026-10-12 (evidence.py).
+        full = bool(arguments.get("full"))
+        store = self._world_store()
+        jpeg = store.original(frame_id) if full else store.frame(frame_id)
         if jpeg is None:
-            return {"ok": False, "error": f"no stored frame {frame_id}"}
-        return {"ok": True, "frame_id": frame_id, "bytes": len(jpeg),
+            return {"ok": False,
+                    "error": (f"no full-resolution picture kept for {frame_id}"
+                              if full else f"no stored frame {frame_id}")}
+        return {"ok": True, "frame_id": frame_id, "full": full, "bytes": len(jpeg),
                 "jpeg_base64": base64.b64encode(jpeg).decode("ascii")}
 
     def _tool_world_state_clear(self, _arguments: dict[str, Any]) -> dict[str, Any]:

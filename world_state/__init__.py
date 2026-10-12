@@ -39,6 +39,7 @@ from __future__ import annotations
 from .inspector import Inspector
 from . import approach
 from . import depth_client
+from . import evidence
 from . import hypothesis_check
 from . import merging
 from . import oak

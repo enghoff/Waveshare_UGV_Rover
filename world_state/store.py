@@ -216,6 +216,50 @@ class WorldStore:
     def frame_path(self, frame_id: str) -> str:
         return os.path.join(self.frames_dir, f"{frame_id}.jpg")
 
+    def original_path(self, frame_id: str) -> str:
+        """Where a look's full-resolution picture is kept: beside its frame, and
+        ending in `.jpg` so that a snapshot links it and a clear removes it
+        exactly as it does the frame. See evidence.py."""
+        return os.path.join(self.frames_dir, f"{frame_id}.full.jpg")
+
+    def save_original(self, frame_id: str, jpeg: bytes, width: int | None,
+                      height: int | None, taken_at: float | None = None) -> bool:
+        """Keep the full-resolution picture of a look's own view, beside its frame.
+
+        The frame stays the picture every model is shown and every observation
+        points at; this is the same view at the sensor's resolution, kept for
+        whatever reads it later. False, and nothing written, for a frame this
+        store never kept or a name that is not a plain one.
+        """
+        if not frame_id or not _plain_name(frame_id) or not jpeg:
+            return False
+        with self._lock:
+            known = self.db.execute("SELECT 1 FROM frames WHERE id = ?",
+                                    (frame_id,)).fetchone()
+        if known is None:
+            return False
+        try:
+            with open(self.original_path(frame_id), "wb") as handle:
+                handle.write(jpeg)
+        except OSError:
+            return False
+        with self._lock, self.db:
+            self.db.execute(
+                "UPDATE frames SET full_width = ?, full_height = ?, full_bytes = ?, "
+                "full_taken_at = ? WHERE id = ?",
+                (width, height, len(jpeg), taken_at, frame_id))
+        return True
+
+    def original(self, frame_id: str) -> bytes | None:
+        """A look's full-resolution picture, or None where none was kept."""
+        if not frame_id or not _plain_name(frame_id):
+            return None
+        try:
+            with open(self.original_path(frame_id), "rb") as handle:
+                return handle.read()
+        except OSError:
+            return None
+
     def depth_path(self, frame_id: str) -> str:
         return os.path.join(self.frames_dir, f"{frame_id}.depth.gz")
 

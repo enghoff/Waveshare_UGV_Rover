@@ -29,6 +29,7 @@ from test_aiming import (
     test_aiming_through_a_missed_frame, test_one_move_puts_a_face_in_the_middle,
     test_the_approach_to_a_face_never_turns_back,
     test_the_camera_settles_ahead_instead_of_sweeping,
+    test_the_full_picture_gives_the_same_directions,
 )
 from test_api import TESTS as API_TESTS
 from test_autonomy import TESTS as AUTONOMY_TESTS
@@ -52,6 +53,7 @@ AIMING_TESTS = (
     test_one_move_puts_a_face_in_the_middle,
     test_the_approach_to_a_face_never_turns_back,
     test_the_camera_settles_ahead_instead_of_sweeping,
+    test_the_full_picture_gives_the_same_directions,
 )
 
 

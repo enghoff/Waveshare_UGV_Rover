@@ -32,6 +32,7 @@ import time
 from typing import Any, Callable
 
 from . import aimed
+from . import evidence
 from . import headingcheck
 from . import locate
 from . import oak
@@ -396,8 +397,14 @@ class Inspector(InspectionRanges):
                  source: str = "perception",
                  reach: Callable[[float, float, float], float | None] | None = None,
                  ranger=None,
-                 measure: Callable[[], dict[str, Any] | None] | None = None) -> None:
+                 measure: Callable[[], dict[str, Any] | None] | None = None,
+                 evidence: Callable[[], dict[str, Any]] | None = None) -> None:
         self.store = store
+        #: The camera again, at its own full resolution, for the picture a still
+        #: look keeps beside the one the models read. None where there is no
+        #: such picture to take -- the depth camera, a bench, a replay -- and
+        #: then a look keeps exactly what it kept before. See evidence.py.
+        self.evidence = evidence
         #: The perception sidecar, and the only thing an inspection asks. It is
         #: required rather than optional: an inspector with nothing to look
         #: through can do nothing, and a constructor that accepted one would push
@@ -671,6 +678,10 @@ class Inspector(InspectionRanges):
         where, moved, turned, sigma_deg = self._where(
             before, after, before_at=before_at, after_at=after_at,
             taken_at=frame.get("taken_at"))
+        # The same view at the sensor's own resolution, grabbed now that the
+        # look's bracket has closed, so that it costs the shutter nothing, and
+        # kept only if it is still the same view. See evidence.py.
+        original = self._keep_original(frame_id, frame, after, moved, turned)
         # After the frame is in hand and outside the bracket, so the check's
         # tenth of a second is never charged to the shutter. Before the gimbal
         # envelope, which works on whatever pose survives this.
@@ -811,12 +822,41 @@ class Inspector(InspectionRanges):
                 "settled": bool(settled),
                 "moved_m": moved, "turned_deg": turned,
                 "pose": where,
+                "original": original,
                 "rejected": max(0, look.kept - stored["stored"]),
                 "entities": [], "detail": detail,
                 "decisions": settled.get("decisions", []),
                 "map_session": stored["map_session"], "model_id": look.backend,
                 "found": look.found, "timings": look.timings,
                 "look_s": look.took_s}
+
+    def _keep_original(self, frame_id: str, frame: dict[str, Any],
+                       pose_then: dict[str, Any] | None, moved: float,
+                       turned: float) -> str:
+        """Take and keep the look's full-resolution picture: "kept", or why not.
+
+        Only for a still look through the gimbal camera that tracking does not
+        hold: a look on the move would have moved again by the second grab, and
+        the tracking loop's frame is the only one there is while it runs. The
+        empty answer means none was asked for.
+        """
+        if self.evidence is None or frame.get("live"):
+            return ""
+        if (frame.get("camera") or oak.GIMBAL) != oak.GIMBAL:
+            return ""
+        if moved > evidence.STILL_MOVED_M or turned > evidence.STILL_TURNED_DEG:
+            return "the look was taken on the move"
+        try:
+            full = self.evidence() or {}
+        except Exception as error:            # a camera fault costs the picture only
+            return f"{type(error).__name__}: {error}"
+        why = evidence.same_view(frame, pose_then, full, self._pose())
+        if why:
+            return why
+        if not self.store.save_original(frame_id, full["jpeg"], full.get("width"),
+                                        full.get("height"), full.get("taken_at")):
+            return "the full picture could not be written"
+        return "kept"
 
     def _unchanged(self, share: float, run, *, began: float,
                    backend: str) -> dict[str, Any]:

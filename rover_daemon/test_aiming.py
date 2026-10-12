@@ -301,3 +301,25 @@ def test_the_camera_settles_ahead_instead_of_sweeping():
     for _ in range(10):
         ahead.step(gimbal, rate, dt)
     check("and then holds still", (gimbal.pan, gimbal.tilt), settled)
+
+
+def test_the_full_picture_gives_the_same_directions():
+    """A point gives one direction whichever of the camera's two 4:3 pictures it
+    is read from: the 640x480 lens, and the 2592x1944 one carried through the
+    window the small picture sits in (world_state/evidence.py). Measured on
+    2026-10-12; a lens scaled up by shape alone would put the edge of the picture
+    about a third of a degree out."""
+    import lens
+    from world_state import evidence
+
+    small, full = lens.lens_for(640, 480), lens.lens_for(2592, 1944)
+    worst = 0.0
+    for u, v in ((320, 240), (0, 0), (639, 479), (0, 240), (639, 240), (320, 0),
+                 (320, 479), (100, 400), (560, 60)):
+        a = lens.ray_at(u, v, small)
+        b = lens.ray_at(*evidence.from_native(u, v), full)
+        cosine = sum(p * q for p, q in zip(a, b)) / (
+            math.sqrt(sum(p * p for p in a)) * math.sqrt(sum(q * q for q in b)))
+        worst = max(worst, math.degrees(math.acos(min(1.0, cosine))))
+    check("the two pictures agree on every direction to under 0.05 degrees",
+          worst < 0.05, True)

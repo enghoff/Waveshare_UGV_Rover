@@ -218,8 +218,12 @@ def test_high_resolution_diagnostic_snapshot():
     check("...and reports that size", (got["width"], got["height"]), (1280, 960))
     check("...without claiming it came from the tracking feed", got["live"], False)
 
+    full = rover.call("camera_jpeg", {"width": 2592, "height": 1944})
+    check("the sensor's own size is served too, since still looks keep it",
+          (full["ok"], asked[-1]), (True, (3, (2592, 1944))))
+
     before = len(asked)
-    refused = rover.call("camera_jpeg", {"width": 2592, "height": 1944})
+    refused = rover.call("camera_jpeg", {"width": 2048, "height": 1536})
     check("an unbounded diagnostic size is refused", refused["ok"], False)
     check("...without opening the camera", len(asked), before)
 

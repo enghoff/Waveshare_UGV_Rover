@@ -1502,7 +1502,69 @@ def test_a_look_through_the_oak_needs_the_mount_measured() -> None:
         world_state.oak.MEASURED = was_measured
 
 
+def test_a_still_look_keeps_its_own_view_at_full_resolution():
+    """Since 2026-10-12 a still look keeps a 2592x1944 picture of its own view
+    beside the 640x480 one its models read, and it can be read back by name.
+
+    The models keep reading the camera's own 640x480 grab, because a reduction
+    of the full picture is not the same picture to them (world_state/evidence.py),
+    so the full one is a second grab, at the sensor's own size.
+    """
+    import base64
+    import tempfile
+
+    import rover_daemon
+    import world_state
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            small = bytes.fromhex("ffd8ffe0") + bytes(40) + bytes.fromhex("ffd9")
+            full = bytes.fromhex("ffd8ffe1") + bytes(400) + bytes.fromhex("ffd9")
+            rover._whole_jpeg = lambda when=False: (
+                (small, "", time.time()) if when else (small, ""))
+            asked = []
+
+            def snapshot(frames=3, size=None):
+                asked.append(size)
+                return [(full, time.monotonic())], ""
+
+            rover._snapshot = snapshot
+            rover._world_pose = lambda: {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0}
+            rover.pan, rover.tilt = 10.0, -5.0
+
+            looked = rover.call("world_inspect", {})
+            check("a still look keeps its full-resolution picture",
+                  (looked["ok"], looked["original"]), (True, "kept"))
+            check("...grabbed once, at the sensor's own size",
+                  asked, [world_state.evidence.FULL_SIZE])
+            got = rover.call("world_state_frame",
+                             {"frame_id": looked["frame_id"], "full": True})
+            check("...and it reads back by the look's frame name",
+                  base64.b64decode(got["jpeg_base64"]), full)
+            plain = rover.call("world_state_frame", {"frame_id": looked["frame_id"]})
+            check("the frame the models read is still the camera's own 640x480",
+                  base64.b64decode(plain["jpeg_base64"]), small)
+
+            rover._tracking.set()
+            check("no full picture is taken while face tracking holds the camera",
+                  rover._world_capture_full()["ok"], False)
+            rover._tracking.clear()
+            rover.close_world()
+        finally:
+            os.environ.pop("UGV_WORLD_FAKE", None)
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 TESTS = (
+    test_a_still_look_keeps_its_own_view_at_full_resolution,
     test_a_search_hands_back_the_whole_of_every_look_it_matched,
     test_the_world_state_calls_reach_the_store,
     test_a_rover_without_a_camera_refuses_to_inspect,

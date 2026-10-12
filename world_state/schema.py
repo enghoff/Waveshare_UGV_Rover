@@ -17,6 +17,12 @@ INFERENCE_COLUMNS = (
 #: record of that experiment.
 ADDED_COLUMNS = {
     "inferences": {"stored": "INTEGER"},
+    # The full-resolution picture of the frame's own view, where one was kept:
+    # its size, its bytes and when it was taken. Null on every frame that has
+    # none, which is every frame before 2026-10-12 and every look since taken
+    # on the move. See evidence.py.
+    "frames": {"full_width": "INTEGER", "full_height": "INTEGER",
+               "full_bytes": "INTEGER", "full_taken_at": "REAL"},
     "observations": {
         # Where the thing was, from where the rover stood. This is the
         # measurement identity will be decided from, and it is stored per
