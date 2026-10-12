@@ -1,0 +1,212 @@
+{
+  "name": "M4 acceptance (2026-10-09 targets)",
+  "taped": "2026-10-09 by the owner",
+  "map": "7da19bef3888, session 67",
+  "labelled": "2026-10-09 14:25 from each record's photographs (sheets/acc*.jpg) and position, on the live store; left out as mixed or not clearly the thing: 386 (N1, a chair look), 556 (N5, the neighbouring painting), 308 (the other kitchen cabinet), 281, 788, 290, 790, 277, 488, 392, 511, 459, 496, 376, 750, 720, 564, 319, 534, 747, 553, 565, 433, 605, 359; 315, 582, 540 are the painting beside N3, 332 the other armchair. Frozen before any acceptance attempt.",
+  "things": {
+    "N1": {
+      "x_m": -20.283,
+      "y_m": -10.886,
+      "height_m": 1.15,
+      "records": [
+        "object:324",
+        "object:401",
+        "object:398"
+      ],
+      "where": "living and dining room",
+      "point": "front door, centre",
+      "footprint": {
+        "width_m": 0.95,
+        "along_deg": 11.0
+      }
+    },
+    "N2": {
+      "x_m": -16.391,
+      "y_m": -17.677,
+      "height_m": 1.37,
+      "records": [
+        "object:592",
+        "object:449",
+        "object:325",
+        "object:622",
+        "object:612",
+        "object:638",
+        "object:607",
+        "object:356",
+        "object:402",
+        "object:706",
+        "object:769",
+        "object:545",
+        "object:597",
+        "object:626",
+        "object:588"
+      ],
+      "where": "living and dining room",
+      "point": "floor lamp, under the shade's centre",
+      "footprint": {
+        "radius_m": 0.2
+      }
+    },
+    "N3": {
+      "x_m": -16.364,
+      "y_m": -16.853,
+      "height_m": 1.63,
+      "records": [
+        "object:679",
+        "object:383",
+        "object:559",
+        "object:490",
+        "object:384",
+        "object:491",
+        "object:403",
+        "object:487",
+        "object:636",
+        "object:364",
+        "object:484",
+        "object:621"
+      ],
+      "where": "living and dining room",
+      "point": "painting by the balcony, centre",
+      "footprint": {
+        "width_m": 0.45,
+        "along_deg": 102.0
+      }
+    },
+    "N4": {
+      "x_m": -17.335,
+      "y_m": -16.858,
+      "height_m": 0.36,
+      "records": [
+        "object:784",
+        "object:382",
+        "object:327",
+        "object:317",
+        "object:427",
+        "object:599",
+        "object:478"
+      ],
+      "where": "living and dining room",
+      "point": "grey armchair by the charger, front-edge centre",
+      "footprint": {
+        "width_m": 0.85,
+        "depth_m": 0.85,
+        "along_deg": 102.0,
+        "into_deg": 12.0
+      }
+    },
+    "N5": {
+      "x_m": -14.919,
+      "y_m": -14.546,
+      "height_m": 1.82,
+      "records": [
+        "object:345"
+      ],
+      "where": "living and dining room",
+      "point": "electrical-panel cover, centre",
+      "footprint": {
+        "width_m": 0.3,
+        "along_deg": 8.0
+      }
+    },
+    "N7": {
+      "x_m": -16.785,
+      "y_m": -8.876,
+      "height_m": 1.8,
+      "records": [
+        "object:307",
+        "object:306"
+      ],
+      "where": "kitchen",
+      "point": "upper cabinet on the far wall, centre of its doors",
+      "footprint": {
+        "width_m": 0.7,
+        "depth_m": 0.35,
+        "along_deg": 14.6,
+        "into_deg": 104.6
+      }
+    },
+    "N8": {
+      "x_m": -9.964,
+      "y_m": -10.658,
+      "height_m": 1.0,
+      "records": [
+        "object:286",
+        "object:279"
+      ],
+      "where": "bedroom",
+      "point": "brown wardrobe, centre of its front (0.54 m deep)",
+      "footprint": {
+        "width_m": 1.0,
+        "depth_m": 0.54,
+        "along_deg": 102.4,
+        "into_deg": 192.4
+      }
+    },
+    "N9": {
+      "x_m": -8.367,
+      "y_m": -11.085,
+      "height_m": 0.46,
+      "records": [
+        "object:669",
+        "object:278"
+      ],
+      "where": "bedroom",
+      "point": "footboard, centre of its top",
+      "footprint": {
+        "width_m": 1.63,
+        "depth_m": 2.1,
+        "along_deg": 6.4,
+        "into_deg": 96.4
+      }
+    },
+    "N10": {
+      "x_m": -7.119,
+      "y_m": -10.0,
+      "height_m": 1.0,
+      "records": [
+        "object:282",
+        "object:687"
+      ],
+      "where": "bedroom",
+      "point": "tall wardrobe with the mirror, centre of its front",
+      "footprint": {
+        "width_m": 0.9,
+        "depth_m": 0.55,
+        "along_deg": 103.8,
+        "into_deg": 13.8
+      }
+    },
+    "N11": {
+      "x_m": -8.823,
+      "y_m": -8.983,
+      "height_m": 1.9,
+      "records": [
+        "object:291",
+        "object:787",
+        "object:791"
+      ],
+      "where": "bedroom",
+      "point": "autumn-forest painting, centre",
+      "footprint": {
+        "width_m": 0.9,
+        "along_deg": 14.4
+      }
+    },
+    "N12": {
+      "x_m": -6.125,
+      "y_m": -11.986,
+      "height_m": 1.8,
+      "records": [
+        "object:684",
+        "object:275"
+      ],
+      "where": "bedroom",
+      "point": "portrait by the window, centre",
+      "footprint": {
+        "width_m": 0.55,
+        "along_deg": 102.0
+      }
+    }
+  },
+  "footprints": "2026-10-09 ~15:20, estimated by Claude, not taped: widths of the black cabinet (0.96) and the footboard (1.63) and every direction from the live map's lines; the cabinet's depth (0.41), the brown wardrobe's (0.54) and the kitchen cabinet's (0.35) from the owner's readings; the other sizes from the photographs. Within about 0.1-0.2 m, which moves a score's distance by at most half that. Labels unchanged."
+}

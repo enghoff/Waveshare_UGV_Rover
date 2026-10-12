@@ -1,0 +1,93 @@
+{
+  "source": "captures/2026-10-03-targets/frame.py",
+  "things": {
+    "T2": {
+      "wall_x_m": 3.25,
+      "wall_y_m": 0.205,
+      "x_m": -19.955785511713312,
+      "y_m": -15.122470877035171,
+      "height_m": null,
+      "records": [
+        "object:5"
+      ],
+      "range_surface_wall_xy_m": [
+        3.25,
+        0.41
+      ]
+    },
+    "T3": {
+      "wall_x_m": 3.25,
+      "wall_y_m": 0.0,
+      "x_m": -20.156164757718447,
+      "y_m": -15.165750869761755,
+      "height_m": 1.66,
+      "records": [
+        "object:3"
+      ],
+      "range_surface_wall_xy_m": [
+        3.25,
+        0.0
+      ]
+    },
+    "T4": {
+      "wall_x_m": 0.0,
+      "wall_y_m": 2.4,
+      "x_m": -18.4964076160066,
+      "y_m": -11.48231412800325,
+      "height_m": 1.7,
+      "records": [
+        "object:26",
+        "object:37",
+        "object:30"
+      ],
+      "range_surface_wall_xy_m": [
+        0.0,
+        2.4
+      ]
+    },
+    "T7": {
+      "wall_x_m": 1.7,
+      "wall_y_m": 0.0,
+      "x_m": -20.483403727114567,
+      "y_m": -13.650688278015604,
+      "height_m": 1.66,
+      "records": [
+        "object:4",
+        "object:16"
+      ],
+      "range_surface_wall_xy_m": [
+        1.7,
+        0.0
+      ]
+    },
+    "T8": {
+      "wall_x_m": 4.8,
+      "wall_y_m": 0.0,
+      "x_m": -19.828925788322323,
+      "y_m": -16.680813461507906,
+      "height_m": 1.66,
+      "records": [
+        "object:6",
+        "object:10"
+      ],
+      "range_surface_wall_xy_m": [
+        4.8,
+        0.0
+      ]
+    },
+    "T9": {
+      "wall_x_m": 3.7,
+      "wall_y_m": 4.2,
+      "x_m": -15.955829001871937,
+      "y_m": -14.718895705130823,
+      "height_m": 1.55,
+      "records": [
+        "object:22"
+      ],
+      "range_surface_wall_xy_m": [
+        3.7,
+        4.2
+      ]
+    }
+  }
+}

@@ -1,0 +1,3385 @@
+{
+  "summary": {
+    "attempts": 79,
+    "scorable": 35,
+    "not_scorable": {
+      "its target is none of the taped things": 44
+    },
+    "criterion_3_difference": {
+      "n": 35,
+      "things": 11,
+      "mean": 0.3347,
+      "low": 0.0517,
+      "high": 0.7632
+    },
+    "criterion_5_chosen_gain": {
+      "n": 35,
+      "things": 11,
+      "mean": 0.4529,
+      "low": 0.1966,
+      "high": 0.8553
+    },
+    "relook_gain": {
+      "n": 35,
+      "things": 11,
+      "mean": 0.1182,
+      "low": -0.0718,
+      "high": 0.3929
+    },
+    "chosen": {
+      "improved": 9,
+      "unchanged": 25,
+      "worse": 1
+    },
+    "relook": {
+      "improved": 4,
+      "unchanged": 29,
+      "worse": 2
+    },
+    "chosen_honesty": {
+      "placed": 35,
+      "inside": 25,
+      "overconfident": 5
+    },
+    "relook_honesty": {
+      "placed": 35,
+      "inside": 25,
+      "overconfident": 6
+    },
+    "chosen_by_condition": {
+      "in_depth_view": {
+        "True": {
+          "improved": 9,
+          "unchanged": 25,
+          "worse": 1
+        }
+      },
+      "ranged": {
+        "False": {
+          "improved": 0,
+          "unchanged": 24,
+          "worse": 0
+        },
+        "True": {
+          "improved": 9,
+          "unchanged": 1,
+          "worse": 1
+        }
+      },
+      "where": {
+        "bedroom": {
+          "improved": 6,
+          "unchanged": 10,
+          "worse": 1
+        },
+        "kitchen": {
+          "improved": 1,
+          "unchanged": 0,
+          "worse": 0
+        },
+        "living and dining room": {
+          "improved": 2,
+          "unchanged": 15,
+          "worse": 0
+        }
+      }
+    },
+    "pairs_needed": 86,
+    "criterion_8": {
+      "chosen": {
+        "n": 10,
+        "things": 7,
+        "mean": 1.0,
+        "low": 1.0,
+        "high": 1.0,
+        "above_half": true,
+        "claim_unchanged": 25,
+        "claim_unchanged_but_tape_moved": 0,
+        "no_account": 0
+      },
+      "relook": {
+        "n": 6,
+        "things": 5,
+        "mean": 0.8333,
+        "low": 0.625,
+        "high": 1.0,
+        "above_half": true,
+        "claim_unchanged": 29,
+        "claim_unchanged_but_tape_moved": 0,
+        "no_account": 0
+      },
+      "attempt_as_recorded": {
+        "n": 12,
+        "things": 9,
+        "mean": 0.8333,
+        "low": 0.6,
+        "high": 1.0,
+        "above_half": true,
+        "claim_unchanged": 23,
+        "claim_unchanged_but_tape_moved": 0,
+        "no_account": 0
+      }
+    }
+  },
+  "attempts": [
+    {
+      "episode": "au/f00092601f8226df/episode:1411",
+      "target": "object:307",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.7008,
+      "own_gain_m": 1.646,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N7",
+      "where": "kitchen",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.506,
+          "stated_m": 1.846,
+          "inside": true,
+          "overconfident": false,
+          "score": -2.4458
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.25,
+          "stated_m": 0.2,
+          "inside": false,
+          "overconfident": false,
+          "score": 0.5078
+        },
+        "gain": 2.9536,
+        "own_change_m": 1.646,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 32% of its allowance, appearance 0.62"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.506,
+          "stated_m": 1.846,
+          "inside": true,
+          "overconfident": false,
+          "score": -2.4458
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.506,
+          "stated_m": 1.846,
+          "inside": true,
+          "overconfident": false,
+          "score": -2.4458
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.506,
+          "stated_m": 1.846,
+          "inside": true,
+          "overconfident": false,
+          "score": -2.4458
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.25,
+          "stated_m": 0.2,
+          "inside": false,
+          "overconfident": false,
+          "score": 0.5078
+        },
+        "gain": 2.9536,
+        "own_change_m": 1.646,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "no region of the look points at it",
+          "points at it using 32% of its allowance, appearance 0.62"
+        ]
+      },
+      "difference": 2.9536,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1412",
+      "target": "object:706",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.3988,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N2",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.635,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2426
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.635,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2426
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.635,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2426
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.635,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2426
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.635,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2426
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.635,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2426
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look has a bearing"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1413",
+      "target": "object:769",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.2031,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N2",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing",
+          "no region of the look has a bearing"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1414",
+      "target": "object:278",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.389,
+      "own_gain_m": 0.281,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N9",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.489,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.2861
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.12,
+          "stated_m": 0.208,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6615
+        },
+        "gain": 1.3754,
+        "own_change_m": 0.281,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 53% of its allowance, appearance 0.60"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.489,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.2861
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.489,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.2861
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.489,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.2861
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.12,
+          "stated_m": 0.208,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6615
+        },
+        "gain": 1.3754,
+        "own_change_m": 0.281,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "no region of the look has a bearing",
+          "points at it using 53% of its allowance, appearance 0.60"
+        ]
+      },
+      "difference": 1.3754,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1415",
+      "target": "object:687",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.5659,
+      "own_gain_m": 0.726,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N10",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.388,
+          "stated_m": 1.02,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.3288
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.228,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.8121
+        },
+        "gain": 3.1409,
+        "own_change_m": 0.792,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 14% of its allowance, appearance 0.70"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.388,
+          "stated_m": 1.02,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.3288
+        },
+        "after": {
+          "placed": true,
+          "off_m": 1.5,
+          "stated_m": 0.294,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": -2.2022,
+        "own_change_m": 0.726,
+        "own_agrees": false,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 22% of its allowance, appearance 0.78"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.388,
+          "stated_m": 1.02,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.3288
+        },
+        "after": {
+          "placed": true,
+          "off_m": 1.5,
+          "stated_m": 0.294,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": -2.2022,
+        "own_change_m": 0.726,
+        "own_agrees": false,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 22% of its allowance, appearance 0.78",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 5.3431,
+      "recorded_agrees": false
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1416",
+      "target": "object:286",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.5783,
+      "own_gain_m": 0.495,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N8",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.695,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.417
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.046,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0217
+        },
+        "gain": 2.4387,
+        "own_change_m": 0.495,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 19% of its allowance, appearance 0.60"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.695,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.417
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.023,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.061
+        },
+        "gain": 2.478,
+        "own_change_m": 0.495,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 16% of its allowance, appearance 0.56"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.695,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.417
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.034,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0446
+        },
+        "gain": 2.4616,
+        "own_change_m": 0.495,
+        "own_agrees": true,
+        "filed": 2,
+        "ranged": true,
+        "why": [
+          "points at it using 16% of its allowance, appearance 0.56",
+          "points at it using 5% of its allowance, appearance 0.60"
+        ]
+      },
+      "difference": -0.0393,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1422",
+      "target": "object:282",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.2089,
+      "own_gain_m": 0.108,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N10",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.357,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.9153
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.249,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6359
+        },
+        "gain": 0.7206,
+        "own_change_m": 0.108,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 42% of its allowance, appearance 0.59"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.357,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.9153
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.249,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6359
+        },
+        "gain": 0.7206,
+        "own_change_m": 0.108,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 41% of its allowance, appearance 0.56"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.357,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.9153
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.249,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6359
+        },
+        "gain": 0.7206,
+        "own_change_m": 0.108,
+        "own_agrees": true,
+        "filed": 2,
+        "ranged": true,
+        "why": [
+          "points at it using 41% of its allowance, appearance 0.56",
+          "points at it using 1% of its allowance, appearance 0.59"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1423",
+      "target": "object:687",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1322,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N10",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 1.5,
+          "stated_m": 0.294,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 1.5,
+          "stated_m": 0.294,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 44% of its allowance, appearance 0.69"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 1.5,
+          "stated_m": 0.294,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 1.5,
+          "stated_m": 0.294,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 37% of its allowance, appearance 0.61"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 1.5,
+          "stated_m": 0.294,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 1.5,
+          "stated_m": 0.294,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 2,
+        "ranged": true,
+        "why": [
+          "points at it using 37% of its allowance, appearance 0.61",
+          "points at it using 44% of its allowance, appearance 0.69"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1426",
+      "target": "object:278",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.108,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N9",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.12,
+          "stated_m": 0.208,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6615
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.12,
+          "stated_m": 0.208,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6615
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.12,
+          "stated_m": 0.208,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6615
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.12,
+          "stated_m": 0.208,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6615
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 1,
+        "ranged": false,
+        "why": [
+          "points at it using 33% of its allowance, appearance 0.62"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.12,
+          "stated_m": 0.208,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6615
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.12,
+          "stated_m": 0.208,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.6615
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 1,
+        "ranged": false,
+        "why": [
+          "points at it using 33% of its allowance, appearance 0.62",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1427",
+      "target": "object:769",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.2037,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N2",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look has a bearing"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1429",
+      "target": "object:275",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.092,
+      "own_gain_m": 0.185,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N12",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.235,
+          "stated_m": 0.496,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.0329
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.235,
+          "stated_m": 0.496,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.0329
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.235,
+          "stated_m": 0.496,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.0329
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.114,
+          "stated_m": 0.311,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0564
+        },
+        "gain": 1.0235,
+        "own_change_m": 0.185,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 22% of its allowance, appearance 0.55"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.235,
+          "stated_m": 0.496,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.0329
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.114,
+          "stated_m": 0.311,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0564
+        },
+        "gain": 1.0235,
+        "own_change_m": 0.185,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 22% of its allowance, appearance 0.55",
+          "no region of the look has a bearing"
+        ]
+      },
+      "difference": -1.0235,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1432",
+      "target": "object:345",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1331,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N5",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1433",
+      "target": "object:769",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1924,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N2",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1434",
+      "target": "object:324",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.143,
+      "own_gain_m": 0.314,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N1",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.319,
+          "stated_m": 0.514,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.1989
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.319,
+          "stated_m": 0.514,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.1989
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.319,
+          "stated_m": 0.514,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.1989
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.319,
+          "stated_m": 0.514,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.1989
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.319,
+          "stated_m": 0.514,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.1989
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.319,
+          "stated_m": 0.514,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.1989
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": false
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1435",
+      "target": "object:317",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1419,
+      "own_gain_m": 0.168,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N4",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.368,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.8546
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0741
+        },
+        "gain": 1.2195,
+        "own_change_m": 0.168,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 11% of its allowance, appearance 0.68"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.368,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.8546
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.403,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.6729
+        },
+        "gain": -0.1817,
+        "own_change_m": -0.035,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 8% of its allowance, appearance 0.69"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.368,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.8546
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0741
+        },
+        "gain": 1.2195,
+        "own_change_m": 0.168,
+        "own_agrees": true,
+        "filed": 2,
+        "ranged": true,
+        "why": [
+          "points at it using 8% of its allowance, appearance 0.69",
+          "points at it using 4% of its allowance, appearance 0.68"
+        ]
+      },
+      "difference": 1.4012,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1436",
+      "target": "object:787",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.2723,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N11",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1444",
+      "target": "object:478",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1965,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N4",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1445",
+      "target": "object:599",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.0934,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N4",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1446",
+      "target": "object:669",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1448,
+      "own_gain_m": -0.013,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N9",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.294,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.3036
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "gain": -0.2311,
+        "own_change_m": -0.013,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 6% of its allowance, appearance 0.67"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.294,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.3036
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.294,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.3036
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.294,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.3036
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "gain": -0.2311,
+        "own_change_m": -0.013,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "no region of the look has a bearing",
+          "points at it using 6% of its allowance, appearance 0.67"
+        ]
+      },
+      "difference": -0.2311,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1450",
+      "target": "object:588",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.0632,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N2",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.642,
+          "stated_m": 0.269,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.642,
+          "stated_m": 0.269,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.642,
+          "stated_m": 0.269,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.642,
+          "stated_m": 0.269,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.642,
+          "stated_m": 0.269,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.642,
+          "stated_m": 0.269,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1451",
+      "target": "object:669",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1522,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N9",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "two regions point at it and look alike"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "two regions point at it and look alike"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1465",
+      "target": "object:787",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.2723,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N11",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.855,
+          "stated_m": 0.385,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1466",
+      "target": "object:279",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.805,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N8",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look has a bearing",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1467",
+      "target": "object:345",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.176,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N5",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1468",
+      "target": "object:478",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1965,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N4",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1469",
+      "target": "object:769",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.2037,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N2",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.05,
+          "stated_m": 0.415,
+          "inside": true,
+          "overconfident": false,
+          "score": 0.5997
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1472",
+      "target": "object:669",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1491,
+      "own_gain_m": 0.021,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N9",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.045,
+          "stated_m": 0.286,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.3337
+        },
+        "gain": 0.2612,
+        "own_change_m": 0.021,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 15% of its allowance, appearance 0.67"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.117,
+          "stated_m": 0.307,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.0725
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.045,
+          "stated_m": 0.286,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.3337
+        },
+        "gain": 0.2612,
+        "own_change_m": 0.021,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "no region of the look points at it",
+          "points at it using 15% of its allowance, appearance 0.67"
+        ]
+      },
+      "difference": 0.2612,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1479",
+      "target": "object:787",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.3616,
+      "own_gain_m": 0.347,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N11",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.676,
+          "stated_m": 0.663,
+          "inside": false,
+          "overconfident": false,
+          "score": -1.3617
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.26,
+          "stated_m": 0.2,
+          "inside": false,
+          "overconfident": false,
+          "score": 0.3779
+        },
+        "gain": 1.7396,
+        "own_change_m": 0.463,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 18% of its allowance, appearance 0.57"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.676,
+          "stated_m": 0.663,
+          "inside": false,
+          "overconfident": false,
+          "score": -1.3617
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.676,
+          "stated_m": 0.663,
+          "inside": false,
+          "overconfident": false,
+          "score": -1.3617
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.676,
+          "stated_m": 0.663,
+          "inside": false,
+          "overconfident": false,
+          "score": -1.3617
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.26,
+          "stated_m": 0.2,
+          "inside": false,
+          "overconfident": false,
+          "score": 0.3779
+        },
+        "gain": 1.7396,
+        "own_change_m": 0.463,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "no region of the look points at it",
+          "points at it using 18% of its allowance, appearance 0.57"
+        ]
+      },
+      "difference": 1.7396,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1480",
+      "target": "object:279",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.805,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N8",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.267,
+          "stated_m": 0.905,
+          "inside": true,
+          "overconfident": false,
+          "score": -1.0325
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1481",
+      "target": "object:345",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.176,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N5",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.029,
+          "stated_m": 0.276,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4186
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1482",
+      "target": "object:478",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1965,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N4",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.403,
+          "stated_m": 0.372,
+          "inside": false,
+          "overconfident": false,
+          "score": -0.3393
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1483",
+      "target": "object:599",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.098,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N4",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.0,
+          "stated_m": 0.274,
+          "inside": true,
+          "overconfident": false,
+          "score": 1.4445
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1488",
+      "target": "object:559",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1904,
+      "own_gain_m": 0.41,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N3",
+      "where": "living and dining room",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.164,
+          "stated_m": 0.61,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2288
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.053,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0047
+        },
+        "gain": 2.2335,
+        "own_change_m": 0.41,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 21% of its allowance, appearance 0.61"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.164,
+          "stated_m": 0.61,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2288
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.013,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0698
+        },
+        "gain": 2.2986,
+        "own_change_m": 0.41,
+        "own_agrees": true,
+        "filed": 1,
+        "ranged": true,
+        "why": [
+          "points at it using 11% of its allowance, appearance 0.72"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.164,
+          "stated_m": 0.61,
+          "inside": true,
+          "overconfident": false,
+          "score": -0.2288
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.032,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0479
+        },
+        "gain": 2.2767,
+        "own_change_m": 0.41,
+        "own_agrees": true,
+        "filed": 2,
+        "ranged": true,
+        "why": [
+          "points at it using 11% of its allowance, appearance 0.72",
+          "points at it using 6% of its allowance, appearance 0.61"
+        ]
+      },
+      "difference": -0.0651,
+      "recorded_agrees": true
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1489",
+      "target": "object:791",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1816,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N11",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 1.01,
+          "stated_m": 0.297,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 1.01,
+          "stated_m": 0.297,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 1.01,
+          "stated_m": 0.297,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 1.01,
+          "stated_m": 0.297,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 1.01,
+          "stated_m": 0.297,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "after": {
+          "placed": true,
+          "off_m": 1.01,
+          "stated_m": 0.297,
+          "inside": false,
+          "overconfident": true,
+          "score": -3.531
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    },
+    {
+      "episode": "au/f00092601f8226df/episode:1490",
+      "target": "object:286",
+      "outcome": "succeeded",
+      "predicted_gain_m": 0.1,
+      "own_gain_m": 0.0,
+      "in_depth_view": true,
+      "scorable": true,
+      "thing": "N8",
+      "where": "bedroom",
+      "reach": true,
+      "chosen": {
+        "before": {
+          "placed": true,
+          "off_m": 0.034,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0446
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.034,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0446
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "relook": {
+        "before": {
+          "placed": true,
+          "off_m": 0.034,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0446
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.034,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0446
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it"
+        ]
+      },
+      "both": {
+        "before": {
+          "placed": true,
+          "off_m": 0.034,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0446
+        },
+        "after": {
+          "placed": true,
+          "off_m": 0.034,
+          "stated_m": 0.2,
+          "inside": true,
+          "overconfident": false,
+          "score": 2.0446
+        },
+        "gain": 0.0,
+        "own_change_m": 0.0,
+        "own_agrees": null,
+        "filed": 0,
+        "ranged": false,
+        "why": [
+          "no region of the look points at it",
+          "no region of the look points at it"
+        ]
+      },
+      "difference": 0.0,
+      "recorded_agrees": null
+    }
+  ],
+  "score": {
+    "floor": -3.531,
+    "axis_of_stated": 0.7071067811865475
+  }
+}

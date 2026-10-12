@@ -1,0 +1,632 @@
+{
+  "about": "Per-look labels for 25 things drawn at random (seed 31) from map session 67 on 2026-10-03, by the coding agent at the owner's request, frozen before any rule was scored. 'odd' looks show something other than the thing's main object; 'unsure' are excluded from scoring. Dining chairs are labelled by kind, not by which chair. The 19 unsure looks were then decided by the owner on 2026-10-03: object:242 #48 (the cabinet at night), object:247 #30 and object:350 #1 (the same chair) belong; every other unsure look does not. The owner reviewed only those 19; the other 393 labels remain the agent's and are unreviewed.",
+  "store": "captures/2026-10-03-merge-review/world_now.db",
+  "things": {
+    "object:242": {
+      "main": "the black cabinet with shelves",
+      "note": "48 is orange-tinted: the cabinet under a colour cast, or something else",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        60720,
+        60747,
+        60913,
+        61059,
+        61081,
+        61362,
+        61386,
+        61471,
+        61488,
+        61555,
+        61609,
+        61635,
+        61650,
+        61668,
+        61683,
+        61828,
+        61850,
+        61864,
+        61890,
+        62017,
+        62132,
+        62210,
+        62299,
+        62315,
+        62453,
+        62558,
+        62611,
+        62620,
+        62768,
+        62812,
+        62846,
+        63037,
+        63061,
+        63135,
+        63163,
+        63175,
+        63187,
+        63249,
+        63269,
+        63535,
+        63782,
+        63870,
+        63970,
+        64018,
+        64050,
+        64081,
+        64124,
+        64201
+      ]
+    },
+    "object:246": {
+      "main": "the green landscape painting, chairs in front",
+      "note": "5 is the cow painting; 10 and 11 look like it too; 15 and 21 are chair backs; 1 is a dark edge",
+      "odd": [
+        60725,
+        61092,
+        62679,
+        63716,
+        61741,
+        61815
+      ],
+      "unsure": [],
+      "main_looks": [
+        60737,
+        60758,
+        60768,
+        61214,
+        61230,
+        61286,
+        61582,
+        62091,
+        62582,
+        62659,
+        62867,
+        62899,
+        62987,
+        63021,
+        63029,
+        64097
+      ]
+    },
+    "object:247": {
+      "main": "a dining chair",
+      "note": "14/16/21 are the kitchen doorway, 27 a pink door; 26 is the table with several chairs",
+      "odd": [
+        61518,
+        61590,
+        62578,
+        62903,
+        60726,
+        62297,
+        62863
+      ],
+      "unsure": [],
+      "main_looks": [
+        60754,
+        60771,
+        60776,
+        60782,
+        61057,
+        61066,
+        61076,
+        61096,
+        61135,
+        61234,
+        61331,
+        61338,
+        61539,
+        61601,
+        61619,
+        62191,
+        62593,
+        62598,
+        62677,
+        62695,
+        63703,
+        63713,
+        63971,
+        63956
+      ]
+    },
+    "object:249": {
+      "main": "the cow painting",
+      "note": "5 and 6 are almost black",
+      "odd": [
+        61392,
+        61493
+      ],
+      "unsure": [],
+      "main_looks": [
+        60745,
+        61155,
+        61244,
+        61365,
+        61540,
+        61575,
+        61594,
+        61612,
+        61632,
+        61649,
+        61654,
+        61673,
+        61731,
+        61831,
+        61844,
+        61858,
+        61872,
+        61893,
+        62015,
+        62147,
+        62237,
+        62394,
+        62425,
+        62556,
+        62575,
+        62624,
+        62766,
+        62778,
+        62893,
+        63035,
+        63138,
+        63164,
+        63331,
+        63463,
+        63542,
+        63593,
+        63688,
+        63764,
+        63786,
+        63803,
+        63940,
+        64014,
+        64060,
+        64078,
+        64100,
+        64143
+      ]
+    },
+    "object:259": {
+      "main": "floor and skirting (not an object)",
+      "note": "the whole thing is floor",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        60799,
+        60802,
+        60805,
+        60813,
+        60815,
+        60824,
+        60881,
+        60885,
+        60893,
+        60897,
+        60900,
+        60902
+      ]
+    },
+    "object:275": {
+      "main": "a portrait of a man",
+      "note": "",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        60923,
+        60925,
+        60927,
+        60931,
+        60939,
+        60945,
+        60952,
+        60959,
+        60971
+      ]
+    },
+    "object:276": {
+      "main": "a still life hung on its corner",
+      "note": "1 and 2 are a pale diamond: glare on it, or another thing",
+      "odd": [
+        60928,
+        60932
+      ],
+      "unsure": [],
+      "main_looks": [
+        61008,
+        61012,
+        61040,
+        61043
+      ]
+    },
+    "object:302": {
+      "main": "a dining chair",
+      "note": "which chair cannot be told",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        61077,
+        61097,
+        61223,
+        61247,
+        61339,
+        61584,
+        61699,
+        61705,
+        61736,
+        61762,
+        61808,
+        61901,
+        61944,
+        62242,
+        62388,
+        62402,
+        62419,
+        62606,
+        62661,
+        62717,
+        63078,
+        63100,
+        63433,
+        63439,
+        63957
+      ]
+    },
+    "object:307": {
+      "main": "a light wooden panel",
+      "note": "",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        61111,
+        61116,
+        61124,
+        61755,
+        61766,
+        62270
+      ]
+    },
+    "object:332": {
+      "main": "the owner, seated",
+      "note": "1 is dark: the owner from behind, or a doorway",
+      "odd": [
+        61300
+      ],
+      "unsure": [],
+      "main_looks": [
+        61376,
+        61929,
+        62438,
+        62463,
+        62483,
+        62496,
+        62507,
+        62513,
+        62554,
+        62573,
+        62773,
+        63520,
+        63527,
+        63537,
+        63548,
+        63559,
+        63588,
+        63595,
+        63608,
+        63620,
+        63631,
+        63702,
+        63722,
+        64012,
+        64030
+      ]
+    },
+    "object:335": {
+      "main": "a grey painting in a gold frame",
+      "note": "2 and 3 are a black-framed dark picture; 23-25 are a white frame edge-on",
+      "odd": [
+        61287,
+        61306,
+        63146,
+        63276,
+        63316
+      ],
+      "unsure": [],
+      "main_looks": [
+        60736,
+        61446,
+        61519,
+        61535,
+        61558,
+        61565,
+        61574,
+        61583,
+        61942,
+        62009,
+        62020,
+        62339,
+        62347,
+        62363,
+        62386,
+        62406,
+        62410,
+        62460,
+        62842,
+        62859,
+        63514,
+        63528,
+        63584,
+        63610,
+        63632,
+        63746,
+        63909,
+        63934,
+        63941
+      ]
+    },
+    "object:340": {
+      "main": "the cow painting",
+      "note": "a duplicate of object:249",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        61179,
+        61656,
+        61897,
+        62155,
+        62216,
+        63908
+      ]
+    },
+    "object:343": {
+      "main": "a dark painting hung on its corner",
+      "note": "1 and 2 are a white plate, 11 and 12 a blue blur",
+      "odd": [
+        61328,
+        61714,
+        63281,
+        63296
+      ],
+      "unsure": [],
+      "main_looks": [
+        62708,
+        63044,
+        63068,
+        63227,
+        63247,
+        63254,
+        63267,
+        63274,
+        63308,
+        63315,
+        63893,
+        63898
+      ]
+    },
+    "object:350": {
+      "main": "a dining chair",
+      "note": "2 is a door edge, 3 the kitchen doorway; 1 is a chair in the doorway",
+      "odd": [
+        61778,
+        62007
+      ],
+      "unsure": [],
+      "main_looks": [
+        62256,
+        62758,
+        63437,
+        63499,
+        64090,
+        61598
+      ]
+    },
+    "object:351": {
+      "main": "the green landscape painting, chairs in front",
+      "note": "2 and 4 are chair backs; a duplicate of object:246",
+      "odd": [
+        61777,
+        62170
+      ],
+      "unsure": [],
+      "main_looks": [
+        61621,
+        61943,
+        62228,
+        62374,
+        62380,
+        62563,
+        64086,
+        64128,
+        64140
+      ]
+    },
+    "object:374": {
+      "main": "a metal desk with a monitor",
+      "note": "",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        61934,
+        62333,
+        62343,
+        62346,
+        62450,
+        62484
+      ]
+    },
+    "object:377": {
+      "main": "the dark armchair, blurred",
+      "note": "1 is glare on the floor, 3/4/10 doorways",
+      "odd": [
+        61772,
+        62361,
+        62712,
+        63639
+      ],
+      "unsure": [],
+      "main_looks": [
+        61801,
+        63198,
+        63297,
+        63468,
+        63474,
+        63510
+      ]
+    },
+    "object:383": {
+      "main": "the blue painting of a building by the sea",
+      "note": "1/2/4/5 are the dark plant, 3 a white lampshade",
+      "odd": [
+        62468,
+        62487,
+        62511,
+        62530,
+        62540
+      ],
+      "unsure": [],
+      "main_looks": [
+        62682,
+        62700,
+        62707,
+        62799,
+        62808,
+        62926,
+        62935,
+        63045,
+        63573
+      ]
+    },
+    "object:385": {
+      "main": "the owner's head",
+      "note": "",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        61505,
+        62819,
+        62854,
+        62862,
+        63380,
+        63806
+      ]
+    },
+    "object:386": {
+      "main": "the dark door",
+      "note": "1 is a blurred dark object",
+      "odd": [
+        61156
+      ],
+      "unsure": [],
+      "main_looks": [
+        62634,
+        62983,
+        62988,
+        63119,
+        63149
+      ]
+    },
+    "object:387": {
+      "main": "a blue picture hung on its corner",
+      "note": "",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        62843,
+        63041,
+        63050,
+        63066,
+        63075,
+        63131,
+        63184,
+        63224,
+        63253,
+        63273,
+        63313,
+        63348,
+        63442,
+        63529,
+        63568,
+        63572,
+        63576
+      ]
+    },
+    "object:400": {
+      "main": "the blue painting of a building by the sea",
+      "note": "9 is the grey gold-framed painting; a duplicate of object:383",
+      "odd": [
+        63521
+      ],
+      "unsure": [],
+      "main_looks": [
+        63060,
+        63077,
+        63087,
+        63109,
+        63207,
+        63217,
+        63317,
+        63360
+      ]
+    },
+    "object:402": {
+      "main": "the floor lamp",
+      "note": "the armchair in front in some, the lamp still the subject",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        61189,
+        61380,
+        62206,
+        62440,
+        62448,
+        62470,
+        62480,
+        62490,
+        62520,
+        62798,
+        62809,
+        62936,
+        63096,
+        63108,
+        63185,
+        63216,
+        63248,
+        63305,
+        63314,
+        63350,
+        63359
+      ]
+    },
+    "object:407": {
+      "main": "the ceiling fan, blurred",
+      "note": "",
+      "odd": [],
+      "unsure": [],
+      "main_looks": [
+        63282,
+        63320,
+        63515,
+        63583,
+        63747,
+        63858,
+        63910
+      ]
+    },
+    "object:413": {
+      "main": "a snowy winter painting",
+      "note": "1 is the cow painting; 2-4 are a white frame edge-on",
+      "odd": [
+        63122,
+        63246,
+        63265,
+        63307
+      ],
+      "unsure": [],
+      "main_looks": [
+        63687,
+        63697,
+        63753,
+        63765
+      ]
+    }
+  }
+}

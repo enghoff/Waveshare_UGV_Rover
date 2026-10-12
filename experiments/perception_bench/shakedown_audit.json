@@ -1,0 +1,2667 @@
+{
+  "requirements": [
+    "R-WS-17",
+    "R-WS-18"
+  ],
+  "metadata_sha256": "199092fc1b4cacdf3271f753fafdda43fe4cac979f58d2abe7e9cf3c917fe961",
+  "labels_sha256": "76a42a5ecfdbf130c9619d161bd5f704c6c07fb40180b15be387644af47009b9",
+  "meta": {
+    "boot_id": "e72ddf08-ec54-402a-a974-49f8bc572edc",
+    "map_session": "67",
+    "map_id": "7da19bef3888",
+    "generation": "07dec15b41240130",
+    "schema_version": "2"
+  },
+  "subjects": {
+    "charger_armchair": {
+      "counts": {
+        "after_refit": {
+          "reviewed_regions": 13,
+          "unassigned": 6,
+          "no_recorded_pose": 6,
+          "memberships": {
+            "unassigned": 6,
+            "object:909": 2,
+            "object:838": 1,
+            "object:918": 1,
+            "object:527": 1,
+            "object:651": 2
+          }
+        },
+        "after_staging_before_pose_fault": {
+          "reviewed_regions": 14,
+          "unassigned": 13,
+          "no_recorded_pose": 13,
+          "memberships": {
+            "unassigned": 13,
+            "object:651": 1
+          }
+        },
+        "pose_fault_window": {
+          "reviewed_regions": 1,
+          "unassigned": 1,
+          "no_recorded_pose": 0,
+          "memberships": {
+            "unassigned": 1
+          }
+        }
+      },
+      "records": {
+        "object:527": {
+          "total_memberships_now": 36,
+          "created_at_ist": "2026-10-05T22:17:16.930044+05:30",
+          "placement_now": {
+            "x_m": -18.408,
+            "y_m": -16.816,
+            "uncertainty_m": 0.229,
+            "error_major_m": 0.229,
+            "error_minor_m": 0.106,
+            "error_major_deg": 45.8,
+            "baseline_m": 1.16,
+            "parallax_deg": 34.0,
+            "extent_m": 0.149,
+            "height_m": 0.127,
+            "height_sigma_m": 0.065,
+            "height_above_floor_m": 0.362,
+            "rays_agreeing": 24,
+            "viewpoints": 8,
+            "refined_from": 24,
+            "spread_m": 0.133,
+            "stated_uncertainty_m": 0.229
+          },
+          "placement_updated_at_ist": "2026-10-12T08:17:48.469885+05:30",
+          "reviewed_subject_memberships": 1
+        },
+        "object:651": {
+          "total_memberships_now": 63,
+          "created_at_ist": "2026-10-07T14:55:34.192929+05:30",
+          "placement_now": {
+            "x_m": -16.876,
+            "y_m": -14.885,
+            "uncertainty_m": 0.555,
+            "error_major_m": 0.555,
+            "error_minor_m": 0.29,
+            "error_major_deg": 66.7,
+            "baseline_m": 1.672,
+            "parallax_deg": 18.3,
+            "extent_m": 0.076,
+            "height_m": 0.104,
+            "height_sigma_m": 0.09,
+            "height_above_floor_m": 0.339,
+            "rays_agreeing": 22,
+            "viewpoints": 11,
+            "refined_from": 22,
+            "spread_m": 0.316,
+            "stated_uncertainty_m": 0.555
+          },
+          "placement_updated_at_ist": "2026-10-12T08:21:08.749638+05:30",
+          "reviewed_subject_memberships": 3
+        },
+        "object:838": {
+          "total_memberships_now": 26,
+          "created_at_ist": "2026-10-10T13:11:58.198775+05:30",
+          "placement_now": {
+            "x_m": -18.385,
+            "y_m": -15.307,
+            "uncertainty_m": 0.279,
+            "error_major_m": 0.279,
+            "error_minor_m": 0.176,
+            "error_major_deg": 37.6,
+            "baseline_m": 2.32,
+            "parallax_deg": 38.5,
+            "extent_m": 0.406,
+            "height_m": 0.166,
+            "height_sigma_m": 0.107,
+            "height_above_floor_m": 0.401,
+            "rays_agreeing": 24,
+            "viewpoints": 13,
+            "refined_from": 24,
+            "spread_m": 0.216,
+            "stated_uncertainty_m": 0.279
+          },
+          "placement_updated_at_ist": "2026-10-12T08:17:49.117716+05:30",
+          "reviewed_subject_memberships": 1
+        },
+        "object:909": {
+          "total_memberships_now": 5,
+          "created_at_ist": "2026-10-11T15:04:09.633846+05:30",
+          "placement_now": {
+            "x_m": -17.631,
+            "y_m": -15.348,
+            "uncertainty_m": 0.263,
+            "error_major_m": 0.263,
+            "error_minor_m": 0.176,
+            "error_major_deg": -32.6,
+            "baseline_m": 2.801,
+            "parallax_deg": 87.0,
+            "extent_m": 0.328,
+            "height_m": 0.069,
+            "height_sigma_m": 0.091,
+            "height_above_floor_m": 0.304,
+            "rays_agreeing": 4,
+            "viewpoints": 4,
+            "refined_from": 4,
+            "spread_m": 0.166,
+            "stated_uncertainty_m": 0.263
+          },
+          "placement_updated_at_ist": "2026-10-12T08:21:09.287202+05:30",
+          "reviewed_subject_memberships": 2
+        },
+        "object:918": {
+          "total_memberships_now": 3,
+          "created_at_ist": "2026-10-12T08:15:01.940538+05:30",
+          "placement_now": {
+            "x_m": -17.314,
+            "y_m": -14.953,
+            "uncertainty_m": 0.236,
+            "error_major_m": 0.236,
+            "error_minor_m": 0.19,
+            "error_major_deg": -20.9,
+            "baseline_m": 3.306,
+            "parallax_deg": 63.7,
+            "extent_m": 0.136,
+            "height_m": 0.088,
+            "height_sigma_m": 0.058,
+            "height_above_floor_m": 0.323,
+            "rays_agreeing": 12,
+            "viewpoints": 5,
+            "stated_uncertainty_m": 0.236
+          },
+          "placement_updated_at_ist": "2026-10-12T08:15:01.942117+05:30",
+          "reviewed_subject_memberships": 1
+        }
+      },
+      "regions": [
+        {
+          "observation_id": 100096,
+          "entity_id": null,
+          "frame_id": "20261012-075415-a8aa28",
+          "bbox": [
+            0.3311,
+            0.6481,
+            1.0,
+            0.9988
+          ],
+          "at_ist": "2026-10-12T07:54:16.142543+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100104,
+          "entity_id": null,
+          "frame_id": "20261012-075433-d9aeea",
+          "bbox": [
+            0.0,
+            0.3008,
+            0.2458,
+            0.8942
+          ],
+          "at_ist": "2026-10-12T07:54:33.971994+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100162,
+          "entity_id": null,
+          "frame_id": "20261012-075544-cdaef5",
+          "bbox": [
+            0.0,
+            0.3434,
+            0.4287,
+            0.8936
+          ],
+          "at_ist": "2026-10-12T07:55:44.790781+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 0.659,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100181,
+          "entity_id": null,
+          "frame_id": "20261012-075554-3649f5",
+          "bbox": [
+            0.0002,
+            0.276,
+            0.2057,
+            0.9115
+          ],
+          "at_ist": "2026-10-12T07:55:54.478800+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100311,
+          "entity_id": "object:651",
+          "frame_id": "20261012-075811-ffac9d",
+          "bbox": [
+            0.0037,
+            0.3575,
+            0.1234,
+            0.6348
+          ],
+          "at_ist": "2026-10-12T07:58:12.327096+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:651 1.64 m away, appearance 0.63, and of the 12 regions in this look it is the one that fits it best, using 29% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100352,
+          "entity_id": null,
+          "frame_id": "20261012-075900-8588da",
+          "bbox": [
+            0.9368,
+            0.4102,
+            1.0,
+            0.6302
+          ],
+          "at_ist": "2026-10-12T07:59:00.704210+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100360,
+          "entity_id": null,
+          "frame_id": "20261012-075923-8d1c71",
+          "bbox": [
+            0.9364,
+            0.4083,
+            0.9999,
+            0.6335
+          ],
+          "at_ist": "2026-10-12T07:59:23.525657+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100364,
+          "entity_id": null,
+          "frame_id": "20261012-075930-60a911",
+          "bbox": [
+            0.945,
+            0.3969,
+            1.0,
+            0.6333
+          ],
+          "at_ist": "2026-10-12T07:59:30.858449+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100423,
+          "entity_id": null,
+          "frame_id": "20261012-080047-c6c5fc",
+          "bbox": [
+            0.3994,
+            0.3561,
+            0.8921,
+            0.8657
+          ],
+          "at_ist": "2026-10-12T08:00:47.660569+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100428,
+          "entity_id": null,
+          "frame_id": "20261012-080048-226eca",
+          "bbox": [
+            0.2679,
+            0.3485,
+            0.7463,
+            0.8638
+          ],
+          "at_ist": "2026-10-12T08:00:49.105069+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 0.75,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100433,
+          "entity_id": null,
+          "frame_id": "20261012-080049-e97156",
+          "bbox": [
+            0.3009,
+            0.3468,
+            0.7866,
+            0.8649
+          ],
+          "at_ist": "2026-10-12T08:00:50.184196+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 0.578,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100437,
+          "entity_id": null,
+          "frame_id": "20261012-080055-92d82f",
+          "bbox": [
+            0.0,
+            0.2324,
+            0.3877,
+            0.8452
+          ],
+          "at_ist": "2026-10-12T08:00:55.619108+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100440,
+          "entity_id": null,
+          "frame_id": "20261012-080055-92d82f",
+          "bbox": [
+            0.2926,
+            0.4733,
+            0.4221,
+            0.7059
+          ],
+          "at_ist": "2026-10-12T08:00:55.619108+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100447,
+          "entity_id": null,
+          "frame_id": "20261012-080056-15bedf",
+          "bbox": [
+            0.0,
+            0.3709,
+            0.2072,
+            0.7811
+          ],
+          "at_ist": "2026-10-12T08:00:57.046728+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100472,
+          "entity_id": null,
+          "frame_id": "20261012-080116-830a39",
+          "bbox": [
+            0.6775,
+            0.0007,
+            1.0,
+            0.9635
+          ],
+          "at_ist": "2026-10-12T08:01:16.782815+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100611,
+          "entity_id": null,
+          "frame_id": "20261012-081207-e69bac",
+          "bbox": [
+            0.0917,
+            0.4484,
+            0.287,
+            0.6406
+          ],
+          "at_ist": "2026-10-12T08:12:07.824512+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 1.952,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100620,
+          "entity_id": null,
+          "frame_id": "20261012-081210-685270",
+          "bbox": [
+            0.0356,
+            0.4208,
+            0.2453,
+            0.6401
+          ],
+          "at_ist": "2026-10-12T08:12:10.797165+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100629,
+          "entity_id": null,
+          "frame_id": "20261012-081211-f2273a",
+          "bbox": [
+            0.0,
+            0.4003,
+            0.1822,
+            0.645
+          ],
+          "at_ist": "2026-10-12T08:12:12.126545+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100637,
+          "entity_id": null,
+          "frame_id": "20261012-081222-a78856",
+          "bbox": [
+            0.0518,
+            0.4149,
+            0.2988,
+            0.6625
+          ],
+          "at_ist": "2026-10-12T08:12:23.401205+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 2.152,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100656,
+          "entity_id": null,
+          "frame_id": "20261012-081401-1b61e0",
+          "bbox": [
+            0.0,
+            0.4231,
+            0.1268,
+            0.637
+          ],
+          "at_ist": "2026-10-12T08:14:01.951583+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100672,
+          "entity_id": "object:909",
+          "frame_id": "20261012-081441-685220",
+          "bbox": [
+            0.6841,
+            0.473,
+            0.9048,
+            0.6764
+          ],
+          "at_ist": "2026-10-12T08:14:41.780547+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 2.174,
+          "note": "the bearing points at object:909 1.68 m away, appearance 0.64, and of the 11 regions in this look it is the one that fits it best, using 22% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100674,
+          "entity_id": "object:838",
+          "frame_id": "20261012-081441-685220",
+          "bbox": [
+            0.8328,
+            0.4334,
+            0.9294,
+            0.6478
+          ],
+          "at_ist": "2026-10-12T08:14:41.780547+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:838 1.25 m away, appearance 0.63, and of the 11 regions in this look it is the one that fits it best, using 8% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100684,
+          "entity_id": "object:909",
+          "frame_id": "20261012-081442-d53ea9",
+          "bbox": [
+            0.7811,
+            0.4234,
+            1.0,
+            0.6877
+          ],
+          "at_ist": "2026-10-12T08:14:43.311964+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:909 1.37 m away, appearance 0.65, and of the 11 regions in this look it is the one that fits it best, using 53% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100696,
+          "entity_id": "object:918",
+          "frame_id": "20261012-081444-c98b0b",
+          "bbox": [
+            0.9022,
+            0.3372,
+            1.0,
+            0.6742
+          ],
+          "at_ist": "2026-10-12T08:14:44.773501+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "two looks 3.306 m apart crossed at 63.7 degrees, placing object:918 to within 0.236 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100707,
+          "entity_id": null,
+          "frame_id": "20261012-081450-7db2bd",
+          "bbox": [
+            0.9034,
+            0.3333,
+            1.0,
+            0.681
+          ],
+          "at_ist": "2026-10-12T08:14:50.589897+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100832,
+          "entity_id": "object:527",
+          "frame_id": "20261012-081736-4564a8",
+          "bbox": [
+            0.0214,
+            0.2282,
+            0.2969,
+            0.7212
+          ],
+          "at_ist": "2026-10-12T08:17:37.645213+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 2.553,
+          "note": "the bearing points at object:527 3.12 m away, appearance 0.65, and of the 11 regions in this look it is the one that fits it best, using 2% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100844,
+          "entity_id": "object:651",
+          "frame_id": "20261012-081738-086bab",
+          "bbox": [
+            0.0,
+            0.3096,
+            0.1075,
+            0.7345
+          ],
+          "at_ist": "2026-10-12T08:17:39.113137+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:651 0.64 m away, appearance 0.77, and of the 10 regions in this look it is the one that fits it best, using 88% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100887,
+          "entity_id": "object:651",
+          "frame_id": "20261012-082051-aa77a2",
+          "bbox": [
+            0.5479,
+            0.3664,
+            0.9076,
+            0.7612
+          ],
+          "at_ist": "2026-10-12T08:20:51.698596+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:651 2.23 m away, appearance 0.65, and of the 12 regions in this look it is the one that fits it best, using 6% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        }
+      ]
+    },
+    "balcony_armchair": {
+      "counts": {
+        "after_refit": {
+          "reviewed_regions": 14,
+          "unassigned": 7,
+          "no_recorded_pose": 6,
+          "memberships": {
+            "unassigned": 7,
+            "object:896": 1,
+            "object:838": 3,
+            "object:320": 1,
+            "object:601": 2
+          }
+        },
+        "after_staging_before_pose_fault": {
+          "reviewed_regions": 12,
+          "unassigned": 11,
+          "no_recorded_pose": 11,
+          "memberships": {
+            "unassigned": 11,
+            "object:379": 1
+          }
+        },
+        "before_staging": {
+          "reviewed_regions": 2,
+          "unassigned": 0,
+          "no_recorded_pose": 0,
+          "memberships": {
+            "object:371": 2
+          }
+        },
+        "pose_fault_window": {
+          "reviewed_regions": 8,
+          "unassigned": 2,
+          "no_recorded_pose": 0,
+          "memberships": {
+            "unassigned": 2,
+            "object:601": 2,
+            "object:379": 1,
+            "object:466": 1,
+            "object:320": 2
+          }
+        }
+      },
+      "records": {
+        "object:320": {
+          "total_memberships_now": 150,
+          "created_at_ist": "2026-10-03T20:53:29.644466+05:30",
+          "placement_now": {
+            "x_m": -18.934,
+            "y_m": -16.682,
+            "uncertainty_m": 0.826,
+            "error_major_m": 0.826,
+            "error_minor_m": 0.46,
+            "error_major_deg": 66.8,
+            "baseline_m": 1.853,
+            "parallax_deg": 18.8,
+            "extent_m": 0.632,
+            "height_m": 0.146,
+            "height_sigma_m": 0.076,
+            "height_above_floor_m": 0.381,
+            "rays_agreeing": 24,
+            "viewpoints": 13,
+            "refined_from": 24,
+            "spread_m": 0.309,
+            "aimed_uncertainty_m": 0.2,
+            "aimed_ranges": 1,
+            "aimed_ranges_disagreeing": 0,
+            "stated_uncertainty_m": 0.2
+          },
+          "placement_updated_at_ist": "2026-10-12T08:17:49.211857+05:30",
+          "reviewed_subject_memberships": 3
+        },
+        "object:371": {
+          "total_memberships_now": 89,
+          "created_at_ist": "2026-10-03T20:56:13.425063+05:30",
+          "placement_now": {
+            "x_m": -18.477,
+            "y_m": -16.499,
+            "uncertainty_m": 0.147,
+            "error_major_m": 0.147,
+            "error_minor_m": 0.099,
+            "error_major_deg": 27.1,
+            "baseline_m": 1.748,
+            "parallax_deg": 42.9,
+            "extent_m": 0.321,
+            "height_m": 0.101,
+            "height_sigma_m": 0.047,
+            "height_above_floor_m": 0.336,
+            "rays_agreeing": 24,
+            "viewpoints": 9,
+            "refined_from": 24,
+            "spread_m": 0.093,
+            "stated_uncertainty_m": 0.147
+          },
+          "placement_updated_at_ist": "2026-10-12T08:18:11.078567+05:30",
+          "reviewed_subject_memberships": 2
+        },
+        "object:379": {
+          "total_memberships_now": 62,
+          "created_at_ist": "2026-10-03T20:57:16.755274+05:30",
+          "placement_now": {
+            "x_m": -18.591,
+            "y_m": -15.636,
+            "uncertainty_m": 0.166,
+            "error_major_m": 0.166,
+            "error_minor_m": 0.134,
+            "error_major_deg": 19.0,
+            "baseline_m": 2.917,
+            "parallax_deg": 82.9,
+            "extent_m": 0.51,
+            "height_m": 0.142,
+            "height_sigma_m": 0.102,
+            "height_above_floor_m": 0.377,
+            "rays_agreeing": 24,
+            "viewpoints": 17,
+            "refined_from": 24,
+            "spread_m": 0.138,
+            "stated_uncertainty_m": 0.166
+          },
+          "placement_updated_at_ist": "2026-10-12T08:01:27.010657+05:30",
+          "reviewed_subject_memberships": 2
+        },
+        "object:466": {
+          "total_memberships_now": 260,
+          "created_at_ist": "2026-10-05T10:02:20.998664+05:30",
+          "placement_now": {
+            "x_m": -18.674,
+            "y_m": -16.554,
+            "uncertainty_m": 0.226,
+            "error_major_m": 0.226,
+            "error_minor_m": 0.122,
+            "error_major_deg": 64.7,
+            "baseline_m": 3.354,
+            "parallax_deg": 80.4,
+            "extent_m": 0.334,
+            "height_m": 0.127,
+            "height_sigma_m": 0.053,
+            "height_above_floor_m": 0.362,
+            "rays_agreeing": 24,
+            "viewpoints": 10,
+            "refined_from": 24,
+            "spread_m": 0.082,
+            "stated_uncertainty_m": 0.226
+          },
+          "placement_updated_at_ist": "2026-10-12T08:01:52.233939+05:30",
+          "reviewed_subject_memberships": 1
+        },
+        "object:601": {
+          "total_memberships_now": 41,
+          "created_at_ist": "2026-10-07T10:47:42.903131+05:30",
+          "placement_now": {
+            "x_m": -18.466,
+            "y_m": -16.326,
+            "uncertainty_m": 0.116,
+            "error_major_m": 0.116,
+            "error_minor_m": 0.056,
+            "error_major_deg": 40.1,
+            "baseline_m": 1.769,
+            "parallax_deg": 85.7,
+            "extent_m": 0.234,
+            "height_m": 0.039,
+            "height_sigma_m": 0.032,
+            "height_above_floor_m": 0.274,
+            "rays_agreeing": 23,
+            "viewpoints": 6,
+            "refined_from": 23,
+            "spread_m": 0.109,
+            "stated_uncertainty_m": 0.116
+          },
+          "placement_updated_at_ist": "2026-10-12T08:21:08.775558+05:30",
+          "reviewed_subject_memberships": 4
+        },
+        "object:838": {
+          "total_memberships_now": 26,
+          "created_at_ist": "2026-10-10T13:11:58.198775+05:30",
+          "placement_now": {
+            "x_m": -18.385,
+            "y_m": -15.307,
+            "uncertainty_m": 0.279,
+            "error_major_m": 0.279,
+            "error_minor_m": 0.176,
+            "error_major_deg": 37.6,
+            "baseline_m": 2.32,
+            "parallax_deg": 38.5,
+            "extent_m": 0.406,
+            "height_m": 0.166,
+            "height_sigma_m": 0.107,
+            "height_above_floor_m": 0.401,
+            "rays_agreeing": 24,
+            "viewpoints": 13,
+            "refined_from": 24,
+            "spread_m": 0.216,
+            "stated_uncertainty_m": 0.279
+          },
+          "placement_updated_at_ist": "2026-10-12T08:17:49.117716+05:30",
+          "reviewed_subject_memberships": 3
+        },
+        "object:896": {
+          "total_memberships_now": 5,
+          "created_at_ist": "2026-10-11T09:44:13.751851+05:30",
+          "placement_now": {
+            "x_m": -18.869,
+            "y_m": -16.545,
+            "uncertainty_m": 0.071,
+            "error_major_m": 0.071,
+            "error_minor_m": 0.052,
+            "error_major_deg": -88.6,
+            "baseline_m": 1.919,
+            "parallax_deg": 76.3,
+            "extent_m": 0.337,
+            "height_m": 0.153,
+            "height_sigma_m": 0.096,
+            "height_above_floor_m": 0.388,
+            "rays_agreeing": 4,
+            "viewpoints": 4,
+            "refined_from": 4,
+            "spread_m": 0.031,
+            "stated_uncertainty_m": 0.071
+          },
+          "placement_updated_at_ist": "2026-10-12T08:13:58.743792+05:30",
+          "reviewed_subject_memberships": 1
+        }
+      },
+      "regions": [
+        {
+          "observation_id": 99860,
+          "entity_id": "object:371",
+          "frame_id": "20261012-074444-918c7b",
+          "bbox": [
+            0.2449,
+            0.4451,
+            0.4605,
+            0.692
+          ],
+          "at_ist": "2026-10-12T07:44:44.988264+05:30",
+          "phase": "before_staging",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:371 1.38 m away, appearance 0.68, and of the 4 regions in this look it is the one that fits it best, using 20% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 99871,
+          "entity_id": "object:371",
+          "frame_id": "20261012-074445-4b53cc",
+          "bbox": [
+            0.0001,
+            0.3179,
+            0.2151,
+            0.7148
+          ],
+          "at_ist": "2026-10-12T07:44:46.231472+05:30",
+          "phase": "before_staging",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:371 0.92 m away, appearance 0.66, and of the 12 regions in this look it is the one that fits it best, using 8% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 99993,
+          "entity_id": null,
+          "frame_id": "20261012-075248-130f16",
+          "bbox": [
+            0.6929,
+            0.4978,
+            0.8039,
+            0.6519
+          ],
+          "at_ist": "2026-10-12T07:52:48.939654+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 2.518,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100000,
+          "entity_id": null,
+          "frame_id": "20261012-075249-93847b",
+          "bbox": [
+            0.6948,
+            0.4972,
+            0.8057,
+            0.6514
+          ],
+          "at_ist": "2026-10-12T07:52:49.810432+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 2.492,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100105,
+          "entity_id": null,
+          "frame_id": "20261012-075433-d9aeea",
+          "bbox": [
+            0.7845,
+            0.3206,
+            1.0,
+            0.728
+          ],
+          "at_ist": "2026-10-12T07:54:33.971994+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100118,
+          "entity_id": null,
+          "frame_id": "20261012-075448-5212ee",
+          "bbox": [
+            0.1418,
+            0.4295,
+            0.6338,
+            0.7935
+          ],
+          "at_ist": "2026-10-12T07:54:49.007737+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 0.695,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100153,
+          "entity_id": null,
+          "frame_id": "20261012-075534-31abb0",
+          "bbox": [
+            0.2505,
+            0.4185,
+            0.7437,
+            0.7941
+          ],
+          "at_ist": "2026-10-12T07:55:34.855291+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 0.726,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100173,
+          "entity_id": null,
+          "frame_id": "20261012-075546-99f1aa",
+          "bbox": [
+            0.2505,
+            0.4202,
+            0.6877,
+            0.7853
+          ],
+          "at_ist": "2026-10-12T07:55:46.880409+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 1.053,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100182,
+          "entity_id": null,
+          "frame_id": "20261012-075554-3649f5",
+          "bbox": [
+            0.7588,
+            0.3135,
+            1.0,
+            0.7248
+          ],
+          "at_ist": "2026-10-12T07:55:54.478800+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100191,
+          "entity_id": null,
+          "frame_id": "20261012-075555-896397",
+          "bbox": [
+            0.2485,
+            0.417,
+            0.8292,
+            0.7923
+          ],
+          "at_ist": "2026-10-12T07:55:56.246639+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 0.948,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100199,
+          "entity_id": null,
+          "frame_id": "20261012-075603-d17c10",
+          "bbox": [
+            0.7723,
+            0.2689,
+            0.9999,
+            0.8955
+          ],
+          "at_ist": "2026-10-12T07:56:04.135087+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100318,
+          "entity_id": "object:379",
+          "frame_id": "20261012-075811-ffac9d",
+          "bbox": [
+            0.1097,
+            0.4991,
+            0.2043,
+            0.6191
+          ],
+          "at_ist": "2026-10-12T07:58:12.327096+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:379 3.41 m away, appearance 0.62, and of the 12 regions in this look it is the one that fits it best, using 42% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100438,
+          "entity_id": null,
+          "frame_id": "20261012-080055-92d82f",
+          "bbox": [
+            0.7836,
+            0.3312,
+            0.9999,
+            0.7467
+          ],
+          "at_ist": "2026-10-12T08:00:55.619108+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100446,
+          "entity_id": null,
+          "frame_id": "20261012-080056-15bedf",
+          "bbox": [
+            0.6583,
+            0.269,
+            0.9999,
+            0.8029
+          ],
+          "at_ist": "2026-10-12T08:00:57.046728+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 1.128,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100457,
+          "entity_id": null,
+          "frame_id": "20261012-080109-6e2b0f",
+          "bbox": [
+            0.0029,
+            0.6707,
+            1.0,
+            0.9989
+          ],
+          "at_ist": "2026-10-12T08:01:09.558688+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100459,
+          "entity_id": null,
+          "frame_id": "20261012-080112-2bf12f",
+          "bbox": [
+            0.0001,
+            0.0,
+            0.3146,
+            0.985
+          ],
+          "at_ist": "2026-10-12T08:01:12.801589+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100465,
+          "entity_id": "object:601",
+          "frame_id": "20261012-080114-b61053",
+          "bbox": [
+            0.813,
+            0.4064,
+            1.0,
+            0.6917
+          ],
+          "at_ist": "2026-10-12T08:01:15.236404+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:601 1.16 m away, appearance 0.56, and of the 7 regions in this look it is the one that fits it best, using 26% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100473,
+          "entity_id": "object:379",
+          "frame_id": "20261012-080116-830a39",
+          "bbox": [
+            0.3722,
+            0.4823,
+            0.6945,
+            0.7021
+          ],
+          "at_ist": "2026-10-12T08:01:16.782815+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:379 1.47 m away, appearance 0.66, and of the 8 regions in this look it is the one that fits it best, using 32% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100480,
+          "entity_id": "object:601",
+          "frame_id": "20261012-080118-8ff051",
+          "bbox": [
+            0.3468,
+            0.4635,
+            0.7151,
+            0.7167
+          ],
+          "at_ist": "2026-10-12T08:01:18.727994+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": 1.183,
+          "note": "the bearing points at object:601 0.84 m away, appearance 0.67, and of the 11 regions in this look it is the one that fits it best, using 52% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100491,
+          "entity_id": "object:466",
+          "frame_id": "20261012-080134-378265",
+          "bbox": [
+            0.2909,
+            0.4567,
+            0.6737,
+            0.7209
+          ],
+          "at_ist": "2026-10-12T08:01:35.053830+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:466 1.31 m away, appearance 0.72, and of the 10 regions in this look it is the one that fits it best, using 7% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100502,
+          "entity_id": "object:320",
+          "frame_id": "20261012-080136-22352b",
+          "bbox": [
+            0.7754,
+            0.3729,
+            1.0,
+            0.7285
+          ],
+          "at_ist": "2026-10-12T08:01:36.549867+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:320 1.46 m away, appearance 0.64, and of the 9 regions in this look it is the one that fits it best, using 23% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100509,
+          "entity_id": "object:320",
+          "frame_id": "20261012-080137-22c100",
+          "bbox": [
+            0.349,
+            0.4458,
+            0.7321,
+            0.7581
+          ],
+          "at_ist": "2026-10-12T08:01:37.811318+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:320 1.38 m away, appearance 0.78, and of the 8 regions in this look it is the one that fits it best, using 17% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100605,
+          "entity_id": null,
+          "frame_id": "20261012-081205-f921d2",
+          "bbox": [
+            0.0002,
+            0.3973,
+            0.1545,
+            0.6485
+          ],
+          "at_ist": "2026-10-12T08:12:06.106921+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100610,
+          "entity_id": null,
+          "frame_id": "20261012-081207-e69bac",
+          "bbox": [
+            0.3943,
+            0.4548,
+            0.5736,
+            0.6866
+          ],
+          "at_ist": "2026-10-12T08:12:07.824512+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 0.49,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100619,
+          "entity_id": null,
+          "frame_id": "20261012-081210-685270",
+          "bbox": [
+            0.3517,
+            0.4179,
+            0.573,
+            0.703
+          ],
+          "at_ist": "2026-10-12T08:12:10.797165+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 1.308,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100628,
+          "entity_id": null,
+          "frame_id": "20261012-081211-f2273a",
+          "bbox": [
+            0.2524,
+            0.2949,
+            0.6041,
+            0.7718
+          ],
+          "at_ist": "2026-10-12T08:12:12.126545+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 0.775,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100635,
+          "entity_id": null,
+          "frame_id": "20261012-081222-a78856",
+          "bbox": [
+            0.3278,
+            0.1374,
+            0.8035,
+            0.8358
+          ],
+          "at_ist": "2026-10-12T08:12:23.401205+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 0.534,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100652,
+          "entity_id": null,
+          "frame_id": "20261012-081350-4864f9",
+          "bbox": [
+            0.7242,
+            0.0003,
+            1.0,
+            0.7161
+          ],
+          "at_ist": "2026-10-12T08:13:51.104577+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100653,
+          "entity_id": "object:896",
+          "frame_id": "20261012-081350-4864f9",
+          "bbox": [
+            0.0001,
+            0.2907,
+            0.2881,
+            0.7388
+          ],
+          "at_ist": "2026-10-12T08:13:51.104577+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:896 2.16 m away, appearance 0.62, and of the 2 regions in this look it is the one that fits it best, using 5% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100655,
+          "entity_id": null,
+          "frame_id": "20261012-081401-1b61e0",
+          "bbox": [
+            0.1455,
+            0.1847,
+            0.5737,
+            0.8242
+          ],
+          "at_ist": "2026-10-12T08:14:01.951583+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 0.54,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100817,
+          "entity_id": "object:838",
+          "frame_id": "20261012-081733-e5a0ec",
+          "bbox": [
+            0.3824,
+            0.5385,
+            0.4686,
+            0.6621
+          ],
+          "at_ist": "2026-10-12T08:17:34.187662+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 2.472,
+          "note": "the bearing points at object:838 3.44 m away, appearance 0.67, and of the 7 regions in this look it is the one that fits it best, using 8% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100838,
+          "entity_id": "object:838",
+          "frame_id": "20261012-081736-4564a8",
+          "bbox": [
+            0.2518,
+            0.5176,
+            0.3963,
+            0.6565
+          ],
+          "at_ist": "2026-10-12T08:17:37.645213+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 2.526,
+          "note": "the bearing points at object:838 2.09 m away, appearance 0.72, and of the 11 regions in this look it is the one that fits it best, using 7% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100847,
+          "entity_id": "object:838",
+          "frame_id": "20261012-081738-086bab",
+          "bbox": [
+            0.2209,
+            0.4977,
+            0.3641,
+            0.6694
+          ],
+          "at_ist": "2026-10-12T08:17:39.113137+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 1.886,
+          "note": "the bearing points at object:838 1.54 m away, appearance 0.69, and of the 10 regions in this look it is the one that fits it best, using 14% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100849,
+          "entity_id": "object:320",
+          "frame_id": "20261012-081738-086bab",
+          "bbox": [
+            0.1488,
+            0.5177,
+            0.2385,
+            0.6417
+          ],
+          "at_ist": "2026-10-12T08:17:39.113137+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:320 2.90 m away, appearance 0.58, and of the 10 regions in this look it is the one that fits it best, using 27% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100867,
+          "entity_id": "object:601",
+          "frame_id": "20261012-082031-7eaaa1",
+          "bbox": [
+            0.8687,
+            0.3876,
+            1.0,
+            0.6794
+          ],
+          "at_ist": "2026-10-12T08:20:32.231217+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:601 1.16 m away, appearance 0.69, and of the 7 regions in this look it is the one that fits it best, using 30% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100888,
+          "entity_id": "object:601",
+          "frame_id": "20261012-082051-aa77a2",
+          "bbox": [
+            0.0,
+            0.2677,
+            0.224,
+            0.7497
+          ],
+          "at_ist": "2026-10-12T08:20:51.698596+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:601 0.35 m away, appearance 0.63, and of the 12 regions in this look it is the one that fits it best, using 20% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        }
+      ]
+    },
+    "red_bean_bag": {
+      "counts": {
+        "after_refit": {
+          "reviewed_regions": 12,
+          "unassigned": 6,
+          "no_recorded_pose": 5,
+          "memberships": {
+            "object:920": 6,
+            "unassigned": 6
+          }
+        },
+        "after_staging_before_pose_fault": {
+          "reviewed_regions": 11,
+          "unassigned": 8,
+          "no_recorded_pose": 8,
+          "memberships": {
+            "unassigned": 8,
+            "object:917": 3
+          }
+        },
+        "pose_fault_window": {
+          "reviewed_regions": 3,
+          "unassigned": 1,
+          "no_recorded_pose": 0,
+          "memberships": {
+            "object:917": 2,
+            "unassigned": 1
+          }
+        }
+      },
+      "records": {
+        "object:917": {
+          "total_memberships_now": 12,
+          "created_at_ist": "2026-10-12T08:02:21.869428+05:30",
+          "placement_now": {
+            "x_m": -20.544,
+            "y_m": -14.628,
+            "uncertainty_m": 0.472,
+            "error_major_m": 0.472,
+            "error_minor_m": 0.24,
+            "error_major_deg": 161.6,
+            "baseline_m": 3.35,
+            "parallax_deg": 38.4,
+            "extent_m": 0.465,
+            "height_m": 0.257,
+            "height_sigma_m": 0.14,
+            "height_above_floor_m": 0.492,
+            "rays_agreeing": 15,
+            "viewpoints": 11,
+            "stated_uncertainty_m": 0.472
+          },
+          "placement_updated_at_ist": "2026-10-12T08:02:21.870992+05:30",
+          "reviewed_subject_memberships": 5
+        },
+        "object:920": {
+          "total_memberships_now": 6,
+          "created_at_ist": "2026-10-12T08:17:51.351629+05:30",
+          "placement_now": {
+            "x_m": -15.565,
+            "y_m": -13.618,
+            "uncertainty_m": 0.451,
+            "error_major_m": 0.451,
+            "error_minor_m": 0.201,
+            "error_major_deg": 166.0,
+            "baseline_m": 0.948,
+            "parallax_deg": 16.9,
+            "extent_m": 0.113,
+            "height_m": 0.154,
+            "height_sigma_m": 0.112,
+            "height_above_floor_m": 0.389,
+            "rays_agreeing": 18,
+            "viewpoints": 9,
+            "stated_uncertainty_m": 0.451
+          },
+          "placement_updated_at_ist": "2026-10-12T08:17:51.353324+05:30",
+          "reviewed_subject_memberships": 6
+        }
+      },
+      "regions": [
+        {
+          "observation_id": 99992,
+          "entity_id": null,
+          "frame_id": "20261012-075248-130f16",
+          "bbox": [
+            0.9092,
+            0.4164,
+            1.0,
+            0.61
+          ],
+          "at_ist": "2026-10-12T07:52:48.939654+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100011,
+          "entity_id": null,
+          "frame_id": "20261012-075257-653e3e",
+          "bbox": [
+            0.0018,
+            0.4137,
+            0.1296,
+            0.6157
+          ],
+          "at_ist": "2026-10-12T07:52:57.557929+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100090,
+          "entity_id": null,
+          "frame_id": "20261012-075409-6a2fd1",
+          "bbox": [
+            0.7272,
+            0.4609,
+            0.8876,
+            0.6374
+          ],
+          "at_ist": "2026-10-12T07:54:10.038628+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 3.317,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100120,
+          "entity_id": null,
+          "frame_id": "20261012-075448-5212ee",
+          "bbox": [
+            0.7311,
+            0.4352,
+            0.9131,
+            0.6591
+          ],
+          "at_ist": "2026-10-12T07:54:49.007737+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 2.461,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100155,
+          "entity_id": null,
+          "frame_id": "20261012-075534-31abb0",
+          "bbox": [
+            0.8319,
+            0.4055,
+            1.0,
+            0.6494
+          ],
+          "at_ist": "2026-10-12T07:55:34.855291+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100192,
+          "entity_id": null,
+          "frame_id": "20261012-075555-896397",
+          "bbox": [
+            0.834,
+            0.4054,
+            1.0,
+            0.6471
+          ],
+          "at_ist": "2026-10-12T07:55:56.246639+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100200,
+          "entity_id": null,
+          "frame_id": "20261012-075603-d17c10",
+          "bbox": [
+            0.0,
+            0.379,
+            0.1488,
+            0.6396
+          ],
+          "at_ist": "2026-10-12T07:56:04.135087+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100317,
+          "entity_id": "object:917",
+          "frame_id": "20261012-075811-ffac9d",
+          "bbox": [
+            0.2982,
+            0.5118,
+            0.4074,
+            0.6343
+          ],
+          "at_ist": "2026-10-12T07:58:12.327096+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": 3.986,
+          "note": "two looks 3.35 m apart crossed at 38.4 degrees, placing object:917 to within 0.472 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100324,
+          "entity_id": "object:917",
+          "frame_id": "20261012-075813-6775aa",
+          "bbox": [
+            0.0007,
+            0.429,
+            0.1089,
+            0.6039
+          ],
+          "at_ist": "2026-10-12T07:58:14.020094+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "points at object:917 as well, from the same group, appearance 0.64",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100406,
+          "entity_id": "object:917",
+          "frame_id": "20261012-080026-c33001",
+          "bbox": [
+            0.0624,
+            0.4515,
+            0.1857,
+            0.6181
+          ],
+          "at_ist": "2026-10-12T08:00:26.604346+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "points at object:917 as well, from the same group, appearance 0.72",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100418,
+          "entity_id": null,
+          "frame_id": "20261012-080027-355d50",
+          "bbox": [
+            0.0624,
+            0.4518,
+            0.1858,
+            0.618
+          ],
+          "at_ist": "2026-10-12T08:00:28.038988+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100541,
+          "entity_id": "object:917",
+          "frame_id": "20261012-080202-2a9522",
+          "bbox": [
+            0.0,
+            0.3223,
+            0.1483,
+            0.6582
+          ],
+          "at_ist": "2026-10-12T08:02:03.648267+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "two looks 3.35 m apart crossed at 38.4 degrees, placing object:917 to within 0.472 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100553,
+          "entity_id": "object:917",
+          "frame_id": "20261012-080204-8cbed1",
+          "bbox": [
+            0.0452,
+            0.3184,
+            0.3521,
+            0.7118
+          ],
+          "at_ist": "2026-10-12T08:02:05.531712+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": 1.377,
+          "note": "points at object:917 as well, from the same group, appearance 0.68",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100565,
+          "entity_id": null,
+          "frame_id": "20261012-080207-1e6454",
+          "bbox": [
+            0.0,
+            0.2228,
+            0.3451,
+            0.7682
+          ],
+          "at_ist": "2026-10-12T08:02:07.699450+05:30",
+          "phase": "pose_fault_window",
+          "pose_recorded": true,
+          "range_m": 0.966,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100675,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081441-685220",
+          "bbox": [
+            0.364,
+            0.481,
+            0.4846,
+            0.6475
+          ],
+          "at_ist": "2026-10-12T08:14:41.780547+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 3.436,
+          "note": "points at object:920 as well, from the same group, appearance 0.64",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100686,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081442-d53ea9",
+          "bbox": [
+            0.3948,
+            0.4657,
+            0.5355,
+            0.6545
+          ],
+          "at_ist": "2026-10-12T08:14:43.311964+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 2.958,
+          "note": "points at object:920 as well, from the same group, appearance 0.59",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100695,
+          "entity_id": null,
+          "frame_id": "20261012-081444-c98b0b",
+          "bbox": [
+            0.3836,
+            0.4345,
+            0.5632,
+            0.6723
+          ],
+          "at_ist": "2026-10-12T08:14:44.773501+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 2.266,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100706,
+          "entity_id": null,
+          "frame_id": "20261012-081450-7db2bd",
+          "bbox": [
+            0.3785,
+            0.4315,
+            0.5614,
+            0.673
+          ],
+          "at_ist": "2026-10-12T08:14:50.589897+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 2.217,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100714,
+          "entity_id": null,
+          "frame_id": "20261012-081505-bc25ec",
+          "bbox": [
+            0.27,
+            0.385,
+            0.5109,
+            0.6997
+          ],
+          "at_ist": "2026-10-12T08:15:06.296652+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 1.607,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100721,
+          "entity_id": null,
+          "frame_id": "20261012-081507-f75142",
+          "bbox": [
+            0.1547,
+            0.3206,
+            0.4706,
+            0.7492
+          ],
+          "at_ist": "2026-10-12T08:15:07.611646+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 1.117,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100728,
+          "entity_id": null,
+          "frame_id": "20261012-081508-2e93ea",
+          "bbox": [
+            0.0001,
+            0.1696,
+            0.2926,
+            0.8669
+          ],
+          "at_ist": "2026-10-12T08:15:08.666770+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 1.114,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100732,
+          "entity_id": null,
+          "frame_id": "20261012-081529-ee47e7",
+          "bbox": [
+            0.0,
+            0.001,
+            0.206,
+            0.9964
+          ],
+          "at_ist": "2026-10-12T08:15:30.077281+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100799,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081730-427288",
+          "bbox": [
+            0.6003,
+            0.4551,
+            0.6555,
+            0.6749
+          ],
+          "at_ist": "2026-10-12T08:17:30.462098+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 1.586,
+          "note": "two looks 0.948 m apart crossed at 16.9 degrees, placing object:920 to within 0.451 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100803,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081731-928cbe",
+          "bbox": [
+            0.6169,
+            0.37,
+            0.7079,
+            0.6981
+          ],
+          "at_ist": "2026-10-12T08:17:31.618735+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 1.344,
+          "note": "points at object:920 as well, from the same group, appearance 0.87",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100807,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081732-612412",
+          "bbox": [
+            0.6539,
+            0.2373,
+            0.8307,
+            0.7336
+          ],
+          "at_ist": "2026-10-12T08:17:32.785029+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 1.126,
+          "note": "two looks 0.948 m apart crossed at 16.9 degrees, placing object:920 to within 0.451 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100813,
+          "entity_id": "object:920",
+          "frame_id": "20261012-081733-e5a0ec",
+          "bbox": [
+            0.7351,
+            0.0,
+            1.0,
+            0.7988
+          ],
+          "at_ist": "2026-10-12T08:17:34.187662+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "points at object:920 as well, from the same group, appearance 0.56",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        }
+      ]
+    },
+    "black_bean_bag": {
+      "counts": {
+        "after_refit": {
+          "reviewed_regions": 4,
+          "unassigned": 4,
+          "no_recorded_pose": 3,
+          "memberships": {
+            "unassigned": 4
+          }
+        },
+        "after_staging_before_pose_fault": {
+          "reviewed_regions": 24,
+          "unassigned": 21,
+          "no_recorded_pose": 21,
+          "memberships": {
+            "unassigned": 21,
+            "object:914": 3
+          }
+        }
+      },
+      "records": {
+        "object:914": {
+          "total_memberships_now": 3,
+          "created_at_ist": "2026-10-12T07:58:33.088750+05:30",
+          "placement_now": {
+            "x_m": -16.204,
+            "y_m": -11.421,
+            "uncertainty_m": 0.436,
+            "error_major_m": 0.436,
+            "error_minor_m": 0.053,
+            "error_major_deg": -89.9,
+            "baseline_m": 0.645,
+            "parallax_deg": 17.4,
+            "extent_m": 0.231,
+            "height_m": 0.105,
+            "height_sigma_m": 0.099,
+            "height_above_floor_m": 0.34,
+            "rays_agreeing": 3,
+            "viewpoints": 3,
+            "refined_from": 3,
+            "spread_m": 0.112,
+            "stated_uncertainty_m": 0.436
+          },
+          "placement_updated_at_ist": "2026-10-12T08:00:44.335233+05:30",
+          "reviewed_subject_memberships": 3
+        }
+      },
+      "regions": [
+        {
+          "observation_id": 100010,
+          "entity_id": null,
+          "frame_id": "20261012-075257-653e3e",
+          "bbox": [
+            0.7026,
+            0.4704,
+            0.8598,
+            0.6544
+          ],
+          "at_ist": "2026-10-12T07:52:57.557929+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 3.254,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100021,
+          "entity_id": null,
+          "frame_id": "20261012-075311-531a0b",
+          "bbox": [
+            0.7592,
+            0.4413,
+            0.9455,
+            0.6549
+          ],
+          "at_ist": "2026-10-12T07:53:12.155781+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100026,
+          "entity_id": null,
+          "frame_id": "20261012-075318-07aab5",
+          "bbox": [
+            0.3224,
+            0.4678,
+            0.5107,
+            0.6657
+          ],
+          "at_ist": "2026-10-12T07:53:18.750738+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100029,
+          "entity_id": null,
+          "frame_id": "20261012-075319-a5c387",
+          "bbox": [
+            0.0,
+            0.0203,
+            0.1638,
+            0.626
+          ],
+          "at_ist": "2026-10-12T07:53:20.390150+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100031,
+          "entity_id": null,
+          "frame_id": "20261012-075319-a5c387",
+          "bbox": [
+            0.0722,
+            0.4097,
+            0.2996,
+            0.6934
+          ],
+          "at_ist": "2026-10-12T07:53:20.390150+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 1.881,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100044,
+          "entity_id": null,
+          "frame_id": "20261012-075341-48d75b",
+          "bbox": [
+            0.0,
+            0.1413,
+            0.1375,
+            0.5825
+          ],
+          "at_ist": "2026-10-12T07:53:41.397740+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100046,
+          "entity_id": null,
+          "frame_id": "20261012-075341-48d75b",
+          "bbox": [
+            0.0294,
+            0.4105,
+            0.1263,
+            0.6383
+          ],
+          "at_ist": "2026-10-12T07:53:41.397740+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100057,
+          "entity_id": null,
+          "frame_id": "20261012-075345-08f8ea",
+          "bbox": [
+            0.0276,
+            0.408,
+            0.1246,
+            0.638
+          ],
+          "at_ist": "2026-10-12T07:53:46.233872+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100067,
+          "entity_id": null,
+          "frame_id": "20261012-075351-40ac88",
+          "bbox": [
+            0.5013,
+            0.4779,
+            0.6243,
+            0.6689
+          ],
+          "at_ist": "2026-10-12T07:53:52.354158+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100136,
+          "entity_id": null,
+          "frame_id": "20261012-075512-1c6aad",
+          "bbox": [
+            0.0156,
+            0.4494,
+            0.1176,
+            0.6038
+          ],
+          "at_ist": "2026-10-12T07:55:12.687760+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100207,
+          "entity_id": null,
+          "frame_id": "20261012-075603-d17c10",
+          "bbox": [
+            0.6021,
+            0.5188,
+            0.7125,
+            0.641
+          ],
+          "at_ist": "2026-10-12T07:56:04.135087+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100214,
+          "entity_id": null,
+          "frame_id": "20261012-075618-1bdac1",
+          "bbox": [
+            0.213,
+            0.4708,
+            0.3628,
+            0.6462
+          ],
+          "at_ist": "2026-10-12T07:56:18.511959+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 2.961,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100217,
+          "entity_id": null,
+          "frame_id": "20261012-075619-21671d",
+          "bbox": [
+            0.0,
+            0.0618,
+            0.1205,
+            0.5815
+          ],
+          "at_ist": "2026-10-12T07:56:19.883520+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100218,
+          "entity_id": null,
+          "frame_id": "20261012-075619-21671d",
+          "bbox": [
+            0.0342,
+            0.4127,
+            0.196,
+            0.6402
+          ],
+          "at_ist": "2026-10-12T07:56:19.883520+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100314,
+          "entity_id": "object:914",
+          "frame_id": "20261012-075811-ffac9d",
+          "bbox": [
+            0.8986,
+            0.373,
+            1.0,
+            0.643
+          ],
+          "at_ist": "2026-10-12T07:58:12.327096+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "two looks 0.645 m apart crossed at 17.4 degrees, placing object:914 to within 0.436 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100323,
+          "entity_id": "object:914",
+          "frame_id": "20261012-075813-6775aa",
+          "bbox": [
+            0.715,
+            0.403,
+            0.9376,
+            0.6788
+          ],
+          "at_ist": "2026-10-12T07:58:14.020094+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "two looks 0.645 m apart crossed at 17.4 degrees, placing object:914 to within 0.436 m",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100330,
+          "entity_id": null,
+          "frame_id": "20261012-075839-8433a5",
+          "bbox": [
+            0.6141,
+            0.3777,
+            0.913,
+            0.7238
+          ],
+          "at_ist": "2026-10-12T07:58:40.181112+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 1.289,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100339,
+          "entity_id": null,
+          "frame_id": "20261012-075840-92924c",
+          "bbox": [
+            0.6141,
+            0.3774,
+            0.9131,
+            0.724
+          ],
+          "at_ist": "2026-10-12T07:58:41.563340+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 1.258,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100347,
+          "entity_id": null,
+          "frame_id": "20261012-075848-b793b9",
+          "bbox": [
+            0.0576,
+            0.0607,
+            0.314,
+            0.619
+          ],
+          "at_ist": "2026-10-12T07:58:49.067670+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100348,
+          "entity_id": null,
+          "frame_id": "20261012-075848-b793b9",
+          "bbox": [
+            0.2043,
+            0.384,
+            0.494,
+            0.7331
+          ],
+          "at_ist": "2026-10-12T07:58:49.067670+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": false
+        },
+        {
+          "observation_id": 100354,
+          "entity_id": null,
+          "frame_id": "20261012-075909-3b24ad",
+          "bbox": [
+            0.1106,
+            0.0832,
+            0.3461,
+            0.6206
+          ],
+          "at_ist": "2026-10-12T07:59:09.436419+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 2.125,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100355,
+          "entity_id": null,
+          "frame_id": "20261012-075909-3b24ad",
+          "bbox": [
+            0.2544,
+            0.4021,
+            0.5541,
+            0.7386
+          ],
+          "at_ist": "2026-10-12T07:59:09.436419+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": 1.211,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100402,
+          "entity_id": "object:914",
+          "frame_id": "20261012-080026-c33001",
+          "bbox": [
+            0.8036,
+            0.387,
+            0.9999,
+            0.669
+          ],
+          "at_ist": "2026-10-12T08:00:26.604346+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": true,
+          "range_m": null,
+          "note": "the bearing points at object:914 1.33 m away, appearance 0.78, and of the 12 regions in this look it is the one that fits it best, using 49% of what its bearing is allowed to be off by",
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100414,
+          "entity_id": null,
+          "frame_id": "20261012-080027-355d50",
+          "bbox": [
+            0.8038,
+            0.3872,
+            1.0,
+            0.6694
+          ],
+          "at_ist": "2026-10-12T08:00:28.038988+05:30",
+          "phase": "after_staging_before_pose_fault",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100699,
+          "entity_id": null,
+          "frame_id": "20261012-081444-c98b0b",
+          "bbox": [
+            0.1927,
+            0.4853,
+            0.3046,
+            0.6371
+          ],
+          "at_ist": "2026-10-12T08:14:44.773501+05:30",
+          "phase": "after_refit",
+          "pose_recorded": true,
+          "range_m": 3.507,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100709,
+          "entity_id": null,
+          "frame_id": "20261012-081450-7db2bd",
+          "bbox": [
+            0.1929,
+            0.4798,
+            0.301,
+            0.6384
+          ],
+          "at_ist": "2026-10-12T08:14:50.589897+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": 2.656,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100716,
+          "entity_id": null,
+          "frame_id": "20261012-081505-bc25ec",
+          "bbox": [
+            0.0272,
+            0.4154,
+            0.1895,
+            0.6353
+          ],
+          "at_ist": "2026-10-12T08:15:06.296652+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        },
+        {
+          "observation_id": 100722,
+          "entity_id": null,
+          "frame_id": "20261012-081507-f75142",
+          "bbox": [
+            0.0,
+            0.3657,
+            0.0986,
+            0.6296
+          ],
+          "at_ist": "2026-10-12T08:15:07.611646+05:30",
+          "phase": "after_refit",
+          "pose_recorded": false,
+          "range_m": null,
+          "note": null,
+          "jpeg_exists_on_rover": true,
+          "depth_exists_on_rover": true
+        }
+      ]
+    }
+  },
+  "run": {
+    "regions": 513,
+    "frames": 82,
+    "without_pose": 324,
+    "unassigned": 354
+  },
+  "review_limits": "Codex reviewed 159 full frames from 07:44-08:19 IST, 420 candidate crops (bbox bottom >=0.57, area >=0.012, height >=0.1), and sampled historical strips for 12 candidate records. Counts are minimum visually identified regions, not an exhaustive census of every tiny/occluded crop. Ambiguous mixed or edge-only regions were excluded. Labels have not been reviewed by the owner. Charger chair means the chair carrying the patterned throw and boxes after staging; its 08:14:41 measured surface is (-17.39,-15.51), agreeing with the staged charger-chair position. Balcony chair is the other, plain chair. These accessories and scene context support the post-staging visual distinction; history-wide purity is not asserted."
+}

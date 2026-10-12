@@ -1,0 +1,150 @@
+{
+  "judged_by": "Claude analyst in 2026-10-04-merge-step-on-the-rover.md; pair IDs transcribed by Codex from the two original sheets on 2026-10-12",
+  "owner_confirmation": false,
+  "pairs": [
+    {
+      "proposal": 1,
+      "a": "object:318",
+      "b": "object:381",
+      "subject": "ceiling fan",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 2,
+      "a": "object:241",
+      "b": "object:329",
+      "subject": "pendant lamp",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 3,
+      "a": "object:249",
+      "b": "object:370",
+      "subject": "cow painting",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 4,
+      "a": "object:349",
+      "b": "object:405",
+      "subject": "glare and door edges",
+      "judgment": "ambiguous_or_mixed",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 5,
+      "a": "object:242",
+      "b": "object:316",
+      "subject": "black cabinet",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 6,
+      "a": "object:402",
+      "b": "object:325",
+      "subject": "floor lamp",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 7,
+      "a": "object:243",
+      "b": "object:335",
+      "subject": "grey gold-framed painting",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 8,
+      "a": "object:372",
+      "b": "object:414",
+      "subject": "black cabinet",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 9,
+      "a": "object:400",
+      "b": "object:384",
+      "subject": "blue picture hung on its corner",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 10,
+      "a": "object:326",
+      "b": "object:395",
+      "subject": "dining chairs, individual chair unknown",
+      "judgment": "ambiguous_or_mixed",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 11,
+      "a": "object:273",
+      "b": "object:358",
+      "subject": "teal door / corridor view",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 12,
+      "a": "object:317",
+      "b": "object:327",
+      "subject": "charger armchair",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 13,
+      "a": "object:398",
+      "b": "object:401",
+      "subject": "dark door",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 14,
+      "a": "object:382",
+      "b": "object:423",
+      "subject": "blur of owner and armchair",
+      "judgment": "ambiguous_or_mixed",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 15,
+      "a": "object:344",
+      "b": "object:252",
+      "subject": "dark painting of houses",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 16,
+      "a": "object:330",
+      "b": "object:311",
+      "subject": "green landscape painting",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 17,
+      "a": "object:315",
+      "b": "object:431",
+      "subject": "painting of white buildings",
+      "judgment": "same_subject_in_sampled_crops",
+      "purity_of_entire_records_proven": false
+    },
+    {
+      "proposal": 18,
+      "a": "object:410",
+      "b": "object:312",
+      "subject": "mixed door edge and landscape",
+      "judgment": "ambiguous_or_mixed",
+      "purity_of_entire_records_proven": false
+    }
+  ]
+}
