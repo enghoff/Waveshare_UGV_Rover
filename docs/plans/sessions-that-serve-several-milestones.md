@@ -1,8 +1,10 @@
 # Sessions that serve several milestones at once
 
 Status: proposed 2026-10-11 at the owner's request, to keep the rover's
-supervised time for M5 and what follows as small as it can be. Nothing in it is
-built yet; *What has to exist first* is the work before the first session.
+supervised time for M5 and what follows as small as it can be. The session
+script is built and was
+[shaken down](../progress/2026-10-12-m5-shakedown.md) on 2026-10-12; *What has
+to exist first* is the work before the first session.
 
 The rover's time is the scarce thing: R-SAFE-6 is open and nothing docks it, so
 every minute is supervised and every charge plugged in by hand, at 20 to 25
@@ -35,6 +37,9 @@ moves everything else onto recordings.
 5. **Scenes are staged out of the rover's sight,** while it waits in another
    room, unless the point is a change it watches. A reset is staged between
    sessions and found by the next session's first loop, so it costs no run.
+   Nothing is put within a metre of the charger's spot or a stop: on the
+   shakedown, armchairs there blocked a stop, made the position check unreliable
+   at two more, and kept the rover off its charger.
 
 ## One session
 
@@ -44,9 +49,9 @@ About an hour of the owner's day, twenty minutes of it in person; one charge.
 |---|---|---|---|
 | 0 | on the charger: the code frozen and deployed, the counts predeclared, the session script dry-run | -- | -- |
 | 1 | recording starts; battery and pose checked | unplugs; a refit if asked | -- |
-| 2 | **loop A**, about 5 min | -- | the "before" visit everywhere; the previous session's reset found (criterion 2); a control in each room (criterion 3) |
+| 2 | **loop A**, 3.5 min | -- | the "before" visit everywhere; the previous session's reset found (criterion 2); a control in each room (criterion 3) |
 | 3 | waits in the bedroom, out of range of the rest | stages 3-5 changes elsewhere: furniture-sized things moved at least a metre, one door, and when it is being tested one change in the rover's sight | -- |
-| 4 | **an autonomous run**, about 10 min | -- | the executive's choices with changes on the map (criteria 5-6, once it has the goal type); the benchmark's autonomy arm; outcomes for M10; M6's skill executions once there is one |
+| 4 | **an autonomous run**, a loop's length | -- | the executive's choices with changes on the map (criteria 5-6, once it has the goal type); the benchmark's autonomy arm; outcomes for M10; M6's skill executions once there is one |
 | 5 | **loop B** | -- | every staged change, found or missed (criterion 2); controls elsewhere (criterion 3); the benchmark's baseline arm |
 | 6 | home; recording stops; the session's counts written by script | plugs in; resets the scene now or before the next session | battery under a driven discharge (R-CTL-11); pose quality room by room |
 
@@ -69,33 +74,30 @@ they need paired trials.
 
 ## What has to exist first
 
-What could be done offline, on the recordings of 2026-10-10 and 11, is done;
-what is left needs the owner's word or the shakedown.
+The shakedown drove every step of the session script, and its counts were
+scored by script ([2026-10-12](../progress/2026-10-12-m5-shakedown.md)). What is
+left:
 
-- **The counts agreed**: what counts as found, a false alarm and its budget,
-  and the benchmark's questions and minimum improvement, all
-  [proposed](../decisions/m5-sessions-are-counted-before-they-start.md) and
-  waiting on the owner. The scripts that count them are written and tried on
-  scene 1 (`score_session.py`, and `arm_replay.py` for each arm on its own
-  scans).
-- **The session script on the floor.** It is written
-  ([`session.py`](../../experiments/m5_changes/README.md)) and its route
-  planned leg by leg clear of the rug, 33 m for both loops; it has not yet
-  driven, and the shakedown is its first run.
-- **The executive's look at a change, turned on.** It is built, and criteria 5
-  and 6 are shown on the acceptance set and on scene 1's replayed decisions
-  ([2026-10-11](../progress/2026-10-11-m5-investigate-change.md)); it is in
-  shadow acceptance, so the shakedown's run records what it would do, and
-  turning it on (`investigate_changes`) before session 1 is the owner's call.
-- Why the mapper's correction doubled the bedroom's pose error on 2026-10-11
-  ([measured](../progress/2026-10-11-bedroom-pose.md): a quarter metre from the
-  wheels over the doorway and turn, half a metre after the correction). Its graph
-  from then is gone; the session script now keeps each session's, so the next
-  occurrence can be replayed into the mapper. The shakedown's loop drives
-  through that doorway twice and is measured the same way.
+- **The pose among moved furniture.** In the shakedown's run it went 1.35 m
+  wrong beside the moved armchairs while navigation called it trusted. A session
+  that loses its place cannot count past that point or get home. It is replayed
+  into the mapper from the graph the session started with, which the script
+  kept, before anything is changed. The script now stops where it stands when
+  two stops running disagree. The bedroom doorway of 2026-10-11
+  ([measured](../progress/2026-10-11-bedroom-pose.md)) did not recur in five
+  passes.
+- **The counts agreed**: what counts as found, a false alarm and its budget
+  (set at under one room-control in seven), and the benchmark's questions and
+  minimum improvement, all
+  [proposed](../decisions/m5-sessions-are-counted-before-they-start.md). The
+  scripts that count them have scored the shakedown.
+- **The executive's look at a change, turned on** (`investigate_changes`), the
+  owner's call. On the shakedown's recorded decisions it would have looked in
+  10 of 31, the first 3 min 25 s into the run: at a loop's length, the run
+  barely gets to a look, so the switch and the run's length are one question.
 - What comes and goes at the corner by the balcony, seven times in the log
-  since 2026-10-10: a look from close to on the shakedown's loop, or the
-  owner's word, so that a control's count can name it.
+  since 2026-10-10: the owner's word, or a look from close to, so that a
+  control's count can name it. The shakedown did not get to it.
 
 A move made while the rover watches is not here: scenes are staged out of its
 sight (rule 5), and the rule that would see one costs false reports on replay

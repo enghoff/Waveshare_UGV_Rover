@@ -14,10 +14,16 @@ photographs where the owner's words leave them open:
      "removed": [],
      "doors": [{"what": "bathroom door", "at": [-14.5, -13.4]}],
      "rooms": ["living"],
-     "reset_rooms": ["living"]}
+     "reset_rooms": ["living"],
+     "also_moved": [{"what": "red bean bag", "from": [-19.8, -14.15],
+                     "to": [-16.25, -13.2], "before": "loop B"}]}
 
 `rooms` were touched while the rover waited, `reset_rooms` between this session
-and the last; neither is a control on its first visit after.
+and the last; neither is a control on its first visit after. `also_moved` is
+anything moved later in the session, outside the staging -- the shakedown's red
+bean bag, moved out of the rover's way: it is not scored as found or missed,
+its room is not a control in the step named, and changes at its places are not
+false alarms.
 
 **Found** is a furniture-sized change of the right kind logged within FOUND_M of
 the place, in the first step after the staging whose stops came within the
@@ -73,6 +79,10 @@ def windows(entries):
                                         if isinstance(e.get("pose"), dict) else None)
             if pose and pose[0] is not None:
                 open_at[step]["stops"].append((float(pose[0]), float(pose[1])))
+            # A run has no stops; where it went is its path (session.py, since
+            # 2026-10-12), read as stops for what came within reach.
+            for x, y in e.get("path") or []:
+                open_at[step]["stops"].append((float(x), float(y)))
             if e.get("end"):
                 w = open_at.pop(step)
                 out.append({"step": step, "from": w["from"], "to": e["at"],
@@ -122,17 +132,22 @@ def score(record, staged, log_rows):
     reset = set(staged.get("reset_rooms", []))
     visited_since = set()
     staged_places = [p for _, _, p in events]
+    for one in staged.get("also_moved", []):
+        staged_places += [tuple(one["from"]), tuple(one["to"])]
     for i, w in enumerate(steps):
         if w["step"] not in STEPS:
             continue
         rooms = {room_of(x, y) for x, y in w["stops"]}
         kept, _ = control_count.counted(
             [r for r in log_rows if w["from"] <= r["logged_at"] <= w["to"]])
+        moved_before = {room_of(*one[end]) for one in staged.get("also_moved", [])
+                        if one.get("before") == w["step"] for end in ("from", "to")}
         for room in sorted(rooms):
             first_after_reset = room in reset and room not in visited_since
             first_after_staging = (room in touched_after and i >= after
                                    and (room, "staged") not in visited_since)
-            control = not (first_after_reset or first_after_staging)
+            control = not (first_after_reset or first_after_staging
+                           or room in moved_before)
             alarms = []
             for r in kept:
                 if not r["large"] or room_of(r["x_m"], r["y_m"]) != room:

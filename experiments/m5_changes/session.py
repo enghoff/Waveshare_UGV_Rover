@@ -5,7 +5,7 @@ docs/plans/sessions-that-serve-several-milestones.md. Run on the rover.
     python3 session.py start NAME             recording on; battery and pose checked
     python3 session.py loop NAME A|B          the survey loop, from whichever end is nearer
     python3 session.py wait NAME [MINUTES]    to the bedroom, until NAME.go appears or the minutes pass
-    python3 session.py run NAME [MINUTES]     an autonomy run over the flat
+    python3 session.py run NAME [MINUTES]     an autonomy run over the flat, a loop's time by default
     python3 session.py home NAME              back to the charger, for the owner to plug in
     python3 session.py count NAME             the change log counted step by step
     python3 session.py all NAME [--b-first]   the steps in order: start, loop A, wait,
@@ -13,7 +13,9 @@ docs/plans/sessions-that-serve-several-milestones.md. Run on the rover.
 
 Everything a step does is appended to ~/.ugv/sessions/NAME.json, so a session
 can be stopped and taken up again a step at a time. Touching NAME.stop beside it
-ends the step in progress after its current leg.
+ends the step in progress after its current leg and keeps every later step from
+driving; a loop leaves one itself when its position check disagrees at two stops
+running, so that a rover that has lost its place is not driven home on it.
 
 **The loop is the instrument** (the plan's rule 3): the same viewpoints in the
 same order every time, two or more a room so that the change watch's
@@ -59,6 +61,16 @@ RUG = (-19.8, -17.1, -13.5, -11.9)
 #: The owner's floor for supervised drives, at rest.
 FLOOR_PERCENT = 5
 RECORD_S = 4500
+#: How far apart the points of a run's path are kept.
+PATH_STEP_M = 0.5
+#: A stop's position check disagrees beyond these; LOST_STOPS in a row end the
+#: session where the rover stands (`disagrees`).
+LOST_M = 0.3
+LOST_DEG = 10.0
+LOST_STOPS = 2
+#: The autonomy arm gets the time a loop takes, as the counts' decision has it:
+#: the shakedown's two loops took 3 min 22 s and 3 min 24 s.
+RUN_MINUTES = 3.5
 
 
 def call(name, arguments=None, timeout=600):
@@ -181,6 +193,7 @@ def loop(name, which):
             math.hypot(p["x_m"] - views[0][1], p["y_m"] - views[0][2]):
         views.reverse()
     note(name, step, begin=[v[0] for v in views], battery=battery())
+    lost = 0
     for label, x, y in views:
         if stopped(name) or low_battery(name, step):
             break
@@ -189,8 +202,26 @@ def loop(name, which):
             face(name, step, x, y)
             drive(name, step, label, x, y)
         time.sleep(DWELL_S)
-        note(name, step, viewpoint=label, **pose_check())
+        check = pose_check()
+        note(name, step, viewpoint=label, **check)
+        lost = lost + 1 if disagrees(check) else 0
+        if lost >= LOST_STOPS:
+            note(name, step, stop="the position check disagreed at %d stops in a row: "
+                                  "stopped where it stands for a person to look" % lost)
+            open(path_of(name, ".stop"), "w").close()
+            break
     note(name, step, end=True, battery=battery(), report=report())
+
+
+def disagrees(check):
+    """Whether a stop's position check says the rover is not where it thinks.
+    One stop is not enough: furniture staged beside a stop fills the lidar's
+    view, and on 2026-10-12 the check at such a stop said 0.6-0.7 m and up to
+    39 degrees out three times with the next stop agreeing to 5 cm; the pose
+    really 1.35 m out disagreed at two stops running."""
+    moved, turned = check.get("drift_m"), check.get("drift_deg")
+    return (moved is not None and moved > LOST_M) or \
+        (turned is not None and abs(turned) > LOST_DEG)
 
 
 def start(name):
@@ -228,7 +259,18 @@ def start(name):
     note(name, "start", recording="session-" + name, seconds=RECORD_S)
 
 
+def held(name, step):
+    """A stop file left by a loop that lost its position, or by a person, keeps
+    every later step from driving: the rover stays where it is to be looked at."""
+    if stopped(name):
+        note(name, step, stop="not started: %s is there" % path_of(name, ".stop"))
+        return True
+    return False
+
+
 def wait(name, minutes=20.0):
+    if held(name, "wait"):
+        return
     p, _ = where()
     if not p or math.hypot(p["x_m"] - WAIT[0], p["y_m"] - WAIT[1]) > 0.3:
         drive(name, "wait", "wait", *WAIT)
@@ -248,8 +290,9 @@ def wait(name, minutes=20.0):
          report=report())
 
 
-def run(name, minutes=10.0):
-    if low_battery(name, "run"):
+def run(name, minutes=None):
+    minutes = RUN_MINUTES if minutes is None else minutes
+    if held(name, "run") or low_battery(name, "run"):
         return
     budget = {"seconds": int(60 * minutes), "travel_m": None, "actions": None}
     r = call("autonomy_start", {"purpose": "M5 session %s: the autonomy arm" % name, "budget": budget})
@@ -257,10 +300,16 @@ def run(name, minutes=10.0):
     note(name, "run", begin=True, ok=r.get("ok"), error=r.get("error"), run=run_id, battery=battery())
     if not r.get("ok"):
         return
-    t0, low = time.time(), 0
+    # Where the run went, a point every PATH_STEP_M, so that the counts can tell
+    # which places it came within reach of: a loop has its stops, a run only this.
+    t0, low, path = time.time(), 0, []
     while time.time() - t0 < 60 * minutes + 120:
         st = call("autonomy_status")
         nav = call("nav_status")
+        p = nav.get("pose") or {}
+        if p.get("x_m") is not None and (not path or math.hypot(
+                p["x_m"] - path[-1][0], p["y_m"] - path[-1][1]) >= PATH_STEP_M):
+            path.append([round(p["x_m"], 2), round(p["y_m"], 2)])
         run_now = st.get("run") or {}
         if not st.get("enabled") or run_now.get("ended"):
             break
@@ -275,12 +324,14 @@ def run(name, minutes=10.0):
                 break
         time.sleep(5)
     st = call("autonomy_status")
-    note(name, "run", end=True, run=run_id, report=report(),
+    note(name, "run", end=True, run=run_id, report=report(), path=path,
          why=str(st.get("why") or (st.get("run") or {}).get("ended"))[:300],
          spent=(st.get("run") or {}).get("spent"), battery=battery())
 
 
 def home(name):
+    if held(name, "home"):
+        return
     face(name, "home", *HOME[:2])
     drive(name, "home", "home", *HOME)
     note(name, "home", battery=battery(), **pose_check())
@@ -381,7 +432,7 @@ def main():
     elif what == "wait":
         wait(name, float(args[2]) if len(args) > 2 else 20.0)
     elif what == "run":
-        run(name, float(args[2]) if len(args) > 2 else 10.0)
+        run(name, float(args[2]) if len(args) > 2 else None)
     elif what == "home":
         home(name)
     elif what == "count":

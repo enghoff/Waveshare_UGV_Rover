@@ -1,0 +1,11 @@
+{"note": "The shakedown of 2026-10-12. The owner's words: the two armchairs moved further away from the balcony and rotated; one red and one black bean bag added, from another room; later the red bean bag, beside the stuck rover, moved near the opposite wall. Places read off the recording's scans (scan_diff over the living-room stops of loop A and loop B and the run's stop between the armchairs): the armchairs' old places are their outlines on the session's map.",
+ "staged_in": "wait",
+ "moves": [{"what": "black armchair by the charger", "from": [-17.1, -16.55], "to": [-17.5, -15.55]},
+           {"what": "black armchair by the balcony", "from": [-19.0, -16.7], "to": [-18.95, -15.8]}],
+ "added": [{"what": "red bean bag", "at": [-19.8, -14.15]},
+           {"what": "black bean bag", "at": [-16.4, -11.75]}],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": [{"what": "red bean bag", "from": [-19.8, -14.15], "to": [-16.25, -13.2], "before": "loop B"}]}
