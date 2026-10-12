@@ -91,10 +91,6 @@ left:
   minimum improvement, all
   [proposed](../decisions/m5-sessions-are-counted-before-they-start.md). The
   scripts that count them have scored the shakedown.
-- **The executive's look at a change, turned on** (`investigate_changes`), the
-  owner's call. On the shakedown's recorded decisions it would have looked in
-  10 of 31, the first 3 min 25 s into the run: at a loop's length, the run
-  barely gets to a look, so the switch and the run's length are one question.
 - What comes and goes at the corner by the balcony, seven times in the log
   since 2026-10-10: the owner's word, or a look from close to, so that a
   control's count can name it. The shakedown did not get to it.

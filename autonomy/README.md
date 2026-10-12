@@ -241,7 +241,14 @@ criteria 5 and 6: a changed place outranks an equally distant one confirmed
 lately, which has nothing left to gain, and the rover is not held by one
 formerly novel thing (`scenarios/changes.json`). Its value is the change's size
 against the watch's own 0.6 m line for furniture (`useful_change_m`), which
-nothing measured has yet tested.
+nothing measured has yet tested, counted half as much again as other gains
+(its purpose relevance, 1.5): the owner's purpose for the rover is to explore
+what it can, and a change nobody has looked at is the newest thing there is.
+It moves the rover since 2026-10-12. Until then it was in shadow, generated,
+scored and refused, and the M5 shakedown's run recorded what it would have
+done; re-scored at 1.5, that run goes to look at its first chance, 1 min 24 s
+in. A rover's `scoring.json` can switch it off (`investigate_changes`), and it
+is then refused as `switched off`.
 
 **The score, with every term written down:**
 

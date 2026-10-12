@@ -148,12 +148,18 @@ class Weights:
 DEFAULTS: dict[str, Any] = {
     # Bumped whenever anything below changes, so that two decisions scored
     # differently can be told apart in the record without diffing them.
-    "version": "5",
+    "version": "6",
 
-    # Per goal type, and 1.0 everywhere until the owner declares a purpose.
+    # Per goal type, 1.0 until the owner declares a purpose. They did for one on
+    # 2026-10-12: "let the rover explore what it can - that's a major motivation
+    # for the autonomy work altogether". A change nobody has looked at is the
+    # newest thing there is to explore, so it counts half as much again. At 1.0
+    # the M5 shakedown's run, re-scored, would first have gone to look 3 min 25 s
+    # in, about when a run as long as the survey loop ends; at 1.25 at its
+    # second chance; at 1.5 at its first, 1 min 24 s in. 2.0 changed little more.
     "purpose": {"default": 1.0, "explore_frontier": 1.0,
                 "improve_geometry": 1.0, "inspect_hypothesis": 1.0,
-                "investigate_change": 1.0},
+                "investigate_change": 1.5},
 
     # What a minute of the rover's time and ten metres of its driving are worth
     # against a whole unit of knowledge. Both at 0.3 so that a goal has to be
@@ -234,12 +240,13 @@ DEFAULTS: dict[str, Any] = {
     # be scored against the tape (docs/plans/autonomous-curiosity.md, M4).
     "trial_targets": None,
 
-    # Whether a change the watch reports may be acted on. Off: the goal is
-    # generated, scored and refused, so every run records what it would have
-    # done about each change -- the shadow acceptance the plan asks of a new
-    # goal type before it moves the rover. Turned on in the rover's scoring.json
-    # once that is accepted; the acceptance set scores it as if on.
-    "investigate_changes": False,
+    # Whether a change the watch reports may be acted on. On since 2026-10-12,
+    # after the M5 shakedown's run recorded what it would have done in shadow
+    # (10 of 31 decisions a look) and the owner's word that letting the rover
+    # explore what it can is what the autonomy is for. Off, the goal is still
+    # generated and scored, and refused, so a run records what it would have
+    # done; a rover's scoring.json can switch it off.
+    "investigate_changes": True,
 }
 
 DEFAULT = Weights()
@@ -361,9 +368,10 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
                                 f"{(situation.at - float(failed['since'])) / 60:.0f}"
                                 f" min ago: {failed.get('why')}")})
     if candidate.type == "investigate_change" and not weights.investigate_changes:
-        out.append({"veto": "in shadow acceptance",
-                    "why": "going to look at a change is recorded and not acted "
-                           "on until it has been accepted (investigate_changes)"})
+        out.append({"veto": "switched off",
+                    "why": "going to look at a change is switched off on this "
+                           "rover (investigate_changes), so it is recorded and "
+                           "not acted on"})
     if (candidate.type == "investigate_change"
             and int(facts.get("change_attempts") or 0) >= goals_mod.CHANGE_ATTEMPTS):
         out.append({"veto": "attempts spent",

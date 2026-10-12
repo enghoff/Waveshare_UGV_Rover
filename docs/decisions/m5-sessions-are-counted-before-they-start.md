@@ -67,8 +67,8 @@ be lower by however often that happens, said beside it.
   staged changes than the loop does, finding no fewer and claiming no more
   false ones, over the three sessions.** A loop sweeps every room, so it is
   unlikely to find fewer; what only autonomy does is go back and take a picture
-  of what changed. That needs the executive's look at a change turned on
-  (`investigate_changes`, in shadow until then).
+  of what changed. That needs the executive's look at a change, on since
+  2026-10-12 and weighted to go first to a change nobody has looked at.
 
 ## What it changes
 

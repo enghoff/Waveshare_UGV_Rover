@@ -200,16 +200,17 @@
       }
     },
     {
-      "name": "until it is accepted, a change is recorded and not acted on",
-      "why": "The plan asks shadow acceptance of every new goal type before it moves the rover: the run records what it would have done about the change, and does something else.",
+      "name": "switched off, a change is recorded and not acted on",
+      "why": "A rover whose scoring.json switches the look off records what it would have done about the change, and does something else -- as every run did in shadow acceptance until 2026-10-12.",
       "map": "flat",
+      "weights": {"investigate_changes": false},
       "changes": [
         {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
          "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
       ],
       "expect": {
         "chose": "nothing",
-        "vetoed": [{"type": "investigate_change", "veto": "in shadow acceptance"}]
+        "vetoed": [{"type": "investigate_change", "veto": "switched off"}]
       }
     },
     {
