@@ -1,45 +1,62 @@
 # Perception that keeps what it sees, and what it learns about it
 
-Status: proposed 2026-10-12 at the owner's request. Nothing in it is built. It
-answers the owner's question: how could the rover lose less of what its sensors
-give between the room and a language model, and keep more of the understanding
-itself, rather than have a language model add it afterwards and forget it? The
-first steps are offline measurements against the deployed pipeline, on a
-benchmark Codex has been asked to assemble in `experiments/perception_bench/`.
+Status: proposed 2026-10-12 at the owner's request. The first piece landed the
+same day: still looks keep their view at the camera's full 2592x1944
+([R-WS-19](../requirements/world-state.md#r-ws-19),
+[the measurement](../progress/2026-10-12-full-resolution-evidence.md)). The rest
+is not built. It answers the owner's question: how could the rover lose less of
+what its sensors give between the room and a language model, and keep more of
+the understanding itself, rather than have a language model add it afterwards
+and forget it? The next steps are offline measurements against the deployed
+pipeline, on a benchmark Codex is assembling in `experiments/perception_bench/`.
 
 ## The short answer
 
 **Most of what the camera sees is thrown away before anything tries to
 understand it, and what is understood is never written down.** The camera
-records 6% of the pixels it can deliver. A detector then keeps the regions it
-scores as objects, at most twelve a picture, and on the 6,310 pictures the rover
-holds today those regions cover a median of a quarter of each picture. Each
-region becomes one vector and one point on the map. Meaning, what a thing is,
-what it is for, whether it moves, is stored nowhere, by rule. So every judgement
-about meaning is made again, at the moment of asking, by a language model, the
-voice model in conversation or the coding agent over ssh, and is lost when that
-model's context ends.
+recorded 640x480 of the 2592x1944 it can deliver, so 94% of the pixels never
+reached the rover; still looks now keep the full picture as well. Of what is
+recorded, a detector keeps the regions it scores as objects, at most twelve a
+picture, and on the 6,310 pictures the rover held on 2026-10-12 those regions
+covered a median of a quarter of each picture. Each region becomes one vector and
+one point on the map. Meaning, what a thing is, what it is for, whether it
+moves, is stored nowhere, by a rule made after a local vision model invented
+things in September. So every judgement about meaning is made again, at the
+moment of asking, by a language model, the voice model in conversation or the
+coding agent over ssh, and is lost when that model's context ends.
 
-The change proposed is architectural, and comes in five parts, smallest first:
+The change proposed is the opposite shape, in five parts, smallest first:
 
-1. **Keep the evidence the sensors give**: full resolution, undistorted, with
-   depth for every look.
-2. **Index all of every picture, not twelve regions of it**: dense features,
-   fused into three dimensions by depth and pose. An object becomes a way of
-   reading that map, chosen when a question needs it, rather than a decision
-   made once at the shutter.
-3. **Store meaning as claims with their evidence**, written by a describing
-   model during the hours the rover spends on its charger. A claim can say what
-   a thing is, what it is for, whether it moves and what state it is in, and it
-   never decides identity.
-4. **One memory with two readers that can also write**: the voice model and the
-   coding agent read the evidence, not summaries of it, and what they understand
-   goes back into the rover as claims, marked with who said it.
-5. **Time as a model, not a log**: how long each thing tends to stay put,
-   learned from the rover's own history and from what kind of thing it is.
+1. **Keep the full evidence.** Full resolution, undistorted, with depth for
+   every look. Still looks have done the first part since 2026-10-12.
+2. **Index every pixel, not just the regions**: dense features fused into a 3D
+   map of the flat, so that a thing is read off the map when a question needs
+   it rather than decided when the picture is taken. That addresses one object
+   becoming several records at its root. RayFronts, a published system, is a
+   ready starting point.
+3. **Store meaning, with its source.** What a thing is, what it is for and how
+   often it moves are written down as claims with their evidence: by a model at
+   night on the charger, by the owner in conversation, and by the coding agent.
+   Claims never decide which object is which.
+4. **Show the voice model the pictures.** Every comparison found has models
+   answering far better from pictures than from text records of them. Both
+   language models read the evidence through one memory interface, and what they
+   understand goes back into the rover as claims, marked with who said it.
+5. **Teach the rover overnight, and give time a model.** Small on-board models
+   learn what the big model said at night, so the understanding ends up living
+   in the rover itself, and each thing carries how long it tends to stay put,
+   learned from the rover's own history.
 
-Each part is measured offline against what is deployed before it touches the
-rover, under this repository's rule of offline first.
+The moon-shots below include a nightly photographic 3D model of the flat that
+shows change at any height, learning the flat's physics from the rover's own
+bumps and stalls, and the rover asking the owner about new things it cannot
+place. Each part is measured offline against what is deployed before it touches
+the rover.
+
+**One decision is the owner's before step 2**: whether pictures of the flat go
+to a hosted model at night, at a few dollars to a few tens of dollars a month
+depending on the model, or describing stays on the rover, slower and weaker.
+Paid use comes up anyway when the voice model's free quota ends on 2026-11-15.
 
 ## Where information is lost today
 
@@ -47,7 +64,7 @@ Measured on the rover's store on 2026-10-12 unless a link says otherwise.
 
 | Step | What is kept | What is lost | What that costs |
 |---|---|---|---|
-| The picture | the gimbal camera at 640x480 through a 130-degree fisheye, about 5 pixels a degree; the OAK-D-Lite at 640x360 colour and 320x180 depth | the camera does 2592x1944: 94% of its pixels are never recorded. The store holds 3,181 depth maps beside 6,303 pictures | at 3 m a 10 cm thing is about ten pixels across; a small object on the floor "often never becomes a thing of its own" ([world_state](../../world_state/README.md#what-to-expect-from-it)); labels and text cannot be read |
+| The picture | the gimbal camera at 640x480 through a 130-degree fisheye, about 5 pixels a degree; the OAK-D-Lite at 640x360 colour and 320x180 depth | the camera does 2592x1944: 94% of its pixels were never recorded (still looks keep the full picture since 2026-10-12, [R-WS-19](../requirements/world-state.md#r-ws-19)). The store holds 3,181 depth maps beside 6,303 pictures | at 3 m a 10 cm thing is about ten pixels across; a small object on the floor "often never becomes a thing of its own" ([world_state](../../world_state/README.md#what-to-expect-from-it)); labels and text cannot be read |
 | The region | what YOLOE, without a vocabulary, scores as an object above 0.15: at most 12 a picture, each between 0.4% and a third of the frame, and none too dark, blown out or flat | walls, floors, doors, shelves and their contents, surfaces, anything under about 35 pixels or over a third of the frame | the kept regions' boxes cover a median of 25% of each picture (quartiles 15% and 39%); 19% of each picture ends up in a box filed to a thing; 10% of pictures keep no region at all, and 7% hit the limit of twelve |
 | The vector | one DINOv2-small and one SigLIP2 vector per region, from a 224- or 256-pixel crop of the fisheye picture as distorted | parts, state (open, shut, on, off), text, relations between things, how many there are, and the shape of the thing | a held-out look of a real object matches that object's other looks at 0.70 or better only 43% of the time ([world_state](../../world_state/README.md#checking-a-hypothesis-with-one-look)); asked what kind of thing a poor view shows, the rover's own text vectors slip as its appearance does ([2026-10-05](../progress/2026-10-05-release-category.md)) |
 | The place | one point per region, from crossed bearings and the depth under its outline | the thing's extent and shape, what stands behind it, and any measurement that a place is empty | one object becomes several records: 3 of 19 labelled objects are two things each and 46 of 412 looks are filed under the wrong thing ([the plan](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks)); a thing behind other things is placed 0.88 m out |
@@ -235,21 +252,26 @@ and what it believes grants no movement
 
 ### 1. Evidence: keep what the sensors give
 
-Record still and aimed looks at the camera's full resolution. Run today's models
-on a 640x480 reduction, so nothing downstream changes, and keep the full picture
-as the evidence. A 1280x960 still already exists as a diagnostic call and took
-0.39-0.49 s on the rover today, the same as a 640x480 one, at 100 kB instead of
-34 kB; the full 2592x1944 is not yet allowed by that call and has not been
-timed. Moving looks come off the camera's running 640x480 stream, which face
-tracking shares, so whether they can be taken larger is measured rather than
-assumed. Keep the depth map with every look, at the depth camera's own
-resolution. Show the models undistorted perspective views cut from the fisheye
-rather than the fisheye itself.
+**Landed 2026-10-12 for still looks** ([R-WS-19](../requirements/world-state.md#r-ws-19);
+how it works is in [world_state](../../world_state/README.md#runtime)). The
+plan's first idea, running today's models on a reduction of the full picture,
+was measured and dropped: a reduction moved their vectors to a median cosine of
+0.89 against the camera's own 640x480, where two of its grabs agree at 0.98, and
+every vector in the store came off that mode. So the models still read the
+camera's 640x480 grab, and the full picture is a second grab of the same view,
+about 0.35 s a look.
 
-The store already keeps its pictures and the frames stay out of Git
-([R-WS-1](../requirements/world-state.md#r-ws-1),
-[R-PLAT-11](../requirements/platform.md#r-plat-11)). At about a thousand looks a
-day, full-resolution pictures add 1-2 GB a day against 800 GB free.
+Still ahead:
+
+- **Undistorted views** for whatever reads the full pictures: perspective views
+  cut from the fisheye rather than the fisheye itself.
+- **Depth with every look**, at the depth camera's own resolution. The depth
+  camera switches itself off 30 s after the wheels stop, so a parked look keeps
+  none today.
+- **Looks taken on the move**, which keep none.
+- **A model that reads the full pictures.** Moving today's models onto them
+  would need their vectors rebuilt from kept evidence, which is the field's job
+  in step 2, not a change to today's records.
 
 ### 2. The field: index all of every picture
 
@@ -398,16 +420,28 @@ there. The predicates are fixed here, before any result.
 `experiments/perception_bench/`): phrases with known answers, tape-measured
 places from M4, objects with all the records that are theirs, and M5's staged
 changes, each with the raw evidence it has. The deployed pipeline's scores on it
-are the baseline for everything below.
+are the baseline for everything below. Codex's audit of the shakedown adds two
+regression cases that are frozen there: the red bean bag split into two records
+across its move, and one record holding both armchairs after the refit.
 
-**1. Full-resolution evidence.** A sweep of the gimbal from the charger across
-its measured travel, without driving, recorded at 640x480 and at full
-resolution with depth, then the next supervised session's looks the same way.
-Today's models are run on the 640x480 pictures as now and on undistorted views
-cut from the full one. *It passes if* the full-resolution views find at least
-twice as many of the benchmark's things under 20 cm by their words, accept
-nonsense phrases no more often, and match views of one object to each other at
-least as often as now, with no time added to any move.
+**Before anything else: looks in a changed room get no direction.** In the
+shakedown's run, 20 of the 25 looks in the living room kept no bearing. The
+heading check that confirms a look's pose
+([R-WS-16](../requirements/world-state.md#r-ws-16)) wants 90% of the scan on a
+wall, and a room with its furniture moved fails it. That started before
+navigation went wrong. Since the look at a change went live, the rover goes
+deliberately to the places where this happens, so those looks settle no
+identity. A gate judged on the far hits only, as the change watch's is, is to
+be replayed on the shakedown's looks first.
+
+**1. What the full pictures add.** Kept since 2026-10-12. A sweep of the gimbal
+from the charger, without driving, then the next supervised session's looks.
+Today's models are run on the 640x480 frames as now, and on undistorted views
+cut from the full pictures, in a separate store so that no recorded vector
+changes. *It passes if* the full-resolution views find at least twice as many of
+the benchmark's things under 20 cm by their words, accept nonsense phrases no
+more often, and match views of one object to each other at least as often as
+now.
 
 **2. A describing model, chosen offline.** Two or three hosted models and one
 small model that fits on the rover, given the benchmark's things as the night

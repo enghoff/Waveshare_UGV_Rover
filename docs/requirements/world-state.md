@@ -588,3 +588,33 @@ each action that relies on identity against what a mistake would cost that actio
 store meeting this requirement makes those cases easier to pass; it does not pass them.
 The proposed tolerance of one in twenty is for the owner to agree before it is measured
 against.
+
+<a id="r-ws-19"></a>
+### R-WS-19 — A still look keeps its own view at the resolution its camera gives
+
+- **State:** settled
+- **Evidence:** [2026-10-12, full-resolution evidence](../progress/2026-10-12-full-resolution-evidence.md):
+  after `c5ceec0` was deployed, every still look on the rover kept a 2592x1944
+  picture of its own view beside its 640x480 frame, read back by
+  `world_state_frame` with `full`; `python world_state/selftest.py` and
+  `python rover_daemon/selftest.py`
+
+The gimbal camera delivers 2592x1944, and until 2026-10-12 every look recorded
+640x480 of it, 6% of the pixels. Whatever reads the store later, whether a
+better model, a person, or a describing model on the charger
+([the plan](../plans/perception-that-keeps-what-it-learns.md)), can only see
+what was kept.
+
+It holds for a look through the gimbal camera taken standing still, while face
+tracking does not hold the camera. Such a look keeps a second, full-size grab of
+the same view: taken after its shutter bracket has closed, and kept only when
+the rover has moved under 2 cm and turned under half a degree since, with the
+gimbal where it was, so the look's pose and angles are its own. Looks on the move
+and through the OAK keep none, and say why.
+
+What it does not change is what the models read. They still read the camera's
+own 640x480 grab, because a reduction of the full picture moved their vectors
+well past the noise between two grabs, and every vector in the store came off
+that mode ([R-WS-4](#r-ws-4) is about backends, and this is the same hazard by
+another route). The 640x480 picture is a measured window of the full one
+(`world_state/evidence.py`), and the lens carries both.

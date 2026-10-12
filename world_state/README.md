@@ -94,11 +94,37 @@ through the bracket they were taken on (`oak.CHASSIS_MOUNT`, chosen by
 `oak.mount_at`); ranges stored on observations before then were attached through
 both of those errors.
 
+**A still look also keeps its own view at the camera's full resolution**
+([evidence.py](evidence.py)). The gimbal camera delivers 2592x1944 and every look
+is read at 640x480, so since 2026-10-12 a look through the gimbal camera that was
+taken standing still makes a second grab at 2592x1944 once its shutter bracket
+has closed, and keeps it beside the frame as `<frame>.full.jpg`, with its size
+and moment on the frame's row (`full_width`, `full_height`, `full_bytes`,
+`full_taken_at`). It is kept only if the rover has neither moved 2 cm nor turned
+half a degree since the look and the gimbal is where it was, so the look's pose,
+pan and tilt are its own; the look's result says `original`: `kept`, or why not.
+A look on the move, through the OAK, or while face tracking holds the camera
+keeps none. The grab takes 0.39-0.41 s, the same as a 640x480 one.
+
+**The models still read the camera's own 640x480 grab, and not a reduction of
+the full one**, because a reduction is not the same picture to them: on the rover,
+DINOv2's vectors for the same regions agreed at a median cosine of 0.89 between
+the two, against 0.98 between two of the camera's own grabs, and SigLIP2's at
+0.93 against 0.98. Every vector in the store came off the 640x480 mode.
+
+The two sizes are not quite the same window: the 640x480 picture is a 2580 by
+1934 window of the full one, starting about a pixel and a half in
+(`evidence.NATIVE_WINDOW`, with `to_native` and `from_native`), and
+`face_tracking/lens.py` carries the 2592x1944 lens through it, so a pixel of
+either gives the same direction to within 0.05 degrees. `world_state_frame` with
+`full` reads a kept one back. The measurements are in
+[the progress entry](../docs/progress/2026-10-12-full-resolution-evidence.md).
+
 Runtime data lives outside the deploy tree:
 
 ```text
 ~/.ugv/world/world.db
-~/.ugv/world/frames/*.jpg
+~/.ugv/world/frames/*.jpg        (and *.full.jpg, *.depth.gz beside them)
 ```
 
 The database grows through additive migrations in `schema.py`. Historical
