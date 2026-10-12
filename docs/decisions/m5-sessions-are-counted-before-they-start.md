@@ -49,6 +49,30 @@ be lower by however often that happens, said beside it.
   ten was the other candidate and would have needed a fourth session to be
   shown at all.
 
+## What counts as identity kept (criterion 4)
+
+Added 2026-10-12, before the first counted session, after Codex's audit of the
+shakedown ([experiments/perception_bench/shakedown_audit.md](../../experiments/perception_bench/shakedown_audit.md))
+showed how it can be counted.
+
+- **A trial is a staged move of a thing the world store already held**: at least
+  two of its regions assigned to records before the move. A thing brought in from
+  another room has no identity to keep; it is reported, not counted.
+- **Which regions show the thing is a visual label**, by the coding agent from
+  the session's crops, each region given to one thing or left out as small,
+  mixed or unclear; the owner settles what pictures cannot. Regions from a pose
+  the session shows to be wrong are left out of the count and listed.
+- **Kept**: after the move, at least two of its regions are assigned, and the
+  record holding most of them held its regions before the move. **Split**: they
+  go mostly to a record that did not. **Unresolved**: fewer than two are
+  assigned. Reported as kept over trials with its 95% interval, the split and
+  unresolved beside it; no bar, as criterion 4 says.
+- **An incorrect confident merge fails the criterion outright**: any record
+  that, during a session, takes a region of a second physical thing as an
+  ordinary match. On the shakedown, record 838 holding both armchairs is one.
+- The thing's place history is reported beside: where its records were placed
+  before and after, against the staged places.
+
 ## The benchmark (multi-day usefulness)
 
 - **Two arms in each session**: the fixed loop (the baseline, as the plan says)
@@ -74,5 +98,6 @@ be lower by however often that happens, said beside it.
 
 The session script's counts become these, by script: per staged change found,
 found small or missed; per room-control the furniture-sized changes and whether
-each held up; per arm the answers to "what moved?". The sessions plan's "about
-forty room-controls" becomes about twenty.
+each held up; per arm the answers to "what moved?"; per staged move kept, split
+or unresolved, and any confident wrong merge, from labelled crops. The sessions
+plan's "about forty room-controls" becomes about twenty.
