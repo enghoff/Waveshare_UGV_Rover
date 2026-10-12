@@ -318,6 +318,12 @@ def test_discovery_stays_on_this_board():
         # scans arrive on the live /scan and the replayed map on the live /map.
         check("...and it replays on its own DDS domain, off the rover's",
               "ROS_DOMAIN_ID=43" in replay, True)
+        # Killing by PID only works if the PID is the mapper. `ros2 run` starts
+        # the node as a child and does not pass the kill on; on 2026-10-12 every
+        # replay left its mapper running on domain 43 to meet the next one.
+        check("...and the PID it kills is the mapper's, not `ros2 run`'s",
+              "ros2 run slam_toolbox" not in replay_code
+              and "lib/slam_toolbox/async_slam_toolbox_node" in replay_code, True)
         # The recorder is stopped by a signal, and a backgrounded child of a
         # non-interactive shell inherits SIGINT set to ignore -- which is a
         # recording nobody can stop, splitting a new file every N seconds.

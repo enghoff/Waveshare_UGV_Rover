@@ -89,7 +89,11 @@ trap cleanup EXIT INT TERM
 
 echo "--- replaying $(basename "$BAG") on domain 43"
 
-ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
+# The node's own executable, not `ros2 run`: the PID `$!` has to be the mapper.
+# `ros2 run` starts it as a child and does not pass the kill on, so on
+# 2026-10-12 every replay left its mapper running on domain 43, reparented to
+# init, to answer the next replay's calls and publish into its transform tree.
+"$(ros2 pkg prefix slam_toolbox)/lib/slam_toolbox/async_slam_toolbox_node" --ros-args \
     --params-file "$DIR/config/slam_toolbox.yaml" \
     -p use_sim_time:=true \
     "${EXTRA[@]+"${EXTRA[@]}"}" > "$RESULT.log" 2>&1 &
