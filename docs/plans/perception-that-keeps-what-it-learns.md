@@ -563,7 +563,9 @@ pay-as-you-go turned on with a provider the owner chooses. A slower path, the
 
 These are further out, and each would be its own experiment. They are here
 because the owner asked for them, and because the five layers above are what
-they would stand on.
+they would stand on. The longer view, with hardware set aside and drawn from how
+brains and video world models see, remember and find their way, is
+[perception-from-first-principles.md](perception-from-first-principles.md).
 
 **The flat as a model the rover can render.** Each night, rebuild a
 photographic 3D model of the flat from the day's pictures and depth, as a

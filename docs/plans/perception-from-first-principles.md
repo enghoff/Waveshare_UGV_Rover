@@ -508,11 +508,17 @@ time, so the first is a proposal to it.
    so that the test does not already know the armchairs moved, and replay the
    shakedown from the checkpoint before 08:00
    ([R-NAV-11](../requirements/navigation.md#r-nav-11)). *It passes if* the pose
-   stays within 0.3 m of the refit's answer through 08:02:40 where the deployed
-   settings end 1.33 m out, stays within 5 cm of the live pose elsewhere in the
-   session, and makes no single correction over 0.15 m that the deployed
-   settings did not. It is compared with whatever mapper setting navigation has
-   adopted since the shakedown, which tackles the same failure another way.
+   stays within 0.3 m of the refit's answer through 08:02:40, where the settings
+   the shakedown ran with ended 1.33 m out, stays within 5 cm of the live pose
+   elsewhere in the session, and makes no single correction over 0.15 m that
+   those settings did not. It is compared with the setting navigation adopted after
+   the shakedown, which tackles the same failure another way: the scan matcher
+   charging for distance from where odometry puts the rover, which in replay
+   ends 2 cm from the refit's answer
+   ([2026-10-12](../progress/2026-10-12-the-pose-among-moved-furniture.md)). The
+   two are not exclusive, and the comparison is whether stability adds anything
+   in rooms where odometry itself is poor. Navigation's session runs replays on
+   the rover one at a time, so this one is scheduled with it.
 2. **Explaining changes.** Pair each furniture-sized "gone" with a similar "new"
    logged in the same window, as a move, under continuity rules (no move through
    a wall, one object in one place). *It passes if*, on the shakedown and scene
