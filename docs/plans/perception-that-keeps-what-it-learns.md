@@ -67,7 +67,7 @@ Measured on the rover's store on 2026-10-12 unless a link says otherwise.
 | The picture | the gimbal camera at 640x480 through a 130-degree fisheye, about 5 pixels a degree; the OAK-D-Lite at 640x360 colour and 320x180 depth | the camera does 2592x1944: 94% of its pixels were never recorded (still looks keep the full picture since 2026-10-12, [R-WS-19](../requirements/world-state.md#r-ws-19)). The store holds 3,181 depth maps beside 6,303 pictures | at 3 m a 10 cm thing is about ten pixels across; a small object on the floor "often never becomes a thing of its own" ([world_state](../../world_state/README.md#what-to-expect-from-it)); labels and text cannot be read |
 | The region | what YOLOE, without a vocabulary, scores as an object above 0.15: at most 12 a picture, each between 0.4% and a third of the frame, and none too dark, blown out or flat | walls, floors, doors, shelves and their contents, surfaces, anything under about 35 pixels or over a third of the frame | the kept regions' boxes cover a median of 25% of each picture (quartiles 15% and 39%); 19% of each picture ends up in a box filed to a thing; 10% of pictures keep no region at all, and 7% hit the limit of twelve |
 | The vector | one DINOv2-small and one SigLIP2 vector per region, from a 224- or 256-pixel crop of the fisheye picture as distorted | parts, state (open, shut, on, off), text, relations between things, how many there are, and the shape of the thing | a held-out look of a real object matches that object's other looks at 0.70 or better only 43% of the time ([world_state](../../world_state/README.md#checking-a-hypothesis-with-one-look)); asked what kind of thing a poor view shows, the rover's own text vectors slip as its appearance does ([2026-10-05](../progress/2026-10-05-release-category.md)) |
-| The place | one point per region, from crossed bearings and the depth under its outline | the thing's extent and shape, what stands behind it, and any measurement that a place is empty | one object becomes several records: 3 of 19 labelled objects are two things each and 46 of 412 looks are filed under the wrong thing ([the plan](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks)); a thing behind other things is placed 0.88 m out |
+| The place | per look, a box, its outline, a range and an elevation; per thing, a position, an estimated extent and height with their uncertainty, from crossed bearings and the depth under each outline | a 3D shape, what stands behind it, and any measurement that a place is empty | one object becomes several records: 3 of 19 labelled objects are two things each and 46 of 412 looks are filed under the wrong thing ([the plan](semantic-world-state.md#one-thing-per-object-and-only-that-objects-looks)); a thing behind other things is placed 0.88 m out |
 | The meaning | nothing: no name or kind is stored ([R-WS-7](../requirements/world-state.md#r-ws-7)) | what a thing is, what it is for, whether it moves | every answer about meaning is invented again when asked, and forgotten |
 | Time | each look's time; the lidar's log of furniture-sized changes | how often each thing moves, and what is probably still where it was | the only camera signal that something has gone fired on half the looks at things in view when nothing had moved ([2026-10-10](../progress/2026-10-10-m5-what-reports-a-change.md)) |
 | The language models | the voice model gets sentences from `find_thing` (how far, which way, how often seen) or a fresh photograph from `look`; the coding agent reads the database and pictures over ssh | the evidence behind an answer, and any way to write back what was understood ([R-CTL-4](../requirements/control.md#r-ctl-4)) | the coding agent's labels of the rover's pictures live in files under `experiments/` that nothing on the rover reads; what the voice model understood ends with the conversation |
@@ -301,13 +301,24 @@ different, above and below the lidar's one slice, at almost no extra cost.
 
 A thing is a segment of the field: voxels that hang together in space and look
 alike, read at the granularity a question asks for (the dining set, a chair, a
-chair's cushion). Identity is then mostly the same voxels over time. That
-attacks R-WS-17 and R-WS-18 at their root. Today two looks are joined when
-their bearings cross and their vectors agree, and the plan for one thing per
-object records how often that fails. In a field, two views of one object fall in
-the same place, whatever angle they were taken from. The six identical dining
-chairs become six places that persist, rather than six appearances nothing can
-tell apart.
+chair's cushion). **For a thing that stays put, identity is then mostly the same
+voxels over time**, which attacks R-WS-17 and R-WS-18 at their root: today two
+looks are joined when their bearings cross and their vectors agree, and the plan
+for one thing per object records how often that fails. In a field, two views of
+one object fall in the same place, whatever angle they were taken from. Six
+identical dining chairs that stay where they are become six places that persist.
+
+**Same voxels says nothing about a thing that moves.** The red bean bag of the
+shakedown left one set of voxels and filled another 3.7 m away, and place alone
+made two records of it (Codex's audit, frozen as a regression case in
+`experiments/perception_bench/regression_cases.json`). So the field keeps a
+thing's place history apart from its lasting identity. Joining a thing's old
+place to its new one is an explicit association across time: what disappeared,
+what appeared, when, how alike they look (a house-trained encoder such as BYE's
+is for exactly this), and nothing that loosens the static geometric gates
+([R-WS-8](../requirements/world-state.md#r-ws-8)). The field must pass both frozen
+cases: the bag one thing with an ordered history across its move, and the record
+that held both armchairs after the refit split into two.
 
 Today's records survive as anchors on the field, so the executive, the voice
 tools and the episode references keep working while the field is proved
@@ -332,13 +343,20 @@ confidence and a time. What is new is who writes them and when:
   rather than files under `experiments/`;
 - **the voice model**, at the lowest standing, for what it saw in a photograph
   during a conversation;
-- **the rover's own sensors**: the change watch's "moved at 07:54", the field's
-  "seen empty".
+- **the rover's own sensors**: the change watch's "gone between 07:48 and
+  07:54", the field's "seen empty".
 
 A claim never decides identity: names drifted and re-identification failed in
 unsafe directions when a model's words were used that way
 ([R-WS-7](../requirements/world-state.md#r-ws-7)). Claims hang on things that
-geometry has already formed. Disagreement between claims from different views
+geometry has already formed, and name their subject by the observations and
+pictures they were made from, under the store's generation, not by a record
+number alone: a record can already hold two objects, as one held both armchairs.
+Not even the owner's word makes a claim's subject right if its references are
+wrong. A house vocabulary, a text match or a learned class head never becomes
+another path to identity, never rescues impossible geometry, and never compares
+vectors across models, crops or calibrations
+([R-WS-4](../requirements/world-state.md#r-ws-4)). Disagreement between claims from different views
 or sources is not resolved by vote. It becomes a knowledge gap, which the
 executive's curiosity can go and look at.
 
@@ -359,10 +377,17 @@ learned from the rover's own history: every change the watch logs, and every
 revisit that found the thing still there. "Is my bag in the living room?" is
 then answered with how sure, how stale, and where else it has been.
 
+A move is an interval, not a moment. What is known is when a thing was last seen
+in its old place, when it was first seen in its new one, and when the rover
+worked that out, which can be minutes later again. The record a resolver opens,
+and the time it opens it, is none of these. Rates learned from report or
+allocation times would be falsely certain, so all three are kept.
+
 Each night the rover also writes a short diary of what changed, from the change
-log and the claims: "07:52, the two armchairs moved away from the balcony and
-turned; a red and a black bean bag appeared from another room". A question about
-the past is answered from the diary first and the evidence second.
+log and the claims: "between 07:48 and 07:52, while the rover waited in the
+bedroom, the two armchairs moved away from the balcony and turned, and a red and
+a black bean bag appeared from another room". A question about the past is
+answered from the diary first and the evidence second.
 
 ### One memory interface, for every model that reads or writes
 
@@ -395,8 +420,10 @@ the day and only while no conversation is open.
 
 1. re-perceive the day's looks at full resolution with heavier models than run
    live;
-2. fuse them into the field, and re-read the things, proposing joins and
-   splits through the reviewed merge step that exists;
+2. fuse them into the field, and re-read the things, proposing joins through
+   the reviewed merge step that exists. Splits need a reviewed step of their
+   own, which does not exist yet: it has to say what becomes of the episode
+   references, claims and mixed histories that named the record before it split;
 3. describe what is new or changed, within a daily budget;
 4. update each thing's rate of moving;
 5. write the diary, and a list of what the rover does not understand, which
@@ -419,13 +446,20 @@ there. The predicates are fixed here, before any result.
 **0. The benchmark** (asked of Codex on 2026-10-12, read-only, in
 `experiments/perception_bench/`): phrases with known answers, tape-measured
 places from M4, objects with all the records that are theirs, and M5's staged
-changes, each with the raw evidence it has. The deployed pipeline's scores on it
-are the baseline for everything below. Codex's audit of the shakedown adds two
-regression cases that are frozen there: the red bean bag split into two records
-across its move, and one record holding both armchairs after the refit.
+changes, each with the raw evidence it has. It is assembled: 340 cases over
+4,062 pictures, with its gaps stated item by item, and Codex's audit of the
+shakedown adds two regression cases frozen there, the red bean bag split into two
+records across its move and one record holding both armchairs after the refit.
+**It is a catalogue, not yet a baseline.** Its scores are the historical ones.
+Before anything is compared, the deployed pipeline is run again over it: code,
+models, lens and backend frozen at one revision, the same eligible looks and
+exclusions for baseline and candidate, and coverage counted against the original
+totals, so that a candidate cannot look better by dropping the looks it cannot
+use, such as the ones with no pose or no depth.
 
 **Before anything else: looks in a changed room get no direction.** In the
-shakedown's run, 20 of the 25 looks in the living room kept no bearing. The
+shakedown's run, 20 of the 25 successful inspections kept no bearing, all 20 in
+the living room; the other five were in the corridor and bedroom. The
 heading check that confirms a look's pose
 ([R-WS-16](../requirements/world-state.md#r-ws-16)) wants 90% of the scan on a
 wall, and a room with its furniture moved fails it. That started before
@@ -438,23 +472,31 @@ direction, and never mistaken a carried rover for one in place. The proposal is
 that such a look takes navigation's heading, as an unchecked look does, which
 needs navigation's measure to report its far-hit fit as well.
 
-**1. What the full pictures add.** Kept since 2026-10-12. A sweep of the gimbal
-from the charger, without driving, then the next supervised session's looks.
-Today's models are run on the 640x480 frames as now, and on undistorted views
-cut from the full pictures, in a separate store so that no recorded vector
-changes. *It passes if* the full-resolution views find at least twice as many of
-the benchmark's things under 20 cm by their words, accept nonsense phrases no
-more often, and match views of one object to each other at least as often as
-now.
+**1. What the full pictures add.** Kept since 2026-10-12, so none of the
+benchmark's labelled pictures has one. First a cohort is frozen: at least
+twenty small things in the living room, each measured, with phrases for them,
+phrases for things that are not there, and paired 640x480 and full pictures from
+a sweep of the gimbal from the charger, without driving. Today's models are run
+on the 640x480 frames as now and on views cut from the full pictures, in a
+separate store so that no recorded vector changes, and resolution is tested
+apart from undistortion and tiling, so that a gain can be put down to the right
+one. *It passes if* the full pictures find at least ten of the cohort that the
+640x480 ones miss, and at least twice as many as they do, while accepting
+nonsense phrases no more often and matching views of one object to each other at
+least as often.
 
 **2. A describing model, chosen offline.** Two or three hosted models and one
 small model that fits on the rover, given the benchmark's things as the night
-shift would show them. *A model qualifies if* its confident answers to what a
-thing is are right at least 90% of the time against the labels, it answers
-"unsure" rather than wrongly on the records labelled mixed or unclear at least
-as often as it answers wrongly, and it gives the same answer to the same picture
-at least 49 times in 50. How it judges movement and function is reported but is
-not a gate until the owner has labelled those for fifty things.
+shift would show them. Before it is run, what counts is fixed: the answers
+accepted for each labelled thing at the granularity labelled, what a confident
+answer is, and repeatability judged on the typed fields rather than the wording.
+Cases are split by physical object and day, never by neighbouring pictures or by
+two records of one object, and the disputed record stays out. *A model qualifies
+if* its confident answers to what a thing is are right at least 90% of the time,
+no more than one confident answer in twenty is wrong on the records labelled
+mixed or unclear, and it gives the same typed answer to the same picture, prompt
+and backend at least 49 times in 50. How it judges movement and function is
+reported but is not a gate until the owner has labelled those for fifty things.
 
 **3. The field, offline.** Built from the looks that carry depth and their
 recorded poses, and scored against the deployed records. *It passes if* the
@@ -462,7 +504,11 @@ plan for one thing per object's predicates hold: same-object pairs together at
 least as often as now, different-object pairs together no more often
 ([semantic-world-state.md](semantic-world-state.md#what-is-still-to-find-out)).
 It must also find the benchmark's phrases at least as often at the same rate of
-accepted nonsense, and place the taped things no worse. For M5, it is reported
+accepted nonsense, place the taped things no worse, and pass the two frozen
+regression cases (the bag one thing across its move, the armchairs two). Its
+running averages keep which observations they came from and how uncertain each
+was, and no strength of feature licenses a geometric match or declares a place
+empty. For M5, it is reported
 whether "seen empty" from the field finds the moved armchairs' old places at
 furniture size, which the lidar found small
 ([2026-10-11](../progress/2026-10-11-m5-scene-1-replayed.md)), and whether it
