@@ -12,6 +12,7 @@ or abandoned.
 | [autonomous-curiosity.md](autonomous-curiosity.md) | Phase 0 closed; M3 and M4 passed 2026-10-10 | the rover choosing for itself what to investigate, and learning skills from experience |
 | [sessions-that-serve-several-milestones.md](sessions-that-serve-several-milestones.md) | proposed 2026-10-11 | one supervised session per charge serving M5, the multi-day benchmark and later milestones together, around a fixed survey loop, with everything else on recordings |
 | [autonomous-curiosity-design.md](autonomous-curiosity-design.md) | proposed | the architecture the plan above implements |
+| [perception-that-keeps-what-it-learns.md](perception-that-keeps-what-it-learns.md) | proposed 2026-10-12; nothing built (R-WS-11, R-WS-12, R-WS-17, R-WS-18) | keeping what the cameras see at full resolution in a dense 3D field, and what models and the owner understand about it as claims with evidence |
 | [battery-charge-curve.md](battery-charge-curve.md) | recording the pack; nothing fitted yet (R-CTL-11) | making the battery percentage mean the share of a charge left |
 
 ## What a plan owes
