@@ -31,9 +31,10 @@ The change proposed is the opposite shape, in five parts, smallest first:
    every look. Still looks have done the first part since 2026-10-12.
 2. **Index every pixel, not just the regions**: dense features fused into a 3D
    map of the flat, so that a thing is read off the map when a question needs
-   it rather than decided when the picture is taken. That addresses one object
-   becoming several records at its root. RayFronts, a published system, is a
-   ready starting point.
+   it rather than decided when the picture is taken. For things that stay put,
+   that addresses one object becoming several records at its root; a thing that
+   moves still needs joining across its move by an explicit rule. RayFronts, a
+   published system, is a ready starting point.
 3. **Store meaning, with its source.** What a thing is, what it is for and how
    often it moves are written down as claims with their evidence: by a model at
    night on the charger, by the owner in conversation, and by the coding agent.
