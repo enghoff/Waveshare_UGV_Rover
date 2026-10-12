@@ -65,6 +65,37 @@ TURNED_SINCE_CHECK_DEG = 15.0
 #: Half a metre covers the shuffle between looks at one standing place.
 TRAVELLED_SINCE_CHECK_M = 0.5
 
+#: **A changed room is not a carried rover.** A search that fits nowhere because
+#: furniture has moved looks, to the 90% test, exactly like one that fits nowhere
+#: because the rover was carried: in the M5 shakedown's living room it refused 55
+#: looks whose pose was right to 10 cm. The walls beyond `FAR_M` do not move, so
+#: the navigator's measure also answers `far`, the same search on those returns
+#: alone, and where that puts the rover where it believes -- this share of them on
+#: a wall, its best pose within these of the believed one -- the room has changed
+#: and the rover has not been moved. Replayed on the shakedown it confirmed 29 of
+#: the 55 and none of the 22 looks whose pose was wrong, and of 1,703 simulated
+#: carried rovers none displaced 30 cm or 15 degrees; but it accepted 15 cm and 4-8
+#: degrees, so it vouches for the rover's place and not for its heading to the
+#: degree. Such a look therefore takes the heading the navigator believes, as an
+#: unchecked look does, and corrects nothing. See
+#: docs/progress/2026-10-12-heading-check-in-a-changed-room.md.
+FAR_M = 1.5
+FAR_MIN_SCORE = 0.75
+FAR_MAX_MOVED_M = 0.10
+FAR_MAX_TURNED_DEG = 2.0
+
+
+def _far_confirms(far):
+    """Whether the far returns alone put the rover where it believes it is."""
+    if not isinstance(far, dict):
+        return False
+    try:
+        return (float(far["score"]) >= FAR_MIN_SCORE
+                and float(far["moved_m"]) <= FAR_MAX_MOVED_M
+                and abs(float(far["turned_deg"])) <= FAR_MAX_TURNED_DEG)
+    except (KeyError, TypeError, ValueError):
+        return False
+
 
 def _wrap(angle_deg):
     return (angle_deg + 180.0) % 360.0 - 180.0
@@ -148,6 +179,21 @@ class HeadingCheck(object):
                 # the move, where a scan that fits nowhere says more about the
                 # motion than about where the rover is.
                 return self._unchecked(where)
+            if _far_confirms(fit.get("far")):
+                # The room has changed and the rover has not moved: the look
+                # takes the navigator's heading, nothing is corrected, and later
+                # looks are not withheld on this check's account.
+                far = fit["far"]
+                self.offset = None
+                self.misplaced = None
+                return (dict(where, checked={
+                    "changed_room": True, "score": fit.get("score"),
+                    "far_score": far.get("score"), "far_off_m": far.get("moved_m"),
+                    "far_off_deg": far.get("turned_deg")}),
+                    "the room has changed since it was mapped (%.0f%% of the scan "
+                    "on a wall), but the walls beyond %.1f m put the rover where it "
+                    "believes, so the look takes its heading as read"
+                    % (100.0 * float(fit.get("score") or 0.0), FAR_M))
             self.offset = None
             self.misplaced = fit.get("why") or "no reason given"
             return None, ("the heading could not be checked against the map: %s"

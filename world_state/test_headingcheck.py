@@ -167,6 +167,46 @@ def test_a_rover_the_scan_cannot_place_stays_withheld() -> None:
     check("...to moving looks too", pose is not None, True)
 
 
+def changed_room(far_score=0.81, far_moved=0.04, far_turned=0.5):
+    """A search that fitted nowhere because the furniture moved, as the M5
+    shakedown's living room did (73% on a wall), with the far returns' own fit."""
+    return dict(misfit(), score=0.73, guess_score=0.71,
+                far={"score": far_score, "moved_m": far_moved,
+                     "turned_deg": far_turned, "guess_score": 0.79})
+
+
+def test_a_changed_room_is_not_a_carried_rover() -> None:
+    """2026-10-12: where the far returns put the rover where it believes, a look
+    keeps the navigator's heading and later looks are not withheld."""
+    answers = [changed_room(), refused(), changed_room(far_moved=0.4),
+               refused(), misfit(), changed_room(), refused()]
+    check_ = headingcheck.HeadingCheck(lambda offset: answers.pop(0))
+
+    pose, note = check_.judge(dict(HERE), 0.0, 0.0)
+    check("a still look in a changed room keeps the navigator's heading",
+          (pose["x_m"], pose["heading_deg"]), (1.0, 90.0))
+    check("...says so on the pose it is stored with",
+          (pose["checked"]["changed_room"], pose["checked"]["far_score"]),
+          (True, 0.81))
+    check("...and in its note", "room has changed" in note, True)
+    pose, _ = check_.judge(dict(HERE), 0.5, 3.0)
+    check("...and the moving look after it is not withheld", pose is not None, True)
+
+    pose, note = check_.judge(dict(HERE), 0.0, 0.0)
+    check("far returns that want to move the rover 40 cm confirm nothing",
+          (pose, "fit the map" in note), (None, True))
+    pose, _ = check_.judge(dict(HERE), 0.5, 3.0)
+    check("...and the looks after it are withheld as before", pose, None)
+
+    pose, _ = check_.judge(dict(HERE), 0.0, 0.0)
+    check("a misfit with no far answer is withheld exactly as before", pose, None)
+    pose, _ = check_.judge(dict(HERE), 0.0, 0.0)
+    check("a changed room confirmed after a misfit gives directions back",
+          pose is not None, True)
+    pose, _ = check_.judge(dict(HERE), 0.5, 3.0)
+    check("...to the moving looks after it too", pose is not None, True)
+
+
 def test_turning_is_counted_across_the_half_circle() -> None:
     check_ = headingcheck.HeadingCheck(lambda offset: None)
     check_.saw({"heading_deg": 170.0})
@@ -285,6 +325,7 @@ TESTS = (test_a_still_look_is_checked_and_kept_corrected_or_withheld,
          test_a_moving_look_is_checked_on_its_own,
          test_a_driven_run_keeps_its_directions,
          test_a_rover_the_scan_cannot_place_stays_withheld,
+         test_a_changed_room_is_not_a_carried_rover,
          test_turning_is_counted_across_the_half_circle,
          test_a_check_that_cannot_run_never_raises_and_withholds_nothing,
          test_the_inspector_takes_bearings_from_the_checked_pose)

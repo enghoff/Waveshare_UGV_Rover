@@ -493,6 +493,16 @@ marked as belonging to the map that has gone rather than left looking current.
   every picture kept, three of them keeping a measured distance, and no bearing
   put back afterwards
 
+**A changed room confirms the place but not the heading.** Since 2026-10-12, a
+check whose search fits nowhere still gives a look the navigator's heading when
+the scan's returns beyond 1.5 m alone put the rover where it believes. Moved
+furniture fails the whole-scan test with the rover in place, and walls do not
+move. On the M5 shakedown's replay
+([2026-10-12](../progress/2026-10-12-heading-check-in-a-changed-room.md)) the far
+returns confirmed none of the 22 looks whose pose was wrong, and none of 1,703
+simulated carried rovers displaced 30 cm or 15 degrees. Such a look is marked
+`changed_room` and corrects nothing.
+
 This is [R-WS-5](#r-ws-5)'s neighbour and the gap between them is easy to miss:
 R-WS-5 keeps evidence from being read against the wrong *map*, while this one is
 about the wrong *pose within the right map*.

@@ -212,7 +212,16 @@ measured well enough to keep:
   a second, and never holds a move (`ros_nav` `measure_pose`). The look keeps its
   pose if the scan agrees, takes the scan's pose if the scan confidently
   disagrees, and gets no direction if the search fits nowhere; nor does any look
-  after it until a search fits again. **A look taken while moving is checked
+  after it until a search fits again. **Unless the room has changed and the
+  rover has not**: since 2026-10-12 the measure also searches the returns beyond
+  1.5 m alone (`far`), and where that puts 75% of them on a wall within 10 cm and
+  2 degrees of the believed pose, the moved furniture is what failed the search.
+  The look then takes the navigator's heading, marked `changed_room` on its pose,
+  and later looks are not withheld. Replayed on the M5 shakedown, that kept 29 of
+  the 55 right looks the moved furniture had refused, and confirmed none of the
+  22 wrong ones nor any simulated carried rover
+  ([the replay](../docs/progress/2026-10-12-heading-check-in-a-changed-room.md)).
+  **A look taken while moving is checked
   too**: the navigator matches the scan from where the rover was half way through
   its sweep, and refuses a sweep turned faster than 30 degrees a second; a moving
   search that fits nowhere is blamed on the motion and withholds nothing. A
