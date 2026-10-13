@@ -11,7 +11,9 @@ kept outside the repository in `tmp/codex-assistance-replies/`
 "How it would be built", this plan holds. On 2026-10-13 the owner asked for
 prediction and error at several levels, and [Levels of prediction](#levels-of-prediction)
 was added after two literature surveys, a verification pass and Codex's
-critique (`ugv-rover-25-hier-*.md` beside the others).
+critique (`ugv-rover-25-hier-*.md` beside the others). The first experiment ran
+on 2026-10-13 and triggered its stop rule: see step 1 of
+[the order of work](#the-order-of-work).
 
 ## In short
 
@@ -466,22 +468,29 @@ it does not by itself guarantee that the rover looks where it expects nothing.
 
 ## The order of work
 
-1. **Blind depth recall on the desktop (days).**
-   - *Inputs*: the 27 RGB-D looks of 2026-10-03 already on this desktop, with
-     their lenses, mount and poses, and the 10 pairs among them that are within
-     1 m and 20 degrees and at least 60 s apart. Those pairs cover six later
-     looks and share some references, so the experiment is a feasibility
-     screen.
-   - *Frozen first*: the pair list; unchanged-surface labels from the
-     photographs; a reference bank built only from the source looks; the camera
-     transforms; the edge rejection; the uncertainty bounds; the scoring masks.
-     Each target stays hidden until its prediction is fixed.
-   - *Metric*: the share of each target's labelled visible area predicted within
-     the larger of 15 cm and 5% of depth, with unavailable area reported
-     separately. The baseline is copying the source depth without warping.
-   - *Stop if*: fewer than three of the six targets reach 30% useful area;
-     warping does not beat copying; or it works only when aligned on the
-     surfaces that changed.
+1. **Blind depth recall on the desktop: run 2026-10-13, and it stopped the
+   plan as configured** ([the entry](../progress/2026-10-13-blind-depth-recall.md)).
+   Re-projecting stored depth beat copying it unmoved, but it usefully
+   predicted only 5-32% of each target's measured surface, and only 2 of 6
+   targets reached the 30% needed, against 3. Passive stereo, as the rover
+   configures it, is the leading suspect. Nothing below builds on geometry
+   recall until step 1b passes.
+
+   **Step 1b, the depth itself, within a fixed budget.** In order:
+   - how repeatable and accurate the OAK's depth is from a standstill,
+     measured against surveyed flat surfaces;
+   - today's stereo setting and at most three others (confidence threshold,
+     decimation, output size), within the pinned depthai version;
+   - one way of fusing several looks before predicting;
+   - blind recall again on fresh, held-out targets, with step 1's gates: at
+     least three of six targets reaching 30% useful area, and warping beating
+     copying.
+
+   For later change detection there is also a floor of 80% accuracy where
+   predicted. If nothing passes within that budget, geometry recall with this
+   sensor stops, and the plan turns to another depth source, or to prediction
+   built on the lidar map and appearance. The standstill measurement needs the
+   rover; everything else can run on stored or newly recorded looks.
 2. **A larger frozen recall test**: frames and depth copied read-only from the
    rover for a sample of the 4,186 candidate pairs within 25 cm and 5 degrees
    (3,304 of them across days). Unchanged surfaces are labelled from the
