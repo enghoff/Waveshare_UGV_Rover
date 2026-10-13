@@ -7,9 +7,12 @@ nothing for 8 more.** It ranks each thing by the average of all its looks instea
 of ranking the newest 2,000 looks, and it lets 3 of 60 phrases for things that
 cannot be in the flat through. The things it still gets wrong are ones the store
 barely holds: a keyboard, a tissue box, a spray bottle, a mirror, a window.
-Separately, when the rover cannot measure a route because it has not confirmed
-where it is on a restored map, the model is now told that, instead of "nothing
-is publishing the rover's position".
+The model also has to ask: spoken "Where are my shoes?", it called no tool at all
+two times out of two, and with one sentence added to its instructions telling it
+that it remembers the place, it called `find_thing` two times out of two and said
+where they were. Separately, when the rover cannot measure a route because it has
+not confirmed where it is on a restored map, the model is now told that, instead
+of "nothing is publishing the rover's position".
 
 ## The fault
 
@@ -105,10 +108,37 @@ glowing bulb as a traffic light.
 - `bench_search.py` judges the new way by default and the old way with
   `--looks`, and `--sheets` writes the contact sheets to judge by eye.
 
+Deployed at 038838b. On the rover afterwards, through the daemon's port with no
+model: "shoes" and "my shoes" found the sneakers, 5.2 m straight ahead; "a lamp"
+and "a floor lamp" the floor lamp behind it; "a purple elephant" answered "none of
+the 683 things it has seen looks like that". A question takes about 0.3 s. The
+rover's heading still agreed with the scan to 0 cm and 0.0 degrees after the
+daemon restart.
+
+## The model, asked
+
+With the search fixed and deployed, "Where are my shoes?" was synthesised at
+16 kHz and put through the console's own session code on the rover against
+plus-realtime, with the live daemon's tool list. Five calls in all, about 29,000
+tokens, kept few because each is paid:
+
+| Instructions | Question | What the model did |
+|---|---|---|
+| as deployed, 21 tools (no camera registered) | "Where are my shoes?" | no tool; "I don't know where your shoes are right now ... first I need to explore the area to build a map" |
+| as deployed, 24 tools | "Where are my shoes?" | no tool; "I don't know where your shoes are right now" |
+| with the memory sentence, 24 tools | "Where are my shoes?" | `find_thing("shoes")`; "about 5.2 metres straight ahead of me" |
+| with the memory sentence, 24 tools | "Where are my shoes?" | `find_thing("shoes")`; "about 5 metres straight ahead of me" |
+| with the memory sentence, 24 tools | "What can you see?" | `look` (the control: a picture, not the memory) |
+
+`find_thing`'s description already said to use it for "where is the desk"; what
+the instructions lacked was any statement that the model remembers anything. The
+sentence, now `MEMORY_PROMPT` in [prompts.py](../../voice_chat/prompts.py), is
+sent only when `find_thing` is offered, last, where it was measured. Two samples
+a side is little, and the difference is all or nothing in both.
+
 ## What is not changed
 
-The model choosing a picture over `find_thing` for the shoes was not
-investigated against the model, to keep paid calls down. The size a found thing
+The size a found thing
 reports is the size of whatever region the resolver made a thing of, so the black
 sofa came back 0.2 m wide because the thing was its armrest. And the duplicates
 are still there ([R-WS-17](../requirements/world-state.md#r-ws-17)); this only

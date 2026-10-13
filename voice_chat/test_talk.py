@@ -299,6 +299,13 @@ def test_prompts() -> None:
           True)
     check("vision can be left out",
           "take a picture first" in prompts.system_prompt(vision=False), False)
+    # The memory sentence goes last when it goes in at all: that is where it was
+    # measured, 0 of 2 to 2 of 2 on "Where are my shoes?".
+    check("the memory sentence is only there when asked for",
+          "search your memory" in prompt, False)
+    check("...and goes last when it is",
+          prompts.system_prompt(memory=True).rstrip().endswith(
+              "search your memory first and answer from it."), True)
 
 def test_frames() -> None:
     """The /frame contract the daemon posts to, served by the client instead."""
@@ -517,6 +524,16 @@ def test_talk_session() -> None:
               ["set_lights", "get_lights"])
         check("...and the deployed prompt",
               sent["instructions"].startswith("You are the voice of a small"), True)
+        # The mock offers no find_thing, so this model has nothing to remember
+        # with, and is not told that it does.
+        offered = [t["function"]["name"] for t in sent["tools"]]
+        check("...which says the model remembers the place only if it can search it",
+              ("find_thing" in offered, "search your memory" in sent["instructions"]),
+              (False, False))
+        check("...and a session that can search it is told so, flash included",
+              all(omni.instructions(vision=True, model=model, memory=True)
+                  .rstrip().endswith("search your memory first and answer from it.")
+                  for model in ("test", "qwen3.5-omni-flash-realtime")), True)
         check("...and no turn detection when this client is doing the turns",
               sent["turn_detection"], None)
 

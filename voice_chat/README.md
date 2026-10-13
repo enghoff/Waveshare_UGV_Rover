@@ -129,6 +129,17 @@ description says in so many words that it takes no picture, which is the shape o
 fix that `count_faces` needed for the same collision — naming what a tool is *not*
 for is what took "how many people can you see" from 0/6 to 6/6 there.
 
+**The descriptions were not enough on their own, and a sentence in the prompt
+is.** On 2026-10-13, "Where are my shoes?" spoken to plus-realtime with the live
+daemon's 24 tools called nothing at all, two times out of two: "I don't know
+where your shoes are right now", with the shoes in the store five metres ahead.
+In the room that morning the same question got a picture of a wall and an
+exploration. The model did not know it remembered anything. `MEMORY_PROMPT` in
+[prompts.py](prompts.py) says that it does, and is sent only when `find_thing` is
+offered; with it the question called `find_thing` two times out of two and was
+answered, and "What can you see?" still took a picture. Two samples a side is a
+small measurement, kept small because each costs a paid call.
+
 `find_thing` also hands back where the thing is on the map, and its description
 spends three sentences on what that is for: comparing one thing with another, so
 that "how far is the bed from the desk" is two calls and a subtraction. **That is

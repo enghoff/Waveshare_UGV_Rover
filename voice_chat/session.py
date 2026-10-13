@@ -126,7 +126,7 @@ _READ_ALOUD = (" Then say what you did in one short sentence, without reading th
                " tool call or its result out loud.")
 
 
-def instructions(*, vision: bool, model: str) -> str:
+def instructions(*, vision: bool, model: str, memory: bool = False) -> str:
     """The tuned prompt, minus the one sentence flash-realtime cannot be given.
 
     Three samples a cell, fourteen schemas, typed input so the microphone is out
@@ -160,7 +160,7 @@ def instructions(*, vision: bool, model: str) -> str:
     grows -- and README.md has the numbers and the two wordings that failed to fix
     it.
     """
-    prompt = prompts.system_prompt(vision=vision)
+    prompt = prompts.system_prompt(vision=vision, memory=memory)
     if "flash" in model and _READ_ALOUD in prompt:
         return prompt.replace(_READ_ALOUD, "")
     return prompt
@@ -332,7 +332,11 @@ class Session:
             "voice": VOICE,
             "input_audio_format": "pcm",
             "output_audio_format": "pcm",
-            "instructions": instructions(vision=vision, model=self.model),
+            # The memory sentence only where there is a memory to search: a
+            # rover with no world state does not offer find_thing, and telling
+            # its model it remembers the place would be telling it to invent.
+            "instructions": instructions(vision=vision, model=self.model,
+                                         memory="find_thing" in self.tool_names),
             "temperature": TEMPERATURE,
             # Turn-taking is either the service's job or this client's, never
             # both. See DUPLEX_TURNS for which and why.

@@ -49,6 +49,23 @@ VISION_PROMPT = os.environ.get(
 )
 
 
+# Only when `find_thing` is offered, and last, which is where it was measured. On
+# 2026-10-13 "Where are my shoes?", spoken to plus-realtime with the live
+# daemon's 24 tools, called nothing at all twice out of two -- "I don't know where
+# your shoes are right now" -- while the store had them five metres ahead; with
+# this sentence appended it called `find_thing` twice out of two and said where
+# they were, and "What can you see?" still took a picture. The tool's own
+# description already said to use it for "where is the desk"; what was missing
+# was the model knowing that it remembers anything.
+MEMORY_PROMPT = os.environ.get(
+    "VOICE_MEMORY_PROMPT",
+    " You remember what the rover has seen as it drove around, all over the place "
+    "and not only in front of it, and you search that memory with the tool that "
+    "finds things. So if you are asked where something is, whether you have seen "
+    "one, or to find one, search your memory first and answer from it.",
+)
+
+
 def _source(name: str, *repository: str) -> Path:
     """Where a source file lives in the checkout or flattened rover deploy."""
     for candidate in (
@@ -116,14 +133,16 @@ def _literal(source: Path, name: str) -> object:
     return _evaluate(names[name], names)
 
 
-def system_prompt(*, vision: bool = True) -> str:
+def system_prompt(*, vision: bool = True, memory: bool = False) -> str:
     """Prompt sent to the current realtime session.
 
-    Order is deliberate: spoken-system rules, tool rules, then the vision rule.
-    The realtime API receives tool schemas separately, so they are not rendered a
-    second time into this string.
+    Order is deliberate: spoken-system rules, tool rules, the vision rule, then
+    the memory rule, which is the order each was measured in. The realtime API
+    receives tool schemas separately, so they are not rendered a second time into
+    this string.
     """
-    return f"{SYSTEM_PROMPT}{TOOL_PROMPT}{VISION_PROMPT if vision else ''}"
+    return (f"{SYSTEM_PROMPT}{TOOL_PROMPT}{VISION_PROMPT if vision else ''}"
+            f"{MEMORY_PROMPT if memory else ''}")
 
 
 def tools(*, vision: bool = True, nav: bool = False) -> list[dict]:
