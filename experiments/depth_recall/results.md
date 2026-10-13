@@ -26,6 +26,6 @@ after. Codex regenerated the six predictions to the committed hashes and
 reproduced every score.
 
 Limits: six correlated targets from one four-minute recording, sharing their
-sources; baselines 0.73-0.94 m; three targets and four sources taken while
+sources; baselines 0.73-0.94 m; three of the six targets and three of the five sources taken while
 moving, with depth within 29 ms of the shutter. It says nothing about recall
 from 25 cm, or about memory fused from many looks.
