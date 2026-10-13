@@ -1,0 +1,86 @@
+{
+ "20261003-091624-3b7439": {
+  "loose_useful_25cm_10pc": 0.10688676654563208,
+  "wrong_pred_nearer": 0.09462057181216245,
+  "wrong_pred_farther": 0.0687456137674305,
+  "acc_0-2m": "0% of 2",
+  "acc_2-3m": "14% of 471",
+  "acc_3-4m": "24% of 5200",
+  "acc_4-6m": "28% of 1360",
+  "best_shift_useful": 0.112,
+  "best_shift_yaw_tilt": [
+   4.5,
+   -3
+  ]
+ },
+ "20261003-091626-f16692": {
+  "loose_useful_25cm_10pc": 0.23513290407792636,
+  "wrong_pred_nearer": 0.11352154531946508,
+  "wrong_pred_farther": 0.16136701337295692,
+  "acc_0-2m": "47% of 1459",
+  "acc_2-3m": "37% of 6025",
+  "acc_3-4m": "41% of 5591",
+  "acc_4-6m": "9% of 504",
+  "best_shift_useful": 0.209,
+  "best_shift_yaw_tilt": [
+   1.5,
+   -3
+  ]
+ },
+ "20261003-091637-12cb55": {
+  "loose_useful_25cm_10pc": 0.20318970834434752,
+  "wrong_pred_nearer": 0.09939201691779011,
+  "wrong_pred_farther": 0.1401004493787999,
+  "acc_0-2m": "52% of 1227",
+  "acc_2-3m": "36% of 7537",
+  "acc_3-4m": "45% of 4115",
+  "acc_4-6m": "4% of 488",
+  "best_shift_useful": 0.201,
+  "best_shift_yaw_tilt": [
+   1.5,
+   -3
+  ]
+ },
+ "20261003-091652-c624cd": {
+  "loose_useful_25cm_10pc": 0.32676110878053505,
+  "wrong_pred_nearer": 0.15608764400271063,
+  "wrong_pred_farther": 0.19097098970602472,
+  "acc_0-2m": "42% of 2924",
+  "acc_2-3m": "51% of 8921",
+  "acc_3-4m": "23% of 4575",
+  "acc_4-6m": "38% of 1852",
+  "best_shift_useful": 0.262,
+  "best_shift_yaw_tilt": [
+   -1.5,
+   0
+  ]
+ },
+ "20261003-091657-e6d359": {
+  "loose_useful_25cm_10pc": 0.458021515434986,
+  "wrong_pred_nearer": 0.25389772372934205,
+  "wrong_pred_farther": 0.11213751169317118,
+  "acc_0-2m": "47% of 1546",
+  "acc_2-3m": "52% of 5173",
+  "acc_3-4m": "50% of 3527",
+  "acc_4-6m": "41% of 7305",
+  "best_shift_useful": 0.318,
+  "best_shift_yaw_tilt": [
+   0.0,
+   0
+  ]
+ },
+ "20261003-091705-5c76e6": {
+  "loose_useful_25cm_10pc": 0.3595947222009545,
+  "wrong_pred_nearer": 0.19863205982186152,
+  "wrong_pred_farther": 0.13470127351147182,
+  "acc_0-2m": "58% of 20018",
+  "acc_2-3m": "7% of 868",
+  "acc_3-4m": "17% of 2911",
+  "acc_4-6m": "15% of 1601",
+  "best_shift_useful": 0.457,
+  "best_shift_yaw_tilt": [
+   3.0,
+   3
+  ]
+ }
+}
