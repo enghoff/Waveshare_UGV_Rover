@@ -48,11 +48,6 @@ import math
 import time
 from typing import Any
 
-#: How far down the ranking to look for something the rover has actually made a
-#: thing of. The best-scoring *look* often belongs to nothing yet -- that is the
-#: ordinary state of anything seen once -- and the answer to "where is the bed"
-#: is a thing with a position, not the highest number in the list.
-RECALL_LIMIT = 10
 #: How long to wait for the wheels after telling a move it is being replaced.
 #: A stop reaches the driver board in well under a second, and what is being
 #: waited for after that is the thread holding the move letting go of the mutex.
@@ -113,10 +108,15 @@ class RoverRecall:
     def _recall(self, description: str) -> dict[str, Any]:
         """The one thing a phrase found, with everything the tools need about it.
 
-        `found` is whether anything cleared the floor, and it is deliberately
-        judged row by row rather than off the answer's own verdict: the verdict
-        is about the best *look*, and the look this settles on may be further down
-        the list because the ones above it belong to nothing yet.
+        **Things are ranked, not looks** (`world_state.search.rank_things`), each
+        by the average of everything it has been seen as. This used to rank the
+        newest 2,000 looks and walk down them for the first that belonged to a
+        thing, which answered "which recent picture is most like this" rather
+        than "which thing": on 2026-10-13 those looks reached 198 of the store's
+        686 things, two thirds of them belonged to nothing, and the floor lamp and
+        the sneakers could not be found. A look that belongs to no thing has no
+        position and nothing to drive to, so leaving those out loses nothing a
+        voice answer could use.
 
         `entity` is the store's row and `placement` its position, both of which
         stay in this file -- what leaves it is metres and words.
@@ -124,31 +124,39 @@ class RoverRecall:
         why = self._world_ready()
         if why:
             return {"ok": False, "error": why}
-        answer = self._tool_world_state_search({"query": description,
-                                                "limit": RECALL_LIMIT})
+        if len(description) > 200:
+            return {"ok": False, "error": "that is a paragraph, not a description"}
+        vector, error = self._world_embed(description)
+        if error:
+            return {"ok": False, "error": error}
+        answer = self._world_rank_things(vector)
         if not answer.get("ok"):
             return answer
-        floor = answer.get("floor")
         store = self._world_store()
         for match in answer.get("matches") or []:
-            entity_id = str(match.get("entity_id") or "")
-            if not entity_id:
-                continue
-            if floor is not None and float(match.get("score") or 0.0) < floor:
+            if float(match["score"]) < answer["floor"]:
                 break
-            entity = store.entity(entity_id)
+            entity = store.entity(match["entity_id"])
             if entity is None:                      # cleared while we ranked it
                 continue
             return {"ok": True, "found": True, "entity": entity,
-                    "id": entity_id, "score": match.get("score"),
-                    "last_seen_at": match.get("observed_at")
-                                    or entity.get("last_seen_at")}
-        # Nothing that cleared the bar has been made a thing of. The sentence is
-        # the search's own, because the search is what knows whether this is "not
-        # in this room" or "the rover has barely looked at anything yet".
+                    "id": match["entity_id"], "score": match["score"],
+                    "last_seen_at": entity.get("last_seen_at")}
+        # In words, without the score: the model reads this out, and "the best
+        # match scores 0.080 against the 0.100 a real match takes" is the
+        # console's sentence, not something to say to a person in the room.
+        if not answer.get("considered"):
+            return {"ok": True, "found": False,
+                    "detail": "the rover has not recorded anything it could "
+                              "search yet"}
+        if not answer.get("enough"):
+            return {"ok": True, "found": False,
+                    "detail": "it has only seen %d things so far, so it may "
+                              "simply not have looked at it yet"
+                              % answer["considered"]}
         return {"ok": True, "found": False,
-                "detail": str(answer.get("detail") or
-                              "nothing the rover has looked at matches that")}
+                "detail": "none of the %d things it has seen looks like that"
+                          % answer["considered"]}
 
     def _placed_now(self, entity: dict[str, Any]) -> dict[str, Any] | None:
         """Where the thing is on the map the rover is on now, or None.
@@ -190,15 +198,15 @@ class RoverRecall:
                 "already knows about it")
 
     def _from_here(self, place: dict[str, Any]) -> dict[str, Any]:
-        """How far away the thing is and which way, or an empty answer.
+        """How far away the thing is and which way, or why that cannot be said.
 
-        Empty when nothing is publishing where the rover is: the thing has a
-        position and the rover does not, so there is no distance to give and
-        saying one would be inventing the rover's own.
+        Only a reason when the rover has no position it can stand behind: the
+        thing has one and the rover does not, so there is no distance to give
+        and saying one would be inventing the rover's own.
         """
-        pose = self._world_pose()
+        pose, why = self._world_pose_and_why()
         if pose is None:
-            return {}
+            return {"why": why}
         dx = float(place["x_m"]) - pose["x_m"]
         dy = float(place["y_m"]) - pose["y_m"]
         turn = (math.degrees(math.atan2(dy, dx)) - pose["heading_deg"] + 180.0)
@@ -282,11 +290,11 @@ class RoverRecall:
                     "note": self._not_placed_because(entity)}
         answer = {**answer, "placed": True, **self._measured(place)}
         here = self._from_here(place)
-        if not here:
+        if "why" in here:
             return {**answer,
                     "note": "the rover knows where it is on the map but not "
                             "where the rover itself is, so it cannot say how "
-                            "far away it is from here"}
+                            "far away it is from here: " + here["why"]}
         return {**answer, **here}
 
     # --- going to one thing ---------------------------------------------------

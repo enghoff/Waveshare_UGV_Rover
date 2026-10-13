@@ -273,6 +273,51 @@ def test_a_thing_the_rover_has_never_seen_is_not_invented() -> None:
         done(rover)
 
 
+def test_a_known_thing_is_found_behind_looks_that_belong_to_nothing() -> None:
+    """The fault of 2026-10-13, reproduced.
+
+    The rover spent a morning on a map it had not confirmed, which records the
+    picture and nothing else, so its newest looks belonged to no thing. The old
+    search ranked looks and walked ten of them for one that belonged to a thing;
+    when the ten best were all unclaimed it answered "not seen" while quoting a
+    score above the bar, about a thing the store held. Things are ranked now, so
+    looks that belong to nothing cannot stand in front of one.
+    """
+    try:
+        import numpy  # noqa: F401
+        import rover_daemon  # noqa: F401
+        import world_state
+    except ImportError as error:
+        SKIP.append(f"finding a thing behind unclaimed looks ({error})")
+        return
+
+    rover, done = _in_a_world()
+    try:
+        lamp = _remember(rover, "a floor lamp", at=(3.0, 3.0), from_xy=(1.0, 3.0))
+        eyes = rover._world_inspector().eyes
+        vectors, _error = eyes.embed(["a floor lamp"])
+        store = rover._world_store()
+        for _ in range(12):
+            store.record([world_state.Sighting(bbox=[0.45, 0.45, 0.55, 0.55],
+                                               dino=b"", siglip=vectors[0])],
+                         capture={"frame_id": "f", "pan": 0.0, "tilt": 0.0},
+                         source="perception", fov_deg=66.0)
+        unclaimed = [one for one in store.observations(limit=12)
+                     if not one.get("entity_id")]
+        check("the newest looks belong to nothing, as on the rover",
+              len(unclaimed), 12)
+
+        found = rover.call("find_thing", {"description": "a floor lamp"})
+        check("the thing behind them is found", found["found"], True)
+        check("...and placed, two metres off", found.get("distance_m"), 2.0)
+        going = rover.call("go_to_thing", {"description": "a floor lamp"})
+        check("...and can be gone to", going["ok"], True)
+        check("...the trip being for that thing",
+              rover.nav.sent[-1]["for_what"]["id"], lamp)
+    finally:
+        done(rover)
+
+
 # --- going to one thing -----------------------------------------------------
 
 def test_going_to_a_thing_sets_off_and_answers_at_once() -> None:
@@ -478,6 +523,7 @@ def _leaks(answer: dict) -> list:
 TESTS = (
     test_finding_a_thing_the_rover_has_seen,
     test_a_thing_the_rover_has_never_seen_is_not_invented,
+    test_a_known_thing_is_found_behind_looks_that_belong_to_nothing,
     test_going_to_a_thing_sets_off_and_answers_at_once,
     test_a_thing_with_nowhere_to_see_it_from_is_refused_in_words,
     test_a_found_thing_carries_what_was_measured_about_it,

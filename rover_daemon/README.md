@@ -202,7 +202,17 @@ phrase goes through the same ranking every time: "find the desk" and "go to the
 desk" a minute later are about the same desk without anything being carried
 between the calls. The ranking, its floor and the choice of where to stand all
 belong to [`../world_state/`](../world_state/README.md); what this file adds is
-which row of the ranking to answer about, and how to say it.
+how to say the answer. The ranking is of things, each by the average of all its
+looks, not of the console's newest 2,000 looks: on 2026-10-13 those reached a
+third of the things the rover knew, and the floor lamp and the sneakers could not
+be found.
+
+When the rover cannot say how far away a thing is, or cannot measure a route to
+it, the answer says which of the reasons it is -- no position being published,
+the map still loading, or a restored map the rover has not yet confirmed its
+place on -- because the last is common after a restart, is fixed by a position
+check from the console, and used to reach the model as "nothing is publishing
+the rover's position".
 
 **A found thing carries what was measured about it**, which is the position on
 the rover's own map, how far out that may be, how wide it is, how many separate

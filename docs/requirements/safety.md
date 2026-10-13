@@ -63,7 +63,7 @@ progressively less predictable callers.
   absent from `list_tools`
 
 The visual memory has no path to the motors. The conversational model reads it
-through `find_thing` and `distance_between_things`, and the one thing it may act
+through `find_thing`, and the one thing it may act
 on is `go_to_thing`, which is the existing navigation boundary with a placed
 coordinate handed to it. It cannot write to the store or clear it.
 

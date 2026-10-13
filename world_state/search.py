@@ -65,6 +65,22 @@ a sneaker, the spray bottle.
 **The floor holds because the count is capped.** `Store.searchable` hands a
 search the newest 2,000 looks and the floor is a measurement at that count;
 ranking more would need it measured again.
+
+**What the voice model asks is ranked by thing, not by look** (2026-10-13). A
+search over the newest 2,000 looks answers "which recent picture is most like
+this", and `find_thing` wants "which thing". By 10-13 the two had come apart: the
+store held 41,554 looks, the newest 2,000 reached only 198 of its 686 things, and
+two thirds of them belonged to no thing at all -- 873 had been taken that morning
+on a map the rover had not yet confirmed, which records the picture and nothing
+else. So a phrase whose best looks were all unclaimed was "not seen" while
+quoting a score above the bar, and the floor lamp and the sneakers, both in the
+store, could not be found. `ThingIndex` scores each thing by the average of all
+its looks instead -- one vector per thing, normalised looks summed and
+normalised again -- and `rank_things` ranks those. Judged by eye on 65 phrases
+for things in the flat, it named the wrong thing for 8 of them where the look
+search named the wrong one for 17 and missed 8 more; the 8 are things the store
+barely holds (a keyboard, a tissue box, a spray bottle, a mirror, a window). Its
+bar is `THING_MATCHES`, a measurement of its own: see that constant.
 """
 from __future__ import annotations
 
@@ -90,6 +106,22 @@ SLIVER_HEIGHT = 40.0 / 480.0
 #: worth reading, so the answer says how little has been seen rather than quoting
 #: a separation computed from four numbers.
 ENOUGH_TO_JUDGE = 12
+#: What a *thing's* average look has to score against the phrase before the rover
+#: will say it has found it. Not `MATCHES`: an average of many looks scores lower
+#: against anything than its best look does, and there are a few hundred things
+#: rather than two thousand looks, so the best chance score is lower too. Chosen on
+#: bench_search's first phrase set over 683 things on 2026-10-13 -- 2 of 30 absent
+#: phrases found and 2 of 34 present ones missed anywhere from 0.0975 to 0.105,
+#: and the upper half of that taken, to err towards not found -- then checked on
+#: the second set: 1 of 30 absent found, 2 of 26 present missed, and both of
+#: those were things it named wrongly when it found them.
+#:
+#: Like `MATCHES` it depends on how many things are ranked; a store that grows
+#: well past a thousand things wants it measured again with `bench_search.py`.
+THING_MATCHES = 0.10
+#: How many things may have changed before `ThingIndex` reads every look in one
+#: pass rather than asking for each thing's looks on their own.
+REBUILD_ALL = 64
 
 
 def unpack(blob: bytes) -> tuple[float, ...]:
@@ -263,20 +295,172 @@ def _scored(query: bytes, wanted: tuple[float, ...],
     return list(zip(values.tolist(), keep)), skipped, slivers
 
 
-def _detail(confident: bool, best: float, stands: float, count: int) -> str:
+class ThingIndex:
+    """Every thing's average look, kept between searches and brought up to date
+    at the start of each one.
+
+    The average is over all of a thing's looks rather than its newest few,
+    because which looks are newest says where the rover happened to be parked,
+    not what the thing looks like. Building every one reads every look the store
+    has -- 31,000 of them, 1.3 s on the rover -- so it is done once and then
+    only for the things `Store.thing_prints` says have changed, which between
+    two questions is a handful.
+
+    Kept per backend as well as per thing (R-WS-4): the GPU and CPU vectors are
+    not comparable, so a thing seen by both has two averages and a search ranks
+    only those from the backend that took the newest look, which is the one the
+    sidecar is running and so the one that embedded the phrase.
+    """
+
+    def __init__(self, store) -> None:
+        self.store = store
+        self.generation: str | None = None
+        self.prints: dict[tuple[str, str], tuple[int, int, int]] = {}
+        self.sums: dict[tuple[str, str], tuple[list | Any, int]] = {}
+        self.backend = ""
+
+    def refresh(self) -> int:
+        """Bring every average up to date, and say how many were built again."""
+        generation = self.store.generation()
+        if generation != self.generation:
+            # A cleared store issues its identifiers again from the start, so
+            # nothing kept under the old ones can be trusted to mean the same.
+            self.generation, self.prints, self.sums = generation, {}, {}
+        prints = self.store.thing_prints()
+        stale = {key for key, value in prints.items() if self.prints.get(key) != value}
+        for gone in set(self.sums) - set(prints):
+            del self.sums[gone]
+        if stale:
+            things = {entity_id for entity_id, _backend in stale}
+            fresh = _summed(self.store.thing_looks(
+                None if len(things) > REBUILD_ALL else sorted(things)))
+            for key in [key for key in self.sums if key[0] in things]:
+                del self.sums[key]
+            self.sums.update({key: value for key, value in fresh.items()
+                              if key[0] in things})
+        self.prints = prints
+        if prints:
+            self.backend = max(prints.items(), key=lambda kv: kv[1][1])[0][1]
+        return len(stale)
+
+    def averages(self) -> list[tuple[str, int, list | Any]]:
+        """(entity_id, looks, unit vector) for the backend being searched."""
+        out = []
+        for (entity_id, backend), (total, count) in self.sums.items():
+            if backend != self.backend:
+                continue
+            length = math.sqrt(_dot(total, total))
+            if length > 1e-9:
+                out.append((entity_id, count, _scaled(total, 1.0 / length)))
+        return out
+
+
+def rank_things(query: bytes, index: ThingIndex, limit: int = 10) -> dict[str, Any]:
+    """Score every thing's average look against the query, best first, and say
+    whether the best of them means anything -- `rank`'s answer, about things."""
+    wanted = unpack(query)
+    if not wanted:
+        return {"ok": False, "error": "the query has no vector", "matches": []}
+    index.refresh()
+    things = [one for one in index.averages() if len(one[2]) == len(wanted)]
+    if not things:
+        return {"ok": True, "matches": [], "considered": 0, "confident": False,
+                "floor": THING_MATCHES,
+                "detail": "the rover has not made a thing of anything it has seen yet"}
+    np = _numpy()
+    asked = (np.asarray(wanted, dtype=np.float64) if np is not None
+             else list(wanted))
+    length = math.sqrt(_dot(asked, asked))
+    if length > 1e-9:
+        asked = _scaled(asked, 1.0 / length)
+    scored = sorted(((_dot(vector, asked), entity_id, count)
+                     for entity_id, count, vector in things),
+                    key=lambda one: -one[0])
+    values = [value for value, _entity, _count in scored]
+    middle = _median(values)
+    spread = _spread(values, middle)
+    best = values[0]
+    stands = (best - middle) / spread if spread > 1e-9 else 0.0
+    confident = best >= THING_MATCHES
+    return {
+        "ok": True,
+        "matches": [{"entity_id": entity_id, "score": round(value, 4), "looks": count,
+                     "stands_clear": round((value - middle) / spread, 2)
+                     if spread > 1e-9 else 0.0}
+                    for value, entity_id, count in scored[:limit]],
+        "considered": len(scored),
+        # Whether there are enough things for "none of them is it" to mean
+        # anything, rather than "the rover has barely looked yet".
+        "enough": len(scored) >= ENOUGH_TO_JUDGE,
+        "confident": confident,
+        "floor": THING_MATCHES,
+        "best": round(best, 4),
+        "median": round(middle, 4),
+        "spread": round(spread, 4),
+        "stands_clear": round(stands, 2),
+        "detail": _detail(confident, best, stands, len(values), THING_MATCHES),
+    }
+
+
+def _summed(looks) -> dict[tuple[str, str], tuple[list | Any, int]]:
+    """Each thing's looks as unit vectors added up, per backend, and how many.
+
+    Slivers are left out, for the reason `rank` counts them out: they were
+    measured matching whatever was asked, and an average is not immune to that.
+    """
+    np = _numpy()
+    sums: dict[tuple[str, str], tuple[list | Any, int]] = {}
+    for entity_id, backend, blob, box in looks:
+        if sliver(box) or not blob:
+            continue
+        if np is not None:
+            vector = np.frombuffer(bytes(blob), dtype="<f4").astype(np.float64)
+            length = float(np.sqrt(vector @ vector))
+        else:
+            vector = list(unpack(bytes(blob)))
+            length = math.sqrt(_dot(vector, vector))
+        if length < 1e-9:
+            continue
+        vector = vector / length if np is not None else _scaled(vector, 1.0 / length)
+        key = (entity_id, backend)
+        if key in sums and len(sums[key][0]) == len(vector):
+            total, count = sums[key]
+            sums[key] = (total + vector if np is not None else
+                         [a + b for a, b in zip(total, vector)], count + 1)
+        elif key not in sums:
+            sums[key] = (vector, 1)
+    return sums
+
+
+def _dot(left, right) -> float:
+    try:
+        return float(left @ right)
+    except TypeError:
+        return sum(a * b for a, b in zip(left, right))
+
+
+def _scaled(vector, factor: float):
+    try:
+        return vector * factor
+    except TypeError:
+        return [value * factor for value in vector]
+
+
+def _detail(confident: bool, best: float, stands: float, count: int,
+            floor: float = MATCHES) -> str:
     where = (f"and it stands {stands:.1f} spreads above the middle of the field"
              if count >= ENOUGH_TO_JUDGE else
              f"out of only {count} things seen so far")
     if confident:
         return (f"the best match scores {best:.3f} against that description, "
-                f"above the {MATCHES:.3f} a real match takes, {where}")
+                f"above the {floor:.3f} a real match takes, {where}")
     if count < ENOUGH_TO_JUDGE:
         return (f"the best of the {count} things seen so far scores only "
-                f"{best:.3f} against that description, below the {MATCHES:.3f} a "
+                f"{best:.3f} against that description, below the {floor:.3f} a "
                 f"real match takes -- though {count} is little enough that the "
                 f"rover may simply not have looked at it yet")
     return (f"the best match scores only {best:.3f} against that description, "
-            f"below the {MATCHES:.3f} a real match takes; nothing here matches "
+            f"below the {floor:.3f} a real match takes; nothing here matches "
             f"it, {where}")
 
 

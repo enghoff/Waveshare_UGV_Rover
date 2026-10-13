@@ -529,6 +529,42 @@ class RoverWorld:
             self._world_store_cache = store
         return store
 
+    def _world_things(self):
+        """Every thing's average look, kept with the store it was read from.
+
+        Kept because building it reads every look the store holds, and tied to
+        the store object rather than made once, so a store that was closed and
+        opened again is read again rather than answered from the old one's
+        memory. `rank_things` brings it up to date on every search.
+        """
+        store = self._world_store()
+        index = getattr(self, "_world_things_cache", None)
+        if index is None or index.store is not store:
+            index = world_state.search.ThingIndex(store)
+            self._world_things_cache = index
+        return index
+
+    def _world_rank_things(self, vector: bytes) -> dict[str, Any]:
+        """Every thing ranked against a phrase's vector; see `search.rank_things`."""
+        return world_state.search.rank_things(vector, self._world_things())
+
+    def _world_embed(self, text: str) -> tuple[bytes, str]:
+        """A phrase as a vector in the stored looks' space, or an error in words.
+
+        The phrase goes through SigLIP2's text tower, whose image tower produced
+        every stored region vector, so it lands in the same space and comparing
+        the two is a dot product. Lower-cased because that is how every floor
+        this is judged against was measured.
+        """
+        eyes = self._world_inspector().eyes
+        if eyes is None:
+            return b"", ("this host has no perception sidecar to embed a "
+                         "query with")
+        vectors, error = eyes.embed([text.lower()])
+        if error or not vectors:
+            return b"", error or "the sidecar sent no vector"
+        return vectors[0], ""
+
     def _world_groups(self, store) -> dict[str, list[str]]:
         """Each record's group-mates in this map session, from the latest grouping.
 
@@ -787,7 +823,19 @@ class RoverWorld:
                                 f"whole pictures"}
 
     def _world_pose(self) -> dict[str, Any] | None:
-        """Where the rover is standing now, as SLAM has it, or None.
+        """Where the rover is standing now, as SLAM has it, or None."""
+        return self._world_pose_and_why()[0]
+
+    def _world_pose_and_why(self) -> tuple[dict[str, Any] | None, str]:
+        """Where the rover is standing now, as SLAM has it -- or None, and why not
+        in words a voice model can repeat.
+
+        The why exists because the reasons are not interchangeable and the voice
+        model used to be given one sentence for all of them. On 2026-10-13 the
+        rover came up on a restored map it had not yet confirmed, and `go_to_thing`
+        told the model "nothing is publishing the rover's position" while SLAM was
+        publishing one perfectly well; what was missing was the confirmation, and
+        that is a thing a person can do something about.
 
         Measured, not inferred -- which is the line this whole experiment draws.
         Where the camera was is a reading the rover already takes; how far away the
@@ -843,27 +891,32 @@ class RoverWorld:
         """
         navigator = getattr(self, "nav", None)
         if navigator is None:
-            return None
+            return None, "this rover has no navigation, so it does not know where it is"
         try:
             status = navigator.status()
         except Exception:
-            return None
-        if not status.get("position_trusted") or not status.get("map_id"):
-            return None
+            return None, "the navigation did not answer when asked where the rover is"
+        if not status.get("position_trusted"):
+            return None, "nothing is publishing the rover's position at the moment"
+        if not status.get("map_id"):
+            return None, "the rover's map has not finished loading since it started"
         # Absent as well as false, so a navigator too old to answer the question
         # is read as not having confirmed anything. This is the direction that
         # loses looks rather than the one that invents bearings.
         if not status.get("map_settled"):
-            return None
+            return None, ("the rover has not yet confirmed where it is on its map "
+                          "since it started; a position check from the drive "
+                          "console settles that")
         where = status.get("pose")
+        unreadable = "the navigation sent a position that could not be read"
         if not isinstance(where, dict):
-            return None
+            return None, unreadable
         try:
             return {"x_m": round(float(where["x_m"]), 3),
                     "y_m": round(float(where["y_m"]), 3),
-                    "heading_deg": round(float(where["heading_deg"]), 1)}
+                    "heading_deg": round(float(where["heading_deg"]), 1)}, ""
         except (KeyError, TypeError, ValueError):
-            return None
+            return None, unreadable
 
     def _world_grid(self):
         """The occupancy grid, decoded, or None. Cached for `MAP_CACHE_S`.
@@ -1000,18 +1053,13 @@ class RoverWorld:
             return {"ok": False, "error": "nothing to look for"}
         if len(query) > 200:
             return {"ok": False, "error": "that is a paragraph, not a description"}
-        eyes = self._world_inspector().eyes
-        if eyes is None:
-            return {"ok": False,
-                    "error": "this host has no perception sidecar to embed a "
-                             "query with"}
-        vectors, error = eyes.embed([query.lower()])
-        if error or not vectors:
-            return {"ok": False, "error": error or "the sidecar sent no vector"}
+        vector, error = self._world_embed(query)
+        if error:
+            return {"ok": False, "error": error}
         store = self._world_store()
         rows = store.searchable(map_session=arguments.get("map_session"))
         answer = world_state.search.rank(
-            vectors[0], rows,
+            vector, rows,
             limit=max(1, min(int(arguments.get("limit") or 10), 50)),
             backend=str(arguments.get("backend") or ""))
         matches = answer.get("matches", [])
@@ -1145,11 +1193,10 @@ class RoverWorld:
                              f"{entity.get('placement_map_session')} and the "
                              f"rover is now on map {session}, so its position "
                              f"is not a place on this map"}
-        pose = self._world_pose()
+        pose, why = self._world_pose_and_why()
         if pose is None:
             return {"ok": False,
-                    "error": "nothing is publishing the rover's position, so "
-                             "there is nowhere to measure a route from"}
+                    "error": f"{why}, so there is nowhere to measure a route from"}
         grid = self._world_grid()
         if grid is None:
             return {"ok": False,

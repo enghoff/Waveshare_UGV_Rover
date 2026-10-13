@@ -969,6 +969,59 @@ class WorldStore:
             found.append(one)
         return found
 
+    def thing_prints(self) -> dict[tuple[str, str], tuple[int, int, int]]:
+        """What looks each thing has, cheaply enough to ask on every search.
+
+        One row per thing and backend: how many of its looks carry a semantic
+        vector, and the largest and the sum of their identifiers. A look's vector
+        is never rewritten in place, so a thing whose three numbers have not
+        changed holds exactly the looks it held -- which is what lets
+        `search.ThingIndex` keep each thing's average between searches and build
+        again only the ones a new look, a join or a clear has touched. About
+        160 ms over 31,000 looks on the rover.
+        """
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT entity_id, vectors_from, COUNT(*), MAX(id), SUM(id)"
+                "  FROM observations"
+                " WHERE entity_id IS NOT NULL AND siglip_blob IS NOT NULL"
+                " GROUP BY entity_id, vectors_from").fetchall()
+        return {(row[0], row[1] or ""): (int(row[2]), int(row[3]), int(row[4]))
+                for row in rows}
+
+    def thing_looks(self, entity_ids: list[str] | None = None,
+                    page: int = 2000):
+        """Every searchable look of these things -- or of every thing -- a page
+        at a time, as (entity_id, backend, vector, box) tuples.
+
+        Paged by identifier and the lock let go between pages, because all of
+        them is a hundred megabytes of vectors and over a second of reading,
+        and the looking loop writes through this same connection.
+        """
+        where = "entity_id IS NOT NULL AND siglip_blob IS NOT NULL AND id > ?"
+        wanted: list[Any] = []
+        if entity_ids is not None:
+            if not entity_ids:
+                return
+            where += f" AND entity_id IN ({','.join('?' * len(entity_ids))})"
+            wanted = list(entity_ids)
+        after = 0
+        while True:
+            with self._lock:
+                rows = self.db.execute(
+                    "SELECT id, entity_id, vectors_from, siglip_blob, bbox_json"
+                    f"  FROM observations WHERE {where} ORDER BY id LIMIT ?",
+                    [after, *wanted, int(page)]).fetchall()
+            for row in rows:
+                try:
+                    box = json.loads(row["bbox_json"]) if row["bbox_json"] else None
+                except (ValueError, TypeError):
+                    box = None
+                yield row["entity_id"], row["vectors_from"] or "", row["siglip_blob"], box
+            if len(rows) < page:
+                return
+            after = rows[-1]["id"]
+
     def inferences(self, limit: int = INFERENCE_LIMIT) -> list[dict[str, Any]]:
         with self._lock:
             rows = self.db.execute(

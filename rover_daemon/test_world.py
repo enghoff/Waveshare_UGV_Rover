@@ -849,6 +849,7 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
 
     class Asking:
         _world_pose = rover_world.RoverWorld._world_pose
+        _world_pose_and_why = rover_world.RoverWorld._world_pose_and_why
 
     rover = Asking()
     rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0})
@@ -892,6 +893,13 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
                     settled=False)
     check("an unconfirmed place on a restored map gives no direction",
           rover._world_pose(), None)
+    # And it says so as itself. On 2026-10-13 this state reached the voice model
+    # as "nothing is publishing the rover's position", which was untrue -- SLAM
+    # was publishing one -- and named nothing anybody could do about it.
+    _pose, why = rover._world_pose_and_why()
+    check("...and the reason given is the missing confirmation, not a missing "
+          "position", ("not yet confirmed" in why, "publishing" in why),
+          (True, False))
 
     class Silent:
         """A navigator too old to have been asked this question."""

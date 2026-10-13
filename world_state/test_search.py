@@ -230,7 +230,128 @@ def test_the_fast_path_and_the_plain_one_score_the_same() -> None:
            if one["observation_id"] == 98], [0.0])
 
 
+# --- finding a thing, rather than a look -------------------------------------
+
+
+def _remembered(store, entity_id, vector, backend="tensorrt",
+                box=(0.4, 0.4, 0.6, 0.6)):
+    """One look with this semantic vector, recorded and given to a thing."""
+    from world_state.perception_client import Sighting
+
+    store.record([Sighting(bbox=list(box), dino=b"", siglip=vector)],
+                 capture={"frame_id": "f", "pan": 0.0, "tilt": 0.0,
+                          "pose": {"x_m": 1.0, "y_m": 1.0, "heading_deg": 0.0}},
+                 source="perception", fov_deg=66.0, vectors_from=backend)
+    look = store.observations(limit=1)[0]["id"]
+    if entity_id:
+        store.attach(entity_id, [look], why="the test")
+    return look
+
+
+def test_things_are_ranked_by_their_average_look() -> None:
+    """`find_thing`'s ranking since 2026-10-13.
+
+    The look search answers "which picture is most like this", and one lucky
+    look can carry a thing that mostly looks like something else. An average over
+    all of a thing's looks asks what the thing looks like, which is the question.
+    """
+    query = _packed(1.0, 0.0, 0.0)
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            lamp, lucky = store.create_entity(), store.create_entity()
+            for _ in range(3):
+                _remembered(store, lamp, _packed(0.9, 0.3, 0.0))
+            # One look that matches perfectly, among two that are something else.
+            for vector in (_packed(1.0, 0.0, 0.0), _packed(0.0, 1.0, 0.0),
+                           _packed(0.0, 0.0, 1.0)):
+                _remembered(store, lucky, vector)
+            check("the look search would answer with the lucky look",
+                  search.rank(query, store.searchable())["matches"][0]["score"], 1.0)
+
+            index = search.ThingIndex(store)
+            answer = search.rank_things(query, index)
+            check("the thing search answers with the thing that looks like it",
+                  answer["matches"][0]["entity_id"], lamp)
+            check("...and believes it", answer["confident"], True)
+            check("...saying how many looks it is the average of",
+                  answer["matches"][0]["looks"], 3)
+            check("...and the floor it was judged against is the thing floor",
+                  answer["floor"], search.THING_MATCHES)
+
+            # A look that belongs to no thing has nowhere to be and nothing to
+            # drive to, so it is not something this search can answer with.
+            _remembered(store, None, _packed(1.0, 0.0, 0.0))
+            again = search.rank_things(query, index)
+            check("a look that belongs to nothing is not ranked",
+                  [one["entity_id"] for one in again["matches"]], [lamp, lucky])
+
+            nothing = search.rank_things(_packed(0.0, 0.0, -1.0), index)
+            check("a phrase like none of the things is not found",
+                  nothing["confident"], False)
+            check("...and the reason quotes the thing floor",
+                  f"{search.THING_MATCHES:.3f}" in nothing["detail"], True)
+        finally:
+            store.close()
+
+
+def test_a_thing_average_is_built_again_only_when_its_looks_change() -> None:
+    """Building every average reads every look the store holds, so it is kept, and
+    a search only pays for the things whose looks have changed since the last."""
+    query = _packed(1.0, 0.0, 0.0)
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            lamp, chair = store.create_entity(), store.create_entity()
+            _remembered(store, lamp, _packed(1.0, 0.0, 0.0))
+            _remembered(store, chair, _packed(0.0, 1.0, 0.0))
+            index = search.ThingIndex(store)
+            check("the first search builds every thing", index.refresh(), 2)
+            check("...and the next, with nothing new, builds none", index.refresh(), 0)
+
+            # The chair is seen again, and looks more like the query this time.
+            _remembered(store, chair, _packed(1.0, 0.0, 0.0))
+            check("a thing seen again is the only one built again",
+                  index.refresh(), 1)
+            scores = {one["entity_id"]: one["score"]
+                      for one in search.rank_things(query, index)["matches"]}
+            check("...and its average has moved",
+                  round(scores[chair], 3), round(1.0 / 2 ** 0.5, 3))
+
+            store.clear()
+            check("a cleared store leaves nothing to rank",
+                  search.rank_things(query, index)["matches"], [])
+        finally:
+            store.close()
+
+
+def test_a_thing_average_keeps_to_one_backend_and_leaves_out_slivers() -> None:
+    """R-WS-4 for averages: a GPU and a CPU vector are not comparable, so they are
+    never averaged together, and only the backend that took the newest look --
+    the one the sidecar is running, which embedded the phrase -- is searched.
+    And a sliver, which matches whatever is asked, counts for nothing in an
+    average either."""
+    query = _packed(1.0, 0.0, 0.0)
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            old, edge, lamp = (store.create_entity(), store.create_entity(),
+                               store.create_entity())
+            _remembered(store, old, _packed(1.0, 0.0, 0.0), backend="onnx-cpu")
+            _remembered(store, edge, _packed(1.0, 0.0, 0.0),
+                        box=(0.0, 0.2, 0.03, 0.8))
+            _remembered(store, lamp, _packed(0.8, 0.6, 0.0))
+            ranked = search.rank_things(query, search.ThingIndex(store))
+            check("only the thing seen by the running backend, whole, is ranked",
+                  [one["entity_id"] for one in ranked["matches"]], [lamp])
+        finally:
+            store.close()
+
+
 TESTS = (
+    test_things_are_ranked_by_their_average_look,
+    test_a_thing_average_is_built_again_only_when_its_looks_change,
+    test_a_thing_average_keeps_to_one_backend_and_leaves_out_slivers,
     test_a_query_that_matches_nothing_says_so,
     test_a_search_says_which_part_of_the_frame_it_found,
     test_a_flat_field_is_not_what_decides_a_match,

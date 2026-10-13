@@ -51,7 +51,7 @@ wrong.
 
 - **State:** settled
 - **Evidence:** [world_state/README.md](../../world_state/README.md) —
-  `find_thing`, `go_to_thing` and `distance_between_things` are the whole surface
+  `find_thing` and `go_to_thing` are the whole surface
 
 It cannot clear the store or write to it. The store is still a proof of concept
 asking whether the rover builds a description of the room that stays coherent

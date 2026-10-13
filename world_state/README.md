@@ -513,9 +513,24 @@ it told the rover that everything it had located belonged to a map that no longe
 existed. The session moves for one reason now -- the map identity underneath it
 changing -- and the number is readable in `world_state_summary`.
 
-Voice tools are read-only: `find_thing`, `go_to_thing`, and
-`distance_between_things`. Clearing and direct inspection are not shown to the
-voice model.
+Voice tools are read-only: `find_thing` and `go_to_thing`; a distance between
+two things is worked out by the model from two `find_thing` answers. Clearing and
+direct inspection are not shown to the voice model.
+
+The two search in different ways. `world_state_search` ranks the newest 2,000
+looks and is the console's: it answers "which picture is most like this", with
+the look and the box it was found in, and is judged against `search.MATCHES`.
+`find_thing` and `go_to_thing` rank *things*, each by the average of all its
+looks (`search.ThingIndex`, `search.rank_things`), judged against
+`search.THING_MATCHES`, because what they answer is which thing and where. A look
+that belongs to no thing is invisible to them, which loses nothing a voice answer
+could use: it has no position and nothing to drive to. The averages are kept in
+the daemon between questions and built again only for the things whose looks
+changed, so the first question after a start reads every look (about 1.3 s on
+the rover) and later ones cost the 160 ms it takes to ask which things changed.
+Why the voice tools stopped ranking looks is in
+[the progress entry](../docs/progress/2026-10-13-find-thing-ranks-things.md);
+`bench_search.py` judges either search against the frozen phrases.
 
 ## Verification and diagnostics
 
