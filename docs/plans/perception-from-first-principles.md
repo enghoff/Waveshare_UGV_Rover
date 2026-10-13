@@ -188,6 +188,77 @@ rover's own body, wheels and gimbal, that predict how the scan and the picture
 should move for each command, recalibrate from the difference all day, and flag
 the day the difference is a fault.
 
+### Settling: agreement between expectation and input
+
+Added 2026-10-13, when the owner asked whether the brain builds its view by
+settling on an interpretation that both its expectations and its input agree
+with.
+
+**Well established: seeing is a fast first pass, then a period of feedback.**
+- A feedforward sweep reaches every visual area within about 100 ms. Feedback
+  from higher areas then reshapes activity in early visual cortex for roughly
+  another 100 ms (Lamme & Roelfsema, 2000).
+- That late activity tracks what is perceived, not just what is shown:
+  - it is suppressed in monkey V1 when a stimulus goes unseen (Supèr et al.,
+    2001);
+  - masking removes it while leaving the first sweep intact (Fahrenfort et al.,
+    2007);
+  - illusory contours appear in V2 before V1, so the higher area answers first
+    (Lee & Nguyen, 2001).
+- Core object recognition is largely explained by a fast feedforward pass,
+  within about 150 ms (Thorpe et al., 1996; DiCarlo et al., 2012). On the
+  hardest pictures in one study, the identity signal arrived about 30 ms later,
+  and feedforward networks predicted it poorly (Kar et al., 2019). That shows
+  recurrence matters most for hard images. It does not show that easy ones
+  skip it.
+- Rival interpretations compete, and at any moment one dominates:
+  - in binocular rivalry the two percepts alternate, and many V4 cells follow
+    what is seen while few V1 cells do (Leopold & Logothetis, 1996);
+  - after an abrupt change of room, hippocampal place cells flicker between the
+    old and the new map, one theta cycle (about 0.1 s) at a time, over a few
+    seconds before settling (Jezek et al., 2011);
+  - the fly's heading circuit is a demonstrated ring attractor that holds one
+    estimate (Kim et al., 2017).
+
+**Contested: the strict predictive-coding design**, in which dedicated error
+neurons send up only what the prediction missed.
+- Expectation effects in sensory cortex are real, but reviews find the
+  evidence for separate prediction and error channels lacking (Walsh et al.,
+  2020).
+- Reviews also find that expectation suppression is inconsistent across
+  studies and often confounded with adaptation (Feuerriegel, Vogels & Kovács,
+  2021).
+- In a mouse task, surprise selectively amplified the neurons coding the
+  unexpected input, through circuitry involving the pulvinar and VIP
+  interneurons, rather than a difference signal being sent (Furutachi et al.,
+  2024).
+- People's gaze goes to where an observation most changes their beliefs (Itti &
+  Baldi, 2009).
+- A proposed split separates two kinds of uncertainty: known noise, which
+  should down-weight evidence, and unexpected change, which should reset belief
+  (Yu & Dayan, 2005).
+- Adaptive resonance theory makes matching an expectation, and resetting on a
+  mismatch, the basis of learning without forgetting (Grossberg, 2013). The
+  neural evidence for it is mostly its author's.
+
+*The rover* takes each look in one pass and never revisits an interpretation in
+the light of the next level's. The evidence supports recurrence, not any
+particular algorithm for converging. *Copy*, as engineering choices it
+suggests:
+- **Two speeds.** A fast pass that confirms what is expected, and settling only
+  when the fit is poor.
+- **Settle to agreement.** An interpretation is accepted when it explains most
+  of the measured evidence, and expectation may re-weight evidence but never
+  overrule strong input.
+- **Commit, with hysteresis.** Hold one interpretation, and switch only when
+  contrary evidence persists.
+- **Novelty is judged against the learned model,** not against the last frame,
+  and it draws the next look.
+- **Keep the two uncertainties apart.**
+
+[Perceiving by prediction](perceiving-by-prediction.md#settling-how-the-levels-come-to-agree)
+makes this the settling loop.
+
 ### Objects are paths that persist
 
 Adults track a handful of moving things as "object files", bound to a place and
@@ -1135,6 +1206,24 @@ Wolpert, Miall & Kawato, 1998, Trends in Cognitive Sciences, https://pubmed.ncbi
 Blakemore, Wolpert & Frith, 1998, Nature Neuroscience, https://pubmed.ncbi.nlm.nih.gov/10196573/;
 Schultz, Dayan & Montague, 1997, Science, https://pubmed.ncbi.nlm.nih.gov/9054347/;
 Lisman & Grace, 2005, Neuron, https://pubmed.ncbi.nlm.nih.gov/15924857/.
+
+Settling (added 2026-10-13, read mostly from abstracts):
+Lamme & Roelfsema, 2000, Trends in Neurosciences, https://pubmed.ncbi.nlm.nih.gov/11074267/;
+Supèr, Spekreijse & Lamme, 2001, Nature Neuroscience, https://pubmed.ncbi.nlm.nih.gov/11224548/;
+Fahrenfort, Scholte & Lamme, 2007, Journal of Cognitive Neuroscience, https://pubmed.ncbi.nlm.nih.gov/17714010/;
+Lee & Nguyen, 2001, PNAS, https://pmc.ncbi.nlm.nih.gov/articles/PMC29355/;
+Thorpe, Fize & Marlot, 1996, Nature, https://pubmed.ncbi.nlm.nih.gov/8632824/;
+DiCarlo, Zoccolan & Rust, 2012, Neuron, https://pubmed.ncbi.nlm.nih.gov/22325196/;
+Kar et al., 2019, Nature Neuroscience, https://pubmed.ncbi.nlm.nih.gov/31036945/;
+Leopold & Logothetis, 1996, Nature, https://pubmed.ncbi.nlm.nih.gov/8596635/;
+Jezek et al., 2011, Nature, https://pubmed.ncbi.nlm.nih.gov/21964339/;
+Kim et al., 2017, Science, https://pubmed.ncbi.nlm.nih.gov/28473639/;
+Walsh et al., 2020, Annals of the New York Academy of Sciences, https://pmc.ncbi.nlm.nih.gov/articles/PMC7187369/;
+Feuerriegel, Vogels & Kovács, 2021, Neuroscience & Biobehavioral Reviews, https://www.sciencedirect.com/science/article/pii/S0149763421001536;
+Furutachi et al., 2024, Nature, https://pubmed.ncbi.nlm.nih.gov/39198646/;
+Itti & Baldi, 2009, Vision Research, https://pubmed.ncbi.nlm.nih.gov/18834898/;
+Yu & Dayan, 2005, Neuron, https://pubmed.ncbi.nlm.nih.gov/15944135/;
+Grossberg, 2013, Neural Networks, https://pubmed.ncbi.nlm.nih.gov/23149242/.
 
 Objects and physics:
 Kahneman, Treisman & Gibbs, 1992, Cognitive Psychology, https://pubmed.ncbi.nlm.nih.gov/1582172/;

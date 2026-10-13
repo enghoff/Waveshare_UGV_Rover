@@ -439,6 +439,152 @@ evidence was checked against the primary sources.
     rover's shared 7.4 GB would have to make room for beside the perception
     models.
 
+## Settling: how the levels come to agree
+
+The owner asked on 2026-10-13 whether the rover could work the way the brain
+seems to. That means settling, look by look, on one interpretation that agrees
+with both its memory and what it now sees, so that what does not fit stands
+out.
+
+The brain does something like this: a fast first pass, then a period of
+feedback that settles hard cases
+([the evidence](perception-from-first-principles.md#settling-agreement-between-expectation-and-input)).
+Engineering has a mature form of it in robust estimation run until it
+converges, as SLAM back-ends do. Each round:
+
+1. fits the state to what memory predicts;
+2. re-weights every piece of evidence by how well the state explains it.
+
+Evidence that nothing explains is down-weighted for fitting the state. It keeps
+its original discrepancy, and that discrepancy is what stands out.
+
+The brain-inspired networks that promise the same, predictive-coding networks,
+capsules and GLOM, need training. Among those surveyed, none has shown what
+the rover needs within its budget: a one-shot memory of a particular house, on
+real indoor pictures, on an Orin.
+- PCX (2025) found shallow predictive-coding networks comparable to ordinary
+  training.
+- At ResNet-18 depth on CIFAR-100, they reached 27-29% where ordinary training
+  reached 72%.
+
+So the loop is built from estimation methods, with a rule borrowed from
+adaptive resonance theory.
+
+**What is settled, per look:**
+- which stored place this is;
+- the camera's pose;
+- each object's placement: the same place, moved and by how much, gone, new,
+  or unresolved;
+- each object's content: unchanged, altered or unresolved;
+- for every region of the view, what explains it: stable background, a known
+  object, something passing, something new, or unknown.
+
+**Two speeds.**
+- **The fast pass is the default**: retrieve the place, fit the pose on
+  background, predict, compare. If every region is within its normal spread,
+  the look is a confirmation and nothing more is done.
+- **Settling runs only when the first pass leaves something unexplained above
+  a vigilance threshold**, or when the background fit is poor. This is an
+  engineering choice the brain suggests, not one it establishes: recurrence
+  matters most on hard pictures, but that does not show that easy ones skip it.
+
+**One round of settling:**
+1. **Associate.** Each unexplained region is shared softly among the
+   hypotheses near it: the same object, moved, gone, an occluder, or new. This
+   is the expectation step of EM. It is scored with a render-and-compare
+   likelihood that treats every measured pixel as either explained or an
+   outlier. That mixture is the one 3DP3 and Bayes3D use, though Bayes3D
+   searches it by sequential Monte Carlo rather than EM.
+2. **Refit.**
+   - The pose is solved only on background, with a robust kernel and graduated
+     non-convexity, which GTSAM provides.
+   - Each "moved" hypothesis is registered on its own.
+   - Furniture can never pull the background pose. That is the shakedown's
+     failure, in which the lidar fitted moved armchairs as walls.
+   - Structural anchors are chosen independently of how well they fit now.
+   - The pose found is a shadow estimate and a flag. It never repairs
+     navigation's own pose.
+3. **Predict again** under the new state, and recompute the weights.
+
+Settling stops when the associations stop changing and the updates fall
+within their uncertainty. It runs on a schedule frozen in advance: at most
+four to six rounds, eight competing branches and twelve active objects, with a
+hard deadline per look. Missing the deadline leaves the look unresolved. It is
+not counted as agreement.
+
+**Commit, with hysteresis.** Competing interpretations are kept side by side,
+in a bounded multiple-hypothesis track, rather than one replacing the other
+each round. A switch needs a margin frozen in advance. Nothing is committed to
+memory until a withheld look confirms it, through the change transaction
+above.
+
+**Match or reset, from adaptive resonance theory.** A place, or an object
+association, is accepted only if its match clears vigilance. Otherwise the
+next candidate is tried, and if none passes the result is a tentative new
+place or object, learned from that one view and kept tentative until the
+change transaction commits it. Each accepted look is kept as an exemplar
+rather than averaged into a prototype, so nothing is forgotten.
+
+**Saliency is two outputs, not one:**
+- **What nothing explains**: the remainder after settling, normalised by the
+  measured spread on unchanged looks.
+- **What the interpretation had to change**: a displacement, an arrival or
+  departure, or an altered content, relative to the frozen old arrangement. A
+  moved chair stays salient even when "it moved" has explained every pixel.
+
+Both outputs are calibrated through the whole pipeline, search included, and
+frozen while changes are pending. Saliency is not only a flag: the next look is
+aimed at it. That is an engineering choice, which the mouse study's
+amplification of unexpected input suggests but does not show.
+
+**Two uncertainties, kept apart.**
+- *Known noise*, the measured spread of each sensor, down-weights evidence.
+- *Unexpected change* resets belief at the right level:
+  - many objects disagreeing over a sound background means the room was
+    rearranged;
+  - a failing background means the place or the pose is in doubt, which only
+    raises a flag and proposes a refit
+    ([R-NAV-3](../requirements/navigation.md#r-nav-3)).
+
+**What keeps it honest:**
+- Expectation may re-weight or re-attribute evidence that was measured. It
+  never fills in what was not.
+- Prior strength is capped, so a long history cannot explain away a real
+  change.
+- Checking regions are fixed in advance.
+- No credit is given for declaring evidence unknown.
+- Repeated rounds over one picture are not new evidence.
+- A move's evidence, once explained, still counts as a change.
+
+**What is adopted and what is new.** Adopted:
+- robust estimation with graduated non-convexity, and switchable constraints;
+- EM association and multiple-hypothesis tracking;
+- the inlier-or-outlier likelihood;
+- free-space reconciliation from Khronos, where a ray through a stored surface
+  means it is gone and a surface behind a nearer one is hidden, not gone;
+- adaptive resonance theory's match-or-reset rule;
+- for routines later, the frequency models of FreMEn.
+
+New, and this plan's own:
+- the combination;
+- placement and content as separate tracks;
+- the protected background;
+- saliency kept after explanation;
+- commitment only on a withheld look.
+
+The computational survey judged none of the deep networks credible here.
+Modern Hopfield retrieval could serve as a familiarity score at the place
+level, but it is optional.
+
+**Whether iterating helps at all is a testable question.** The survey expected
+it to help only in narrow cases:
+- a first-pass pose corrupted by moved furniture, which protecting the
+  background in the first pass already largely prevents;
+- one unexplained region confusing how another is attributed.
+
+So step 1c compares the same pipeline stopped after one round with the settled
+version (see [the order of work](#the-order-of-work)).
+
 ## What it relies on first: where to point the camera
 
 **What it replaces.** Today an aimed look centres the target using the scan's
@@ -499,9 +645,37 @@ it does not by itself guarantee that the rover looks where it expects nothing.
      region lies within 0.6 m of it, and false alarms are counted per
      room-control.
 
-   It is compared with the lidar watch alone and with "seen empty", on frozen
-   eligibility. If it does not beat them, appearance and depth add nothing at
-   this grain, and the levels above stand on the lidar.
+   It is compared on frozen eligibility across five arms:
+   - the lidar watch, replayed with its full history rather than read from
+     earlier totals;
+   - "seen empty";
+   - flat region residuals, with no pixel alignment;
+   - the explanation pipeline, which registers and renders objects, stopped
+     after one round;
+   - the same pipeline settled by the
+     [settling loop](#settling-how-the-levels-come-to-agree).
+
+   The settled arm must find more events than the single round without more
+   false alarms or less coverage, or iteration earns nothing. The shakedown's
+   pose failure is counted apart: of the five staged changes it found, only four
+   came with a sound pose.
+
+   Named before freezing:
+   - the development and scoring sessions;
+   - the causal reference bank;
+   - the verified object bundles;
+   - the anchor and pose eligibility;
+   - the fitting objective;
+   - thresholds for both saliency outputs;
+   - search limits and the deadline per look;
+   - the event deadline;
+   - immediate and confirmed alarms, counted apart.
+
+   The seven control runs are not seven independent room-controls, and control
+   6 was too short for acceptance. So this is an exploratory comparison. It
+   cannot validate content changes or a dependable false-alarm rate. If no arm
+   beats the lidar, appearance and depth showed no benefit on this evidence, and
+   the levels above stand on the lidar until better evidence says otherwise.
 
    **Step 1b, the depth itself, within a fixed budget.** In order:
    - how repeatable and accurate the OAK's depth is from a standstill,
@@ -659,5 +833,16 @@ In addition to those of [the first-principles design](perception-from-first-prin
   - VDiff-Bench, 2026, https://arxiv.org/abs/2609.06245
   - TensorRT-Edge-LLM Orin Nano benchmarks, https://nvidia.github.io/TensorRT-Edge-LLM/0.9.1/user_guide/performance/performance-benchmarks.html
   - SAFE (VLA failure detection), https://arxiv.org/abs/2506.09937
+- Settling, surveyed 2026-10-13 (most from abstracts; preprints marked):
+  - PCX, predictive coding at scale, https://arxiv.org/abs/2407.01163
+  - Graduated non-convexity, Yang et al., https://arxiv.org/abs/1909.08605
+  - Switchable constraints, Sünderhauf & Protzel, 2012, https://nikosuenderhauf.github.io/assets/papers/IROS12-switchableConstraints.pdf
+  - Probabilistic data association by EM, Bowman et al., 2017, https://www.cis.upenn.edu/~kostas/mypub.dir/bowman17icra.pdf
+  - 3DP3, https://arxiv.org/abs/2111.00312
+  - Bayes3D, https://arxiv.org/abs/2312.08715
+  - GTSAM hybrid factor graphs, https://borglab.github.io/gtsam/hybridfactorgraph/
+  - Adaptive resonance theory library, https://github.com/NiklasMelton/AdaptiveResonanceLib
+  - FreMEn, Krajník et al., IEEE Transactions on Robotics, 2017
+  - Modern Hopfield networks, https://arxiv.org/abs/2008.02217
 - slam_toolbox 2.8.5 Karto source, grid and lookup, https://raw.githubusercontent.com/SteveMacenski/slam_toolbox/2.8.5/lib/karto_sdk/include/karto_sdk/Karto.h
 - slam_toolbox 2.8.5 Karto source, response normalisation, https://raw.githubusercontent.com/SteveMacenski/slam_toolbox/2.8.5/lib/karto_sdk/src/Mapper.cpp
