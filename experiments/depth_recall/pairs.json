@@ -1,0 +1,15 @@
+{
+ "about": "Every pair among the 27 locally held RGB-D looks of 2026-10-03 (09:13-09:17) in which the later look is within 1 m and 20 degrees of camera yaw of the earlier and at least 60 s after it. Same pairs as Codex counted on 2026-10-12. Baselines 0.73-0.94 m.",
+ "pairs": [
+  {"source": "20261003-091331-da1a5a", "target": "20261003-091705-5c76e6", "baseline_m": 0.82, "yaw_deg": 10.5},
+  {"source": "20261003-091400-88ac31", "target": "20261003-091624-3b7439", "baseline_m": 0.94, "yaw_deg": 16.8},
+  {"source": "20261003-091400-88ac31", "target": "20261003-091626-f16692", "baseline_m": 0.84, "yaw_deg": 14.3},
+  {"source": "20261003-091400-88ac31", "target": "20261003-091637-12cb55", "baseline_m": 0.86, "yaw_deg": 16.6},
+  {"source": "20261003-091400-88ac31", "target": "20261003-091657-e6d359", "baseline_m": 0.84, "yaw_deg": 7.8},
+  {"source": "20261003-091409-2e7688", "target": "20261003-091652-c624cd", "baseline_m": 0.74, "yaw_deg": 7.6},
+  {"source": "20261003-091411-6dd64f", "target": "20261003-091626-f16692", "baseline_m": 0.79, "yaw_deg": 11.2},
+  {"source": "20261003-091411-6dd64f", "target": "20261003-091637-12cb55", "baseline_m": 0.79, "yaw_deg": 13.5},
+  {"source": "20261003-091411-6dd64f", "target": "20261003-091657-e6d359", "baseline_m": 0.73, "yaw_deg": 10.9},
+  {"source": "20261003-091417-e9aa55", "target": "20261003-091652-c624cd", "baseline_m": 0.78, "yaw_deg": 14.4}
+ ]
+}

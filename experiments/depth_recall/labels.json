@@ -1,0 +1,11 @@
+{
+ "about": "Changed regions, drawn on the 640x480 fisheye photographs before any prediction or target depth was looked at. A person sits on the window armchair in source 20261003-091400-88ac31 and is gone 11 s later and in every target, so the armchair and its surroundings are excluded in the four targets predicted partly from that look. No change was found in the other two targets. Boxes are [x0, y0, x1, y1] in fisheye pixels, carried into the depth grid at a nominal 2 m.",
+ "exclude_fisheye_boxes": {
+  "20261003-091624-3b7439": [[60, 180, 240, 360]],
+  "20261003-091626-f16692": [[30, 180, 220, 360]],
+  "20261003-091637-12cb55": [[20, 180, 210, 360]],
+  "20261003-091657-e6d359": [[140, 190, 330, 370]],
+  "20261003-091652-c624cd": [],
+  "20261003-091705-5c76e6": []
+ }
+}
