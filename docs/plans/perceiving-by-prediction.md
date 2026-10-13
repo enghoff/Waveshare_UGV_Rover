@@ -12,7 +12,7 @@ kept outside the repository in `tmp/codex-assistance-replies/`
 prediction and error at several levels, and [Levels of prediction](#levels-of-prediction)
 was added after two literature surveys, a verification pass and Codex's
 critique (`ugv-rover-25-hier-*.md` beside the others). The first experiment ran
-on 2026-10-13 and triggered its stop rule: see step 1 of
+on 2026-10-13 and triggered its stop rule for pixel-level recall, which the owner does not take as a gate on the levels above: see step 1 of
 [the order of work](#the-order-of-work).
 
 ## In short
@@ -473,8 +473,35 @@ it does not by itself guarantee that the rover looks where it expects nothing.
    Re-projecting stored depth beat copying it unmoved, but it usefully
    predicted only 5-32% of each target's measured surface, and only 2 of 6
    targets reached the 30% needed, against 3. Passive stereo, as the rover
-   configures it, is the leading suspect. Nothing below builds on geometry
-   recall until step 1b passes.
+   configures it, is the leading suspect. Pooled over 4-degree blocks, the
+   predicted and measured medians agree within 15 cm or 5% on half the blocks,
+   with typical errors of 0.11-0.21 m at 2-4 m.
+
+   **This does not gate the levels above** (the owner, 2026-10-13). The aim is
+   to notice what is salient or unexpected, not to redraw the view. Each level
+   needs evidence only at its own grain: a moved armchair or a new bean bag
+   changes depth along its outline by far more than 0.2 m. So the next test is
+   whether staged changes stand out from the noise on unchanged runs (step 1c).
+   Pixel-level recall matters only for small things and close views, and step
+   1b improves it.
+
+   **Step 1c, saliency at the grain of events.** Offline, on the M5 shakedown
+   and the seven controls, with their looks and depth copied read-only from the
+   rover:
+   - each look is compared with earlier looks from within about 1.5 m and 30
+     degrees;
+   - three residuals are pooled over regions, with no pixel alignment:
+     - the depth median per region;
+     - the novelty of each region's DINOv2 patch tokens against the
+       references' patches, by nearest neighbour;
+     - the lidar change watch, as it runs today;
+   - scoring is per event: a staged change counts as found if a surprising
+     region lies within 0.6 m of it, and false alarms are counted per
+     room-control.
+
+   It is compared with the lidar watch alone and with "seen empty", on frozen
+   eligibility. If it does not beat them, appearance and depth add nothing at
+   this grain, and the levels above stand on the lidar.
 
    **Step 1b, the depth itself, within a fixed budget.** In order:
    - how repeatable and accurate the OAK's depth is from a standstill,
@@ -486,10 +513,10 @@ it does not by itself guarantee that the rover looks where it expects nothing.
      least three of six targets reaching 30% useful area, and warping beating
      copying.
 
-   For later change detection there is also a floor of 80% accuracy where
-   predicted. If nothing passes within that budget, geometry recall with this
-   sensor stops, and the plan turns to another depth source, or to prediction
-   built on the lidar map and appearance. The standstill measurement needs the
+   For pixel-level change detection there is also a floor of 80% accuracy
+   where predicted. If nothing passes within that budget, pixel-level recall
+   with this sensor stops. The levels above then rest on pooled depth, the
+   lidar and appearance, as step 1c tests. The standstill measurement needs the
    rover; everything else can run on stored or newly recorded looks.
 2. **A larger frozen recall test**: frames and depth copied read-only from the
    rover for a sample of the 4,186 candidate pairs within 25 cm and 5 degrees
