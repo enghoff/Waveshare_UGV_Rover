@@ -62,10 +62,10 @@ def measure(pred: np.ndarray, truth: np.ndarray, region: np.ndarray) -> dict:
     n = int(region.sum())
     errors = np.abs(pred - truth)[have]
     return {"pixels": n,
-            "useful": near.sum() / n if n else float("nan"),
-            "wrong": (have & ~near).sum() / n if n else float("nan"),
-            "unavailable": (region & ~np.isfinite(pred)).sum() / n if n else float("nan"),
-            "accuracy_where_predicted": near.sum() / have.sum() if have.any() else float("nan"),
+            "useful": float(near.sum() / n) if n else float("nan"),
+            "wrong": float((have & ~near).sum() / n) if n else float("nan"),
+            "unavailable": float((region & ~np.isfinite(pred)).sum() / n) if n else float("nan"),
+            "accuracy_where_predicted": float(near.sum() / have.sum()) if have.any() else float("nan"),
             "abs_error_p50_m": float(np.median(errors)) if errors.size else float("nan"),
             "abs_error_p75_m": float(np.percentile(errors, 75)) if errors.size else float("nan")}
 
@@ -105,8 +105,8 @@ def main() -> None:
 
     useful = {t: r["warped"]["useful"] for t, r in results.items()}
     gain = {t: r["warped"]["useful"] - r["copy"]["useful"] for t, r in results.items()}
-    reached = sum(u >= USEFUL_BAR for u in useful.values())
-    better = sum(d > 0 for d in gain.values())
+    reached = int(sum(bool(u >= USEFUL_BAR) for u in useful.values()))
+    better = int(sum(bool(d > 0) for d in gain.values()))
     stop = []
     if reached < TARGETS_NEEDED:
         stop.append(f"only {reached} of {len(useful)} targets reach {USEFUL_BAR:.0%} useful area")
