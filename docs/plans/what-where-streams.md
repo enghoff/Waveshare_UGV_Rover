@@ -1,9 +1,13 @@
 # Prediction in what and where streams
 
 Status: proposed 2026-10-14 at the owner's direction; nothing on the rover.
-Step 1, frozen encoders and nearest-memory prediction, ran offline on the M5
-shakedown the same day and met its frozen bar narrowly:
-[the progress entry](../progress/2026-10-14-what-where-streams-on-the-shakedown.md).
+Steps 1 and 2 ran offline on the M5 shakedown the same day. Step 1 used frozen
+encoders and nearest-memory prediction, and met its frozen bar narrowly
+([entry](../progress/2026-10-14-what-where-streams-on-the-shakedown.md)).
+Step 2 added navigation's pose, and found all four arrivals, but gone found
+nothing real
+([entry](../progress/2026-10-14-what-where-step-2-with-navigations-pose.md)).
+Step 3 is in development.
 This plan replaces the house model of
 [perceiving by prediction](perceiving-by-prediction.md) as the place where
 prediction and observation are compared. That plan's rules for pending changes,
@@ -119,11 +123,11 @@ answer those three weaknesses in turn.
 ## The order of work
 
 1. **Done:** nearest-memory streams on the shakedown, frozen before scoring.
-2. **With navigation's pose from the recording**, the same frozen code on the
+2. **Done: with navigation's pose from the recording**, the same code on the
    looks the store kept no pose for, and rooms judged by where a flagged thing
-   stands rather than where the camera stood. This needs the rover switched on
-   to copy the recording, with no movement. It measures coverage, not a
-   requirement.
+   stands. All four arrivals found by where alone, gone nothing real. It shows
+   the where stream needs a pose in the rearranged room, and so the far-hit
+   heading check or a pose from settling, before it can run on the rover.
 3. **The latest-state memory and lidar ranging** for regions on the floor,
    developed on scene 1 of 2026-10-11 and the controls. With a place for most
    things, the where tolerances can shrink from what absorbs the region
