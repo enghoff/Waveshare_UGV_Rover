@@ -10,8 +10,11 @@ bag_extract.py writes it, WORLD.db a SQLite copy of the world store taken after
 the session, GRID.json the session's nav_grid reply. The watch's state when the
 staging began is the one session.py saved after the wait (--watch); --history
 rebuilds one from recordings instead, for a dry run on a session that did not
-keep it. Each arm after the staging is replayed on its own from that state, as
-arm_replay.py does, with a last report at the arm's end.
+keep it. Everything after the staging is replayed from that state in one
+piece, as the live watch ran, and each arm's changes are those logged within
+it. A staged event is matched to one change only, the nearest furniture-sized
+one of the right kind within FOUND_M in the step that counts for it, each
+change used once.
 """
 import argparse
 import copy
@@ -36,9 +39,10 @@ cw = events.cw
 T_WHAT = 0.3216
 
 
-def feed(watch, rec, t_from, t_to, log=None):
+def feed(watch, rec, t_from, t_to, log=None, reports=None):
     """Scans of rec in [t_from, t_to] into watch, as change_node feeds it; with
-    log (a list), report every REPORT_EVERY_S and once at t_to, logging news."""
+    log (a list), report every REPORT_EVERY_S and once at t_to, logging news;
+    with reports, keep each report whole as (time, changes)."""
     previous = watch.changes() if log is not None else None
     last_report, received, last_yaw = t_from, 0, None
     for k in range(len(rec.ranges)):
@@ -51,6 +55,8 @@ def feed(watch, rec, t_from, t_to, log=None):
             now = watch.changes()
             for g in cw.ChangeWatch.news(now, previous, log, t):
                 log.append(dict(g, logged_at=t))
+            if reports is not None:
+                reports.append((t, now))
             previous = now
         if received % events.EVERY:
             continue
@@ -71,6 +77,8 @@ def feed(watch, rec, t_from, t_to, log=None):
         now = watch.changes()
         for g in cw.ChangeWatch.news(now, previous, log, t_to):
             log.append(dict(g, logged_at=t_to))
+        if reports is not None:
+            reports.append((t_to, now))
 
 
 def as_rows(evs, t_from, t_to, query):
@@ -93,6 +101,37 @@ def as_rows(evs, t_from, t_to, query):
     return rows
 
 
+def counted_one_to_one(record, staged, rows):
+    """M5's counts (score_session.score) with each change matched to one staged
+    event only: in the step that counts for each event, the nearest unused
+    change of the right kind within FOUND_M, furniture-sized before small."""
+    out = m5.score(record, staged, rows)
+    steps = m5.windows(record["entries"])
+    by_step = {w["step"]: w for w in steps}
+    used = set()
+    pairs = []
+    for k, e in enumerate(out["events"]):
+        if e["step"] is None:
+            continue
+        w = by_step[e["step"]]
+        kept, _ = m5.control_count.counted([r for r in rows if w["from"] <= r["logged_at"] <= w["to"]])
+        for j, r in enumerate(kept):
+            d = math.hypot(r["x_m"] - e["at"][0], r["y_m"] - e["at"][1])
+            if r["kind"] == e["kind"] and d <= m5.FOUND_M:
+                pairs.append((not r["large"], d, k, (e["step"], j), r))
+    for e in out["events"]:
+        e["outcome"], e["change"] = ("missed" if e["step"] else e["outcome"]), None
+    taken = set()
+    for small, d, k, key, r in sorted(pairs, key=lambda p: (p[0], p[1])):
+        if k in taken or key in used:
+            continue
+        taken.add(k)
+        used.add(key)
+        out["events"][k]["outcome"] = "found small" if small else "found"
+        out["events"][k]["change"] = {"x_m": r["x_m"], "y_m": r["y_m"], "extent_m": r["extent_m"]}
+    return out
+
+
 def first_steps(steps, staged):
     """For each staged place, the first loop or run after the staging whose
     stops came within the lidar's reach of it, as M5 counts finds."""
@@ -109,9 +148,12 @@ def first_steps(steps, staged):
     return out
 
 
-def named(evs, staged, firsts):
-    """(right, counted): step 3's events at staged places, in the step that
-    counts for that place (first_steps), and how many are named right. A move is right when it left from within FOUND_M of a staged move's
+def named(evs, staged, firsts=None):
+    """(right, counted): of the staged changes step 3 reported anything at in
+    the session (an event within FOUND_M), how many it named right at least
+    once. Naming is asked over the whole session, not only the step that counts
+    for finding: a loop's camera looks where it drives, and the run is what
+    turns it to a change. A move is right when it left from within FOUND_M of a staged move's
     old place and arrived within FOUND_M of a staged move's new place (which of
     two identical things is not asked); a new thing when within FOUND_M of an
     addition. Arrived and gone name nothing and are never right."""
@@ -121,16 +163,21 @@ def named(evs, staged, firsts):
     adds = [a["at"] for a in staged.get("added", [])] + \
         [m["to"] for m in staged.get("also_moved", [])]
     places = froms + tos + adds + [m["from"] for m in staged.get("also_moved", [])]
+    def is_right(e):
+        if e["kind"] == "moved":
+            return any(near(e["from"], f) for f in froms) and any(near(e["to"], t) for t in tos)
+        if e["kind"] == "new thing":
+            return any(near([e["x_m"], e["y_m"]], a) for a in adds)
+        return False
+
     right = counted = 0
-    for e in evs:
-        ends = [e["from"], e["to"]] if e["kind"] == "moved" else [[e["x_m"], e["y_m"]]]
-        if not any(near(p, q) and e["step"] == step for p in ends for q, step in firsts):
+    for q in places:
+        at = [e for e in evs if any(near(p, q) for p in
+                                    ([e["from"], e["to"]] if e["kind"] == "moved" else [[e["x_m"], e["y_m"]]]))]
+        if not at:
             continue
         counted += 1
-        if e["kind"] == "moved":
-            right += any(near(e["from"], f) for f in froms) and any(near(e["to"], t) for t in tos)
-        elif e["kind"] == "new thing":
-            right += any(near([e["x_m"], e["y_m"]], a) for a in adds)
+        right += any(is_right(e) for e in at)
     return right, counted
 
 
@@ -165,22 +212,37 @@ def main():
     regions = load.load(a.world, 1.7e9, max(w["to"] for w in steps) + 1.0, recordings=[rec])
     memory = regions.subset(regions.t < cutoff)
     watch_rows, step3_rows, all_events = [], [], []
-    for w in steps[names.index(staged_in) + 1:]:
-        if w["step"] not in m5.STEPS:
-            continue
-        arm = copy.deepcopy(watch)
-        log = []
-        feed(arm, rec, w["from"], w["to"], log)
-        watch_rows += log
+    arms = [w for w in steps[names.index(staged_in) + 1:] if w["step"] in m5.STEPS]
+    log, reports = [], []
+    if arms:
+        feed(watch, rec, arms[0]["from"], arms[-1]["to"], log, reports)
+    for w in arms:
+        watch_rows += [c for c in log if w["from"] <= c["logged_at"] <= w["to"]]
+        # Step 3 names what the watch reports during the arm, not only what is
+        # news in it: a change loop B logged is still there to be named in the
+        # run. Each change is dated by the first report in the arm that has it.
+        current = []
+        for t, now in reports:
+            if w["from"] <= t <= w["to"]:
+                current += [dict(c, logged_at=t) for c in now]
+        current = sorted(current, key=lambda c: c["logged_at"])
         query = regions.subset((regions.t >= w["from"]) & (regions.t <= w["to"]))
-        evs, _ = events.build([dict(c) for c in log], query, memory, [rec], T_WHAT)
-        step3_rows += as_rows(evs, w["from"], w["to"], query)
+        evs, _ = events.build(current, query, memory, [rec], T_WHAT)
+        # Counted like the watch's log: an event of the same kind within 0.3 m
+        # of one step 3 reported in an earlier arm, or of a change the watch
+        # logged before this arm (while the rover waited, say), is not news.
+        earlier = step3_rows + [c for c in log if c["logged_at"] < w["from"]]
+        for row in as_rows(evs, w["from"], w["to"], query):
+            if not any(o["kind"] == row["kind"] and
+                       math.hypot(o["x_m"] - row["x_m"], o["y_m"] - row["y_m"]) <= 0.3
+                       for o in earlier):
+                step3_rows.append(row)
         all_events += [dict(e, step=w["step"]) for e in evs]
-    by_watch = m5.score(record, staged, watch_rows)
-    by_step3 = m5.score(record, staged, step3_rows)
+    by_watch = counted_one_to_one(record, staged, watch_rows)
+    by_step3 = counted_one_to_one(record, staged, step3_rows)
     found = lambda s: {(e["what"], e["kind"]) for e in s["events"] if e["outcome"] == "found"}
     alarms = lambda s: sum(len(r["false_alarms"]) for r in s["room_controls"] if r["control"])
-    right, counted = named(all_events, staged, first_steps(steps, staged))
+    right, counted = named(all_events, staged)
     fw, f3 = found(by_watch), found(by_step3)
     verdict = {
         "watch_found": len(fw), "step3_found": len(f3), "events_staged": len(by_watch["events"]),

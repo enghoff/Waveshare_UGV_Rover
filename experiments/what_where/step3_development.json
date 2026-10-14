@@ -515,11 +515,12 @@
     ]
    },
    {
-    "kind": "arrived",
+    "kind": "new thing",
     "x_m": -17.21,
     "y_m": -15.24,
     "extent_m": 0.8,
     "large": true,
+    "by": "lidar and camera",
     "regions": [
      100096,
      100104,
@@ -672,12 +673,28 @@
   ],
   "events": [
    {
-    "kind": "arrived",
+    "kind": "moved",
+    "from": [
+     -18.8,
+     -15.84
+    ],
+    "to": [
+     -18.62,
+     -16.48
+    ],
     "x_m": -18.62,
     "y_m": -16.48,
-    "extent_m": 0.65,
+    "cos": 0.753,
     "large": true,
-    "regions": []
+    "regions": [
+     100832,
+     100877
+    ],
+    "remembered": [
+     95582,
+     95563,
+     100635
+    ]
    },
    {
     "kind": "new thing",

@@ -66,6 +66,15 @@ MIN_MOVE_M = 0.5
 #: A thing's evidence is persistent across looks this far apart, as the
 #: watch's own (change_watch.PERSIST_S).
 PERSIST_S = 20.0
+#: What stood at a place before: the regions within HERE_M of it in the
+#: newest HERE_LOOKS remembered looks that viewed it (camera within HERE_VIEW_M,
+#: the place within HERE_HALF_DEG of the camera's axis). A NEW is a new thing
+#: when its regions are unlike all of them; a thing brought back from another
+#: room is new here even if the house has seen one like it.
+HERE_LOOKS = 5
+HERE_M = 1.0
+HERE_VIEW_M = 4.0
+HERE_HALF_DEG = 45.0
 #: Regions are attached to a NEW from this long before the watch first saw it
 #: until a GONE is first seen at the same place (or the visit ends), so that
 #: successive rearrangements in one visit stay apart.
@@ -176,6 +185,34 @@ def _components(rows, linked):
     return sorted(groups.values(), key=lambda g: g[0])
 
 
+class Before:
+    """Remembered looks, for asking what the latest views of a place showed."""
+
+    def __init__(self, memory, mx, my):
+        frames, first = np.unique(memory.frame, return_index=True)
+        posed = memory.posed[first]
+        self.frames = frames[posed]
+        first = first[posed]
+        self.t = memory.shutter[first]
+        self.cx, self.cy, self.yaw = memory.cx[first], memory.cy[first], memory.yaw[first]
+        self.rows = {f: np.flatnonzero(memory.frame == f) for f in self.frames}
+        self.mx, self.my = mx, my
+
+    def here(self, x, y):
+        """Rows of what the newest looks that viewed (x, y) had within HERE_M of it."""
+        d = np.hypot(self.cx - x, self.cy - y)
+        b = np.degrees(np.arctan2(y - self.cy, x - self.cx))
+        off = np.abs((b - self.yaw + 180.0) % 360.0 - 180.0)
+        viewed = np.flatnonzero((d <= HERE_VIEW_M) & (off <= HERE_HALF_DEG))
+        newest = viewed[np.argsort(-self.t[viewed])][:HERE_LOOKS]
+        out = []
+        for k in newest:
+            rows = self.rows[self.frames[k]]
+            near = np.isfinite(self.mx[rows]) & (np.hypot(self.mx[rows] - x, self.my[rows] - y) <= HERE_M)
+            out += list(rows[near])
+        return out
+
+
 def build(changes, query, memory, recs, t_what):
     """The events of one visit: watch changes logged in it (`changes`), the
     visit's regions (`query`) and memory before its cutoff."""
@@ -184,6 +221,7 @@ def build(changes, query, memory, recs, t_what):
     fl = query.floor_sized()
     qx, qy, _src = streams3.places(query, recs)
     mx, my, _msrc = streams3.places(memory, recs)
+    before = Before(memory, mx, my)
     novel = fl & (what > t_what)
     events, used_novel = [], set()
     news = [c for c in changes if c["kind"] == "NEW"]
@@ -191,18 +229,29 @@ def build(changes, query, memory, recs, t_what):
     end_of_visit = float(query.shutter.max()) if query.n else 0.0
     for c in news:
         later = [g["seen_from"] for g in gones if g["seen_from"] > c["seen_from"] and
-                 math.hypot(g["x_m"] - c["x_m"], g["y_m"] - c["y_m"]) <= ATTACH_M + c["extent_m"] / 2]
+                 math.hypot(g["x_m"] - c["x_m"], g["y_m"] - c["y_m"]) <= SAME_CHANGE_M]
         until = min(later) if later else end_of_visit
         when = (query.shutter >= c["seen_from"] - ATTACH_S) & (query.shutter <= until)
         rows = [i for i in _near(qx, qy, c["x_m"], c["y_m"], ATTACH_M + c["extent_m"] / 2)
                 if fl[i] and when[i]]
-        nov = [i for i in rows if novel[i]]
-        # New to the house: novel regions alike to one another, persistent.
-        best = max(_components(nov, lambda i, j: query.vec[i] @ query.vec[j] >= GROUP_COS),
-                   key=len, default=[])
+        # New here: regions unlike everything the latest views of the place
+        # showed, alike to one another, persistent.
+        was = before.here(c["x_m"], c["y_m"])
+        if was:
+            here = 1.0 - (query.vec[rows] @ memory.vec[was].T).max(axis=1) if rows else np.zeros(0)
+        else:
+            here = np.ones(len(rows))
+        alike = lambda i, j: query.vec[i] @ query.vec[j] >= GROUP_COS
+        nov = [i for i, h in zip(rows, here) if h > t_what]
+        best = max(_components(nov, alike), key=len, default=[])
         c["rows"] = rows
-        c["novel"] = persistent(query, best)
-        used_novel.update(nov)
+        # New to the whole house: such a thing cannot have moved here.
+        house = max(_components([i for i in rows if novel[i]], alike), key=len, default=[])
+        c["novel_house"] = persistent(query, house)
+        # A furniture-sized arrival is new when new to this place; a small one,
+        # whose geometry is weak evidence, only when new to the whole house.
+        c["novel"] = persistent(query, best) if c["large"] else c["novel_house"]
+        used_novel.update(i for i in rows if novel[i])
     for c in gones:
         # What stood there: the newest remembered regions at the place, and
         # anything seen there earlier in this visit (a thing that arrived and
@@ -219,7 +268,7 @@ def build(changes, query, memory, recs, t_what):
     while True:
         best = None
         for a, n in enumerate(news):
-            if ("n", a) in taken or n["novel"]:
+            if ("n", a) in taken or n["novel_house"]:
                 continue
             qrows = [i for i in n["rows"] if i not in used_q]
             for b, g in enumerate(gones):

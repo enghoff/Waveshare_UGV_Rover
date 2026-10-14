@@ -127,3 +127,46 @@ chair, 0.64 m away), and the run, replayed on its own, re-found the staged
 changes in a room M5 counts as a control by then. The reasons it named so
 little, and what changes before a next test, are in
 [the session's entry](../../docs/progress/2026-10-14-m5-session-1.md).
+
+## Version 2, after session 1 (2026-10-14), for session 2
+
+Developed on session 1, the shakedown, the controls and scene 1, all now seen;
+the test is M5 session 2. What changed and why:
+
+- **Names are asked over the whole session.** Finding stays M5's (the first
+  step after the staging); naming counts, of the staged changes step 3 reported
+  anything at, how many it named right at least once. On a loop the camera
+  looks where the rover drives; the run is what turns it to a change. In
+  session 1 the run went to look at all five reported changes in its first
+  90 s and named both armchair moves; loop B had seen the arrivals once or not
+  at all.
+- **"New" is new to this place, for a furniture-sized arrival**: its regions
+  are unlike what the newest five remembered looks that viewed the place had
+  within 1 m of it. Session 1's bean bag had been seen two days before, so it
+  was familiar to the house but new here. A small arrival must still be new to
+  the whole house: on the controls, new-to-the-place turned three small lidar
+  blips into new things.
+- **Moves are paired before novelty is asked**, except for an arrival new to
+  the whole house, which cannot have moved here (on the shakedown the black
+  bean bag otherwise paired with an unrelated departure).
+- **An arrival's pictures end at a departure from the same place** (0.5 m),
+  not one anywhere within its radius: session 1's armchair moved 0.57 m, and
+  its own old place cut its pictures off.
+- **Step 3 names what the watch currently reports** during an arm, not only
+  what is news in it, and counts as news only events not reported in an
+  earlier arm or logged by the watch before the arm.
+- **The scorer** replays everything after the staging in one piece, as the
+  live watch ran, and matches each staged event to one change only. Session 1
+  under version 1's scorer found 6 of 7 for both methods with 5 and 6 false
+  alarms; the live log, and version 2's scorer, give 5 of 7 and none.
+
+| Development check | Watch found | Step 3 found | Named right | False alarms, watch / step 3 |
+|---|---|---|---|---|
+| session 1 | 5 of 7 | 5 of 7 | 6 of 6 | 0 / 0 |
+| shakedown (dry, history rebuilt) | 5 of 6 | 5 of 6 | 6 of 7 | 1 / 2 |
+| seven controls (`step3.py`) | | | | 1 event in all |
+
+Both sessions pass on version 2, which says only that it was fixed against
+them. The pass rule for session 2 is unchanged: every staged change the watch
+finds, and one more or four in five named right, and at most one more false
+alarm.
