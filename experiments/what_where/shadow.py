@@ -17,6 +17,12 @@ Memory is every region stored before the earliest change the watch is
 reporting began (less a minute), or before the window when it reports none.
 An event is new when no event of the same kind lies within 0.3 m of it in the
 last hour of the log.
+
+With --act, a new moved event is also handed to the daemon's
+`world_state_relocate`, which carries the moved thing's record to the arrival
+or says why not (world_state/relocate.py); the answer is logged with the
+event. That is the one thing it then changes, through the deployed daemon and
+its journal, and `{"undo": move_id}` on the same call puts a move back.
 """
 import argparse
 import json
@@ -153,7 +159,18 @@ def map_session():
     return int(value[0])
 
 
-def cycle(buffer, store, window, log_dir, seen):
+def act(e):
+    """Hand one moved event to the daemon; its answer, trimmed for the log."""
+    try:
+        r = call("world_state_relocate", {"event": {k: e[k] for k in
+                                                    ("from", "to", "regions", "remembered")}})
+    except Exception as exc:  # the daemon restarting, say: logged, not retried
+        return {"ok": False, "error": repr(exc)}
+    return {k: r.get(k) for k in ("ok", "done", "why", "error", "entity_id", "move_id", "filed",
+                                  "folded") if r.get(k) is not None}
+
+
+def cycle(buffer, store, window, log_dir, seen, acting=False):
     rec = buffer.recording()
     if rec is None:
         return 0
@@ -176,6 +193,12 @@ def cycle(buffer, store, window, log_dir, seen):
             continue
         seen.append((key[0], key[1], key[2], now))
         fresh.append(dict(e, at=now, memory_cutoff=cutoff, version="step 3 version 3"))
+    if acting:
+        for e in fresh:
+            if e["kind"] == "moved":
+                e["acted"] = act(e)
+                print(time.strftime("%H:%M:%S"), "moved", e["from"], "->", e["to"], e["acted"],
+                      flush=True)
     if fresh:
         os.makedirs(log_dir, exist_ok=True)
         path = os.path.join(log_dir, time.strftime("shadow-%Y%m%d.jsonl"))
@@ -191,6 +214,8 @@ def main():
     p.add_argument("--window", type=float, default=900.0)
     p.add_argument("--log", default=os.path.expanduser("~/.ugv/whatwhere"))
     p.add_argument("--once", action="store_true")
+    p.add_argument("--act", action="store_true",
+                   help="hand each new moved event to the daemon's world_state_relocate")
     p.add_argument("--warmup", type=float, default=30.0,
                    help="seconds of scans and transforms to gather before the first cycle")
     a = p.parse_args()
@@ -201,7 +226,7 @@ def main():
     while True:
         began = time.time()
         try:
-            n = cycle(buffer, store, a.window, a.log, seen)
+            n = cycle(buffer, store, a.window, a.log, seen, acting=a.act)
             print(time.strftime("%H:%M:%S"), "new events", n, "took %.1f s" % (time.time() - began),
                   flush=True)
         except Exception as exc:  # a cycle that fails is logged and the next one tried
