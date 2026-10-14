@@ -1,0 +1,261 @@
+{
+ "verdict": {
+  "watch_found": 2,
+  "step3_found": 2,
+  "events_staged": 2,
+  "step3_finds_all_the_watch_finds": true,
+  "step3_finds_more": 0,
+  "named_right": 0,
+  "named_counted": 2,
+  "watch_false_alarms": 0,
+  "step3_false_alarms": 0,
+  "passes": false
+ },
+ "watch": {
+  "events": [
+   {
+    "what": "grey armchair, back to its place",
+    "kind": "GONE",
+    "at": [
+     -18.4,
+     -15.4
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -18.45,
+     "y_m": -15.38,
+     "extent_m": 0.8
+    }
+   },
+   {
+    "what": "grey armchair, back to its place",
+    "kind": "NEW",
+    "at": [
+     -17.18,
+     -16.73
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -17.13,
+     "y_m": -16.54,
+     "extent_m": 0.6
+    }
+   }
+  ],
+  "room_controls": [
+   {
+    "step": "loop A",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   }
+  ],
+  "doors": []
+ },
+ "step3": {
+  "events": [
+   {
+    "what": "grey armchair, back to its place",
+    "kind": "GONE",
+    "at": [
+     -18.4,
+     -15.4
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -18.45,
+     "y_m": -15.38,
+     "extent_m": 0.8
+    }
+   },
+   {
+    "what": "grey armchair, back to its place",
+    "kind": "NEW",
+    "at": [
+     -17.18,
+     -16.73
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -17.15,
+     "y_m": -16.69,
+     "extent_m": 0.6
+    }
+   }
+  ],
+  "room_controls": [
+   {
+    "step": "loop A",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "living",
+    "control": false,
+    "false_alarms": [
+     {
+      "kind": "GONE",
+      "at": [
+       -19.17,
+       -16.65
+      ],
+      "extent_m": 0.6,
+      "held_up": null
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -18.28,
+       -17.59
+      ],
+      "extent_m": 0.6,
+      "held_up": null
+     }
+    ]
+   }
+  ],
+  "doors": []
+ },
+ "events": [
+  {
+   "kind": "moved",
+   "from": [
+    -19.17,
+    -16.65
+   ],
+   "to": [
+    -17.15,
+    -16.69
+   ],
+   "x_m": -17.15,
+   "y_m": -16.69,
+   "cos": 0.807,
+   "large": true,
+   "regions": [
+    92932,
+    92943,
+    92954,
+    92986,
+    92994,
+    93003,
+    93018,
+    93041,
+    93048,
+    93056,
+    93125,
+    93140,
+    93155,
+    93166,
+    93178,
+    93251,
+    93258,
+    93263,
+    93269,
+    93274,
+    93282,
+    93369,
+    93375,
+    93398,
+    93419
+   ],
+   "remembered": [
+    92413,
+    92408,
+    92404,
+    92394,
+    91464
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "gone",
+   "x_m": -18.45,
+   "y_m": -15.38,
+   "extent_m": 0.8,
+   "large": true,
+   "remembered": [
+    92623,
+    92625,
+    92538,
+    92527,
+    92519
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "new thing",
+   "x_m": -18.28,
+   "y_m": -17.59,
+   "large": false,
+   "by": "camera",
+   "regions": [
+    93062,
+    93069,
+    93077,
+    93109,
+    93131
+   ],
+   "step": "run"
+  }
+ ]
+}

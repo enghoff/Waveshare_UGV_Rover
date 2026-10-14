@@ -21,3 +21,12 @@ map of the same session, and memory the world store's looks before each
 replay's staging. A replay is not an M5 session: its result is reported beside
 M5's, not counted in it. Two staged events and a few room-controls cannot give
 a rate; this asks whether step 3 behaves on a day it has never seen.
+
+## Result
+
+[replay1010_out/](replay1010_out/). The return: found both ends by both
+methods, named 0 of 2 by step 3 (paired with a small departure by the other,
+identical armchair). Controls: watch 0 false alarms, step 3 2, both
+camera-only new things: a person sitting in an armchair, and a close-up of a
+tissue box. Step 3 fails here.
+[The entry](../../docs/progress/2026-10-14-what-where-step-3-replayed-on-10-10.md).

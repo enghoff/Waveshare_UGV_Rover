@@ -1,0 +1,182 @@
+{
+ "verdict": {
+  "watch_found": 0,
+  "step3_found": 0,
+  "events_staged": 0,
+  "step3_finds_all_the_watch_finds": true,
+  "step3_finds_more": 0,
+  "named_right": 0,
+  "named_counted": 0,
+  "watch_false_alarms": 0,
+  "step3_false_alarms": 2,
+  "passes": false
+ },
+ "watch": {
+  "events": [],
+  "room_controls": [
+   {
+    "step": "loop A",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   }
+  ],
+  "doors": []
+ },
+ "step3": {
+  "events": [],
+  "room_controls": [
+   {
+    "step": "loop A",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "living",
+    "control": true,
+    "false_alarms": [
+     {
+      "kind": "NEW",
+      "at": [
+       -18.28,
+       -17.62
+      ],
+      "extent_m": 0.6,
+      "held_up": false
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -18.69,
+       -17.02
+      ],
+      "extent_m": 0.6,
+      "held_up": false
+     }
+    ]
+   },
+   {
+    "step": "loop B",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   }
+  ],
+  "doors": []
+ },
+ "events": [
+  {
+   "kind": "new thing",
+   "x_m": -18.28,
+   "y_m": -17.62,
+   "large": false,
+   "by": "camera",
+   "regions": [
+    91941,
+    91959,
+    92002,
+    92011
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "new thing",
+   "x_m": -18.69,
+   "y_m": -17.02,
+   "large": false,
+   "by": "camera",
+   "regions": [
+    91958,
+    92001,
+    92009
+   ],
+   "step": "run"
+  }
+ ]
+}
