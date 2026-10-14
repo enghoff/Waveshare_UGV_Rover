@@ -96,6 +96,12 @@ class Buffer:
                 elif t.header.frame_id == "map" and t.child_frame_id == "odom":
                     self.map.append(row)
 
+    def close(self):
+        import rclpy
+        self.node.destroy_node()
+        rclpy.shutdown()
+        self.thread.join(timeout=5)
+
     def recording(self):
         """What the buffer holds now, as a recorded.Recording, older than
         BUFFER_S dropped; None until it holds scans and both transforms."""
@@ -184,10 +190,13 @@ def main():
     p.add_argument("--window", type=float, default=900.0)
     p.add_argument("--log", default=os.path.expanduser("~/.ugv/whatwhere"))
     p.add_argument("--once", action="store_true")
+    p.add_argument("--warmup", type=float, default=30.0,
+                   help="seconds of scans and transforms to gather before the first cycle")
     a = p.parse_args()
     buffer = Buffer()
     store = Store(map_session())
     seen = []
+    time.sleep(a.warmup)
     while True:
         began = time.time()
         try:
@@ -199,6 +208,7 @@ def main():
         if a.once:
             break
         time.sleep(max(1.0, a.every - (time.time() - began)))
+    buffer.close()
 
 
 if __name__ == "__main__":
