@@ -45,11 +45,12 @@ def test_range_along():
     check("returns past the lidar's band are not read",
           lidar_ranges.range_along(s, 30.0, 6.0), None)
     check("a malformed scan gives no range", lidar_ranges.range_along({}, 0.0, 5.0), None)
-    check("a box reaching the floor and furniture-sized counts",
-          lidar_ranges.floor_sized([0.4, 0.5, 0.6, 0.8]), True)
-    check("...one high in the picture does not",
-          lidar_ranges.floor_sized([0.4, 0.1, 0.6, 0.4]), False)
-    check("...nor a sliver", lidar_ranges.floor_sized([0.4, 0.7, 0.41, 0.8]), False)
+    check("a region whose lower edge is below the horizontal reaches the lidar's plane",
+          lidar_ranges.reaches_down(-5.0), True)
+    check("...as does one ending a couple of degrees above it",
+          lidar_ranges.reaches_down(lidar_ranges.REACH_DEG), True)
+    check("...but not one ending higher", lidar_ranges.reaches_down(2.5), False)
+    check("...nor one with no elevation", lidar_ranges.reaches_down(None), False)
 
 
 class Region(object):
@@ -81,7 +82,7 @@ def test_fill():
     depth = Ranged(range_m=1.7, sigma_m=0.05, valid=0.9, method="outline")
     found, note = Looker({"scan": s}, now)._lidar_fill(
         capture, [middle, high, middle], [None, None, depth], True)
-    check("an unranged furniture-sized region takes the lidar's range",
+    check("an unranged region reaching the floor takes the lidar's range",
           (found[0].range_m, found[0].method, found[0].sigma_m),
           (1.8, "lidar", lidar_ranges.SIGMA_M))
     check("...one high in the picture is left alone", found[1], None)
@@ -96,6 +97,18 @@ def test_fill():
     check("nor one with no pose", found, [None])
     found, _ = Looker({}, now)._lidar_fill(capture, [middle], [None], True)
     check("nor one whose check returned no scan", found, [None])
+    # The armchair from the balcony door: a level look, and the box ends just
+    # above the middle of the picture, a degree over the horizontal.
+    level = Region([0.43, 0.32, 0.62, 0.46])
+    found, _ = Looker({"scan": s}, now)._lidar_fill(capture, [level], [None], True)
+    check("a level look's box ending a degree above the horizontal is ranged",
+          found[0] is not None and found[0].range_m, 1.8)
+    # Tilted up 20 degrees, a box ending at 0.6 of the picture reads 6.9 degrees
+    # up, and 2.0 once the tilt's measured bias of 4.9 is taken off.
+    found, _ = Looker({"scan": s}, now)._lidar_fill(
+        dict(capture, tilt=20.0), [Region([0.45, 0.3, 0.55, 0.6])], [None], True)
+    check("the tilted camera's measured elevation bias is taken off",
+          found[0] is not None and found[0].range_m, 1.8)
     # Panned 30 degrees right, the thing 30 degrees right of the nose is ahead of
     # the camera.
     s = scan(near_deg=-30.0, near_m=2.4, width_deg=20.0)
