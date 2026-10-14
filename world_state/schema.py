@@ -275,4 +275,36 @@ SCHEMA = """
         entity_before  TEXT,
         suspects_json  TEXT NOT NULL
     );
+    -- A record carried to where its thing was moved (relocate.py): the change
+    -- that moved it, where it was placed before, every look filed under it by
+    -- the move with where that look was before, and every record folded into
+    -- it, so that a move can be put back. `moved_since` is the earliest look of
+    -- the arrival; the record's place is refitted from its looks since then.
+    CREATE TABLE IF NOT EXISTS moves (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        applied_at       REAL NOT NULL,
+        map_session      INTEGER NOT NULL,
+        entity_id        TEXT NOT NULL,
+        event_json       TEXT NOT NULL,
+        placement_before TEXT,
+        moved_since      REAL NOT NULL,
+        exemplars_before       BLOB,
+        exemplars_alone_before BLOB,
+        rolled_back_at   REAL
+    );
+    CREATE TABLE IF NOT EXISTS move_looks (
+        move_id        INTEGER NOT NULL,
+        observation_id INTEGER NOT NULL,
+        entity_before  TEXT,
+        note_before    TEXT,
+        PRIMARY KEY (move_id, observation_id)
+    );
+    CREATE TABLE IF NOT EXISTS move_folds (
+        move_id         INTEGER NOT NULL,
+        entity_id       TEXT NOT NULL,
+        row_json        TEXT NOT NULL,
+        exemplars       BLOB,
+        exemplars_alone BLOB,
+        PRIMARY KEY (move_id, entity_id)
+    );
 """

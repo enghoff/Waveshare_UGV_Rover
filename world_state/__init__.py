@@ -45,6 +45,7 @@ from . import merging
 from . import oak
 from . import outline
 from . import rebuild
+from . import relocate
 from . import resolve
 from . import search
 from . import snapshot

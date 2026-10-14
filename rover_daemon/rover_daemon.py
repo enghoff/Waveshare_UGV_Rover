@@ -73,7 +73,9 @@ LOCAL_ONLY = ("run_script", "start_script", "script_stop", "list_api",
               # copies that follow: one replaces the rover's map and world, one
               # destroys a copy for good. See rover_snapshots.py.
               "snapshot_save", "snapshot_restore", "snapshot_delete",
-              "snapshot_rename")
+              "snapshot_rename",
+              # Moves a thing's record and its looks; see world_state/relocate.py.
+              "world_state_relocate")
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
 

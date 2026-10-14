@@ -432,6 +432,16 @@ class WorldStore:
                 (entity_id, int(map_session), entity_id)).fetchall()
         return {int(row[0]) for row in rows}
 
+    def moved_since(self, entity_id: str, map_session: int) -> float | None:
+        """When this thing's latest standing move under this map began, or None:
+        its place is worked out from its looks since then (relocate.py)."""
+        with self._lock:
+            row = self.db.execute(
+                "SELECT MAX(moved_since) FROM moves WHERE entity_id = ? AND"
+                " map_session = ? AND rolled_back_at IS NULL",
+                (entity_id, int(map_session))).fetchone()
+        return None if row is None or row[0] is None else float(row[0])
+
     def same_object_suspects(self, map_session: int) -> dict[str, list[str]]:
         """Every placed thing an aimed region suggested is the same object as
         another, both ways round: `{thing: [things]}`."""
@@ -1248,7 +1258,8 @@ class WorldStore:
             self.db.execute("DELETE FROM counters")
             # And what a merge run would put back, which names things that have
             # just stopped existing. See merging.py.
-            for journal in ("merge_runs", "merge_entities", "merge_looks"):
+            for journal in ("merge_runs", "merge_entities", "merge_looks",
+                            "moves", "move_looks", "move_folds"):
                 self.db.execute(f"DELETE FROM {journal}")
             self.db.execute("REPLACE INTO meta(key, value) VALUES('generation', ?)",
                             (new_generation(),))

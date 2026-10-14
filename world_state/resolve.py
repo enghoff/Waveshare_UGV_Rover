@@ -1289,8 +1289,12 @@ def _replace_placement(store, entity_id: str, session: int,
     average of two rooms. The same rule, for the same reason, as the one
     `_world_sight_lines` applies when it works out where to stand.
     """
+    # **And only its looks since it was last moved** (relocate.py): the looks
+    # of the place it left would pull it back there.
+    since = getattr(store, "moved_since", lambda *_: None)(entity_id, session)
     observations = [one for one in store.observations(entity_id, limit=24)
-                    if one.get("map_session") == session]
+                    if one.get("map_session") == session
+                    and (since is None or float(one.get("observed_at") or 0.0) >= since)]
     rays = [ray for ray in (ray_of(one, reach) for one in observations) if ray]
     best = locate.best_fix(rays)
     placed = None

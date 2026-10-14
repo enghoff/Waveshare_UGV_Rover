@@ -1466,6 +1466,33 @@ class RoverWorld:
             return world_state.merging.apply(store, arguments["apply"],
                                              reach=self._world_reach)
 
+    def _tool_world_state_relocate(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Carry a thing's record to where the thing was moved. A control call,
+        served on loopback only.
+
+        `{"event": {"from": [x, y], "to": [x, y], "regions": [...], "remembered":
+        [...]}}` is one of step 3's moved events (experiments/what_where); the
+        answer says whether the record moved and why, and a move is journalled.
+        `{"undo": move_id}` puts one back. See world_state/relocate.py. The
+        rover's own looks are held off only while it writes.
+        """
+        why = self._world_ready()
+        if why:
+            return {"ok": False, "error": why}
+        store = self._world_store()
+        inspector = self._world_inspector()
+        with inspector.not_looking(CLEAR_WAIT_S) as idle:
+            if not idle:
+                return {"ok": False,
+                        "error": f"an inspection has been running for longer than "
+                                 f"{CLEAR_WAIT_S:.0f} s; nothing was changed"}
+            if arguments.get("undo") is not None:
+                return world_state.relocate.undo(store, arguments["undo"])
+            event = arguments.get("event")
+            if not isinstance(event, dict):
+                return {"ok": False, "error": "give the moved event as `event`"}
+            return world_state.relocate.relocate(store, event, store.map_session())
+
     # There was a `world_map_session` control call here, and it is gone. It read
     # like a question -- which map session is this? -- and it was an instruction:
     # every call minted a new one, which is to say it told the rover that

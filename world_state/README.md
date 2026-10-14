@@ -186,6 +186,20 @@ things move it:
   ...]}` joins the accepted ones, journalling both things and every moved look, and
   `{"rollback": true}` puts the last run back exactly. See
   [the runbook](../docs/runbooks/world-state-merge.md).
+- **A thing's record follows it when it is moved**, where something says it moved.
+  A record stays where its thing stood, so a moved thing's next looks used to meet
+  nothing and become a new record. `world_state_relocate` takes one moved event of
+  the what/where plan's step 3 -- a place the lidar saw empty and another it saw
+  filled, with pictures at the two that look alike -- files the arrival's looks
+  under the record that held the old place, folds in a record made only of the
+  arrival, and places the record at the arrival; from then on its place is refitted
+  from its looks since the move only ([relocate.py](relocate.py)). It refuses when
+  that record was not placed at the departure or does not look like the arrival,
+  and when another look-alike filed before the move stands nearer the arrival,
+  which is how it refused to swap the two identical armchairs on the shakedown.
+  Every move is journalled and `{"undo": move_id}` puts it back. Since 2026-10-14
+  the step 3 shadow runner on the rover, an experiment outside the deploy tree,
+  calls it for each moved event it builds.
 
 The clear is refused while a look is in flight, after waiting `CLEAR_WAIT_S` for
 it. The console reports that as `not cleared` with the reason beside it, and the
@@ -509,6 +523,8 @@ The daemon exposes control calls on TCP 8769 for the console and diagnostics:
 - `world_state_merge`: which things look like one object, and joining the pairs a
   person accepted, or putting the last joining back
   ([the runbook](../docs/runbooks/world-state-merge.md))
+- `world_state_relocate`: a moved thing's record carried to where it went, or a
+  move put back; loopback only
 - `world_inspect`
 - `world_state_check`
 
