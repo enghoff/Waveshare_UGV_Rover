@@ -54,7 +54,7 @@ Results are in `warm-baseline-s1.json` and `warm-lidar-s1.json`.
 | | Without lidar | With lidar |
 |---|---|---|
 | records holding both armchairs | 379 (2 and 8), 838 (3 and 1) | none |
-| armchair with the throw, largest record | 379 with 8 of 23 | 488 with 13 of 21 |
+| armchair with the throw, largest record | 379 with 8 of 21 | 488 with 13 of 21 |
 | plain armchair, largest record | 923 with 11 of 27 | 924 with 11 of 27 |
 | records at the end | 685 | 685 |
 | regions filed, of 3,047 | 1,193 | 1,181 |
