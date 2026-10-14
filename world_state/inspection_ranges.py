@@ -5,7 +5,7 @@ import math
 import time
 from typing import Any
 
-from . import lidar_ranges, oak, outline, view
+from . import lidar_ranges, locate, oak, outline, view
 from .depth_client import (NO_DEPTH_ANSWER, NOTHING_TO_MEASURE, OUTSIDE_VIEW,
                            TURNING, Ranged)
 
@@ -87,8 +87,9 @@ class InspectionRanges:
         return found, note
 
     def _lidar_fill(self, capture: dict[str, Any], regions: list, found, still: bool):
-        """The look's ranges, with a lidar range for each furniture-sized region
-        the depth camera gave none, and one clause for the diagnostics line.
+        """The look's ranges, with a lidar range for each region reaching down to
+        the lidar's plane that the depth camera gave none, and one clause for the
+        diagnostics line.
 
         Only for a look taken standing still, with a pose, whose own heading
         check measured a scan in the last `LIDAR_SCAN_FRESH_S`: the scan comes
@@ -103,16 +104,23 @@ class InspectionRanges:
             return found, ""
         found = list(found or []) + [None] * (len(regions) - len(found or []))
         pan = float(capture.get("pan") or 0.0)
+        tilt = float(capture.get("tilt") or 0.0)
+        size, lens = capture.get("frame_size"), capture.get("lens")
         filled = 0
         for index, region in enumerate(regions):
             one = found[index]
             if one is not None and one.range_m is not None:
                 continue
             bbox = getattr(region, "bbox", None)
-            if not lidar_ranges.floor_sized(bbox):
+            try:
+                left, _top, right, bottom = (float(value) for value in bbox)
+            except (TypeError, ValueError):
                 continue
-            measured = view._from_box(bbox, float(capture.get("tilt") or 0.0),
-                                      capture.get("frame_size"), capture.get("lens"))
+            lower = view.elevation_deg((left + right) / 2.0, bottom, tilt, size, lens)
+            if lower is None or not lidar_ranges.reaches_down(
+                    lower - locate.ELEVATION_BIAS_DEG.get(round(tilt), 0.0)):
+                continue
+            measured = view._from_box(bbox, tilt, size, lens)
             if measured is None:
                 continue
             offset_deg, span_deg = measured

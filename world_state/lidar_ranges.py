@@ -9,23 +9,30 @@ record placed 0.95 m along their line of sight, beside the other armchair. The
 armchair they showed was 2.7 m away. A range would have refused every one
 (docs/progress/2026-10-14-m5-session-1-continued.md).
 
-The lidar sweeps all round, about 20 cm above the floor, so it speaks for
-things that reach the floor: a region whose box comes down into the lower part
-of the picture and is large enough to be furniture (`floor_sized`). Its range is
-the 25th percentile of the lidar's returns across the middle half of the
-region's width, never narrower than `MIN_HALF_DEG` either side; on the controls
-of 2026-10-11 that put 57% of such regions within 0.3 m of the depth camera's
-own range for the same region, and one in ten about 0.8 m short, where
-something nearer stood in the lidar's plane. So it is kept as a range with
-`SIGMA_M` of uncertainty, read from the scan navigation's position check
-measured the look's pose with (`nav_map.measure_pose`), and only for a look
-taken standing still. The store calls it `lidar` in `range_from`.
+The lidar sweeps all round, about 20 cm above the floor and 3.5 cm under the
+gimbal camera, so it speaks for things that reach down into its plane: a region
+whose lower edge lies no more than `REACH_DEG` above the horizontal
+(`reaches_down`). Its range is the 25th percentile of the lidar's returns across
+the middle half of the region's width, never narrower than `MIN_HALF_DEG` either
+side. On M5 sessions 1 and 2 of 2026-10-14, 173 regions had both: 51% landed
+within 0.3 m of the depth camera's own range for the same region, 85% within
+1 m, and 15% were more than 0.8 m short, where something nearer stood in the
+lidar's plane. A rule on the box's place in the picture did as well on the
+looks tilted up and could not see the level ones, which is where the five
+armchair looks were taken. So it is kept as a range with `SIGMA_M` of
+uncertainty, read from the scan navigation's position check measured the look's
+pose with (`nav_map.measure_pose`), and only for a look taken standing still.
+The store calls it `lidar` in `range_from`.
 """
 from __future__ import annotations
 
 import math
 from typing import Any
 
+#: How far above the horizontal a region's lower edge may lie and still reach the
+#: lidar's plane, in degrees: the plane is under a degree below the camera's
+#: horizontal across a room, and an elevation is good to 2.2 degrees.
+REACH_DEG = 2.0
 #: The narrowest half-width read, in degrees either side of a region's middle.
 MIN_HALF_DEG = 1.5
 #: Which of the returns across the region is its range.
@@ -39,15 +46,13 @@ MAX_M = 6.0
 METHOD = "lidar"
 
 
-def floor_sized(bbox) -> bool:
-    """A box that reaches the lower part of the picture and is furniture-sized:
-    reaching below 57% of its height, covering 1.2% of it and a tenth of it tall
-    (the labelling floor of the M5 shakedown)."""
+def reaches_down(lower_edge_deg) -> bool:
+    """A region whose lower edge, in degrees above the horizontal with the
+    tilt's bias out, comes down to the lidar's plane."""
     try:
-        x0, y0, x1, y1 = (float(v) for v in bbox)
+        return float(lower_edge_deg) <= REACH_DEG
     except (TypeError, ValueError):
         return False
-    return y1 >= 0.57 and (x1 - x0) * (y1 - y0) >= 0.012 and (y1 - y0) >= 0.1
 
 
 def _percentile(values: list[float], q: float) -> float:
