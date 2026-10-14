@@ -227,7 +227,8 @@ def main():
                 current += [dict(c, logged_at=t) for c in now]
         current = sorted(current, key=lambda c: c["logged_at"])
         query = regions.subset((regions.t >= w["from"]) & (regions.t <= w["to"]))
-        evs, _ = events.build(current, query, memory, [rec], T_WHAT)
+        evs, _ = events.build(current, query, memory, [rec], T_WHAT,
+                              person=events.people(a.world, query))
         # Counted like the watch's log: an event of the same kind within 0.3 m
         # of one step 3 reported in an earlier arm, or of a change the watch
         # logged before this arm (while the rover waited, say), is not news.

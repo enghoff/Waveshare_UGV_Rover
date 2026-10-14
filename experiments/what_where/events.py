@@ -29,9 +29,14 @@ import sys
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-for _where in (os.path.join(HERE, "..", "..", "ros_nav"),):
-    sys.path.insert(0, _where)
-sys.path.insert(0, os.path.join(HERE, "..", "m5_changes"))
+for _where in (os.path.join(HERE, "..", "..", "ros_nav"), os.path.expanduser("~/ugv/ros_nav")):
+    if os.path.exists(os.path.join(_where, "change_watch.py")):
+        sys.path.insert(0, _where)
+        break
+for _where in (os.path.join(HERE, "..", "m5_changes"), os.path.expanduser("~/m5")):
+    if os.path.exists(os.path.join(_where, "arm_replay.py")):
+        sys.path.insert(0, _where)
+        break
 import change_watch as cw  # noqa: E402
 from arm_replay import grid_of  # noqa: E402
 from change_detect import compose, interp_pose, last_pose  # noqa: E402
@@ -71,6 +76,25 @@ PERSIST_S = 20.0
 #: close-up from one standing place is novelty of view, not a change (version
 #: 3; on 2026-10-10 a tissue box seen close from one place passed for new).
 VIEW_SPREAD_M = 0.5
+#: A region shows a person when its SigLIP2 vector meets "a photo of a person"
+#: (person_text.npy, from the text tower the rover's search uses) at this
+#: cosine or more. Set on 2026-10-14 from session 2: the people in the corridor
+#: scored 0.086-0.106 and a painted portrait 0.09-0.106; armchairs 0.03, the
+#: cabinet at most 0.056, bean bags at most 0.061, the ladder 0.028. A person
+#: half hidden in an armchair scored 0.06 and is not caught (version 3).
+PERSON_COS = 0.085
+PERSON_TEXT = os.path.join(HERE, "person_text.npy")
+
+
+def people(db_path, query):
+    """The mask of a visit's regions that show a person."""
+    import load
+    if query.n == 0:
+        return np.zeros(0, bool)
+    text = np.load(PERSON_TEXT)[0]
+    return (load.siglip_of(db_path, query.id) @ text) >= PERSON_COS
+
+
 #: What stood at a place before: the regions within HERE_M of it in the
 #: newest HERE_LOOKS remembered looks that viewed it (camera within HERE_VIEW_M,
 #: the place within HERE_HALF_DEG of the camera's axis). A NEW is a new thing
@@ -227,12 +251,16 @@ class Before:
         return out
 
 
-def build(changes, query, memory, recs, t_what):
+def build(changes, query, memory, recs, t_what, person=None):
     """The events of one visit: watch changes logged in it (`changes`), the
-    visit's regions (`query`) and memory before its cutoff."""
+    visit's regions (`query`) and memory before its cutoff. `person`, a mask
+    over the visit's regions, marks the ones showing a person: a person is new
+    to the house every time and is never a new thing (version 3)."""
     changes = merged(changes)
     what = streams.what_scores(query, memory)
     fl = query.floor_sized()
+    if person is not None:
+        fl = fl & ~np.asarray(person, bool)
     qx, qy, _src = streams3.places(query, recs)
     mx, my, _msrc = streams3.places(memory, recs)
     before = Before(memory, mx, my)

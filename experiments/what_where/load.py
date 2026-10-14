@@ -80,7 +80,33 @@ class Regions:
         return (y1 >= 0.57) & ((x1 - x0) * (y1 - y0) >= 0.012) & ((y1 - y0) >= 0.1)
 
 
-def load(db_path, start, end, map_session=67, recordings=None):
+def siglip_of(db_path, ids):
+    """The stored SigLIP2 vectors of these regions, unit length, in their order;
+    a zero row where a region has none."""
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    got = {}
+    ids = [int(i) for i in ids]
+    for k in range(0, len(ids), 500):
+        part = ids[k:k + 500]
+        for oid, blob in con.execute("select id, siglip_blob from observations where id in (%s)"
+                                     % ",".join("?" * len(part)), part):
+            if blob:
+                got[oid] = _unit(blob)
+    con.close()
+    width = len(next(iter(got.values()))) if got else 768
+    return np.stack([got.get(i, np.zeros(width)) for i in ids]) if ids else np.zeros((0, width))
+
+
+def concat(a, b):
+    """Two Regions as one, a's rows first."""
+    out = object.__new__(Regions)
+    for k, v in a.__dict__.items():
+        out.__dict__[k] = (np.concatenate([v, b.__dict__[k]]) if isinstance(v, np.ndarray) else v)
+    out.n = a.n + b.n
+    return out
+
+
+def load(db_path, start, end, map_session=67, recordings=None, after_id=0):
     """Regions from the gimbal camera observed in [start, end), oldest first.
 
     With recordings (recorded.Recording), a look the store kept no pose for
@@ -95,9 +121,9 @@ def load(db_path, start, end, map_session=67, recordings=None):
         " f.taken_at, o.span_deg"
         " from observations o left join frames f on f.id = o.frame_id"
         " where o.source='perception' and o.camera='gimbal'"
-        " and o.map_session=? and o.observed_at>=? and o.observed_at<?"
+        " and o.map_session=? and o.observed_at>=? and o.observed_at<? and o.id>?"
         " and o.dino_alone_blob is not null order by o.observed_at, o.id",
-        (map_session, start, end))
+        (map_session, start, end, after_id))
     rows = []
     for (oid, t, frame, pose, pan, bearing, rng, bbox, alone, tilt, taken, span) in cur:
         pose = json.loads(pose) if pose else None
@@ -137,8 +163,11 @@ def _recorded(recordings, t, pan, tilt, bbox):
 
 
 def _view():
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    if root not in sys.path:
-        sys.path.insert(0, root)
+    for root in (os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")),
+                 os.path.expanduser("~/ugv")):
+        if os.path.isdir(os.path.join(root, "world_state")):
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            break
     from world_state import view
     return view

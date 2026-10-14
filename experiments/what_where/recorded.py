@@ -13,7 +13,10 @@ import sys
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "m5_changes"))
+for _where in (os.path.join(HERE, "..", "m5_changes"), os.path.expanduser("~/m5")):
+    if os.path.exists(os.path.join(_where, "change_detect.py")):
+        sys.path.insert(0, _where)
+        break
 from change_detect import compose, interp_pose, last_pose  # noqa: E402
 
 #: A look taken while the rover turned faster than this gets no recorded pose:
@@ -28,8 +31,8 @@ LIDAR_MAX_M = 6.0
 
 
 class Recording:
-    def __init__(self, path):
-        d = np.load(path)
+    def __init__(self, path=None, arrays=None):
+        d = np.load(path) if path is not None else arrays
         self.odom = d["odom_tf"][np.argsort(d["odom_tf"][:, 0])]
         self.map = d["map_tf"][np.argsort(d["map_tf"][:, 0])]
         self.ranges = d["ranges"]

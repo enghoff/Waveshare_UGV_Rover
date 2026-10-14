@@ -46,7 +46,8 @@ def main(folder, out=None):
         memory = allr.subset(allr.t < C)
         query = allr.subset((allr.t >= A) & (allr.t < B))
         changes = [dict(c) for c in logged if A <= c["logged_at"] <= B]
-        evs, changes = events.build(changes, query, memory, recs, T_WHAT)
+        evs, changes = events.build(changes, query, memory, recs, T_WHAT,
+                                    person=events.people(run.DB, query))
         report.append({"window": name, "changes": [{k: c[k] for k in
                        ("kind", "x_m", "y_m", "extent_m", "large", "logged_at")} for c in changes],
                        "events": evs})
