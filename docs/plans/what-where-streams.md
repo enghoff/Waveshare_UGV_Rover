@@ -167,8 +167,10 @@ six as the watch, three of its four named right, on evidence already seen.
    shakedown and both M5 sessions it kept three of six moved things' records
    against one, every move the right object
    ([entry](../progress/2026-10-14-identity-across-a-move.md)). Development
-   only; frozen, and tested on the next staged session from a snapshot taken
-   before its staging.
+   only. Deployed on 2026-10-14 as `world_state_relocate`, called by the
+   shadow runner with `--act`; replayed, the deployed version acts on four of
+   the nine events, each right, with the same counts. Its test is the next
+   staged session, from a snapshot taken before its staging.
 
 **Gate for each step:** frozen before scoring. Against the watch alone it must
 find every staged change the watch finds, add one the watch misses or name

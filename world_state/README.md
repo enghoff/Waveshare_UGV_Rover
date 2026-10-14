@@ -197,9 +197,9 @@ things move it:
   that record was not placed at the departure or does not look like the arrival,
   and when another look-alike filed before the move stands nearer the arrival,
   which is how it refused to swap the two identical armchairs on the shakedown.
-  Every move is journalled and `{"undo": move_id}` puts it back. Since 2026-10-14
-  the step 3 shadow runner on the rover, an experiment outside the deploy tree,
-  calls it for each moved event it builds.
+  Every move is journalled and `{"undo": move_id}` puts it back. What calls it is
+  the step 3 shadow runner, an experiment outside the deploy tree, when started
+  with `--act` (`experiments/what_where/shadow.py` on the branch `what-where`).
 
 The clear is refused while a look is in flight, after waiting `CLEAR_WAIT_S` for
 it. The console reports that as `not cleared` with the reason beside it, and the
