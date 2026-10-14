@@ -13,8 +13,13 @@ test on M5 session 1 the same day: no find the watch missed, one of four
 events named right ([entry](../progress/2026-10-14-m5-session-1.md)). Version
 2 passed on session 2: five of seven staged changes against the watch's two,
 all named right, no extra false alarm
-([entry](../progress/2026-10-14-m5-session-2.md)). One pass and one failure;
-its rate is not known.
+([entry](../progress/2026-10-14-m5-session-2.md)). Replayed on 2026-10-10, a
+day it had never seen, it found what the watch found, named neither end of a
+move right and raised two false alarms the watch did not, both from novelty
+that was not change
+([entry](../progress/2026-10-14-what-where-step-3-replayed-on-10-10.md)).
+Failed, passed, failed: the camera-only "new thing" needs the watch's own test,
+seen before without it, and people kept out.
 This plan replaces the house model of
 [perceiving by prediction](perceiving-by-prediction.md) as the place where
 prediction and observation are compared. That plan's rules for pending changes,
