@@ -66,6 +66,11 @@ MIN_MOVE_M = 0.5
 #: A thing's evidence is persistent across looks this far apart, as the
 #: watch's own (change_watch.PERSIST_S).
 PERSIST_S = 20.0
+#: A thing the camera alone reports must also have been seen from places this
+#: far apart, as the watch's changes must (change_watch.VIEW_SPREAD_M): one
+#: close-up from one standing place is novelty of view, not a change (version
+#: 3; on 2026-10-10 a tissue box seen close from one place passed for new).
+VIEW_SPREAD_M = 0.5
 #: What stood at a place before: the regions within HERE_M of it in the
 #: newest HERE_LOOKS remembered looks that viewed it (camera within HERE_VIEW_M,
 #: the place within HERE_HALF_DEG of the camera's axis). A NEW is a new thing
@@ -162,6 +167,15 @@ def persistent(query, rows):
         return False
     times = sorted({float(query.shutter[i]) for i in rows})
     return times[-1] - times[0] >= PERSIST_S
+
+
+def spread(query, rows):
+    """How far apart the cameras that saw these regions stood."""
+    xs = np.array([query.cx[i] for i in rows if np.isfinite(query.cx[i])])
+    ys = np.array([query.cy[i] for i in rows if np.isfinite(query.cy[i])])
+    if len(xs) < 2:
+        return 0.0
+    return float(np.hypot(np.ptp(xs), np.ptp(ys)))
 
 
 def _components(rows, linked):
@@ -286,12 +300,16 @@ def build(changes, query, memory, recs, t_what):
                 if not persistent(query, support):
                     continue
                 cos = float(sims.max())
-                if best is None or cos > best[0]:
-                    best = (cos, a, b, support,
+                # A furniture-sized departure before a small one, then the most
+                # alike (version 3: on 2026-10-10 a small departure by the other,
+                # identical armchair took the arrival from the real one).
+                key = (bool(g["large"]), cos)
+                if best is None or key > best[0]:
+                    best = (key, a, b, support,
                             [mrows[k] for k in np.flatnonzero(sims.max(axis=0) >= PAIR_COS)])
         if best is None:
             break
-        cos, a, b, support, remembered = best
+        (_large, cos), a, b, support, remembered = best
         taken |= {("n", a), ("g", b)}
         used_q.update(support)
         used_m.update(remembered)
@@ -328,7 +346,7 @@ def build(changes, query, memory, recs, t_what):
     groups = _components(rest, lambda i, j: query.vec[i] @ query.vec[j] >= GROUP_COS and
                          math.hypot(qx[i] - qx[j], qy[i] - qy[j]) <= GROUP_M)
     for gr in groups:
-        if not persistent(query, gr):
+        if not persistent(query, gr) or spread(query, gr) < VIEW_SPREAD_M:
             continue
         events.append({"kind": "new thing", "x_m": round(float(np.mean(qx[gr])), 2),
                        "y_m": round(float(np.mean(qy[gr])), 2), "large": False, "by": "camera",
