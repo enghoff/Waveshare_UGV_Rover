@@ -3,7 +3,7 @@ through the live resolver: does a lidar range stop a record taking both
 armchairs? (experiments/identity_lidar/README.md)
 
     python warm_replay.py SNAPSHOT.db LATER.db LABELS.json GRID.json OUT.json
-        [--lidar REC.npz ...]
+        [--lidar REC.npz ...] [--keep WORLD.db]
 
 Run from the repository root. SNAPSHOT.db is a world store from
 ~/.ugv/snapshots; LATER.db a copy of the live store taken afterwards, whose
@@ -12,6 +12,7 @@ the snapshot -- so the records they meet are the ones the rover had, under
 their own ids. GRID.json bounds bearings as the daemon's map does. With --lidar,
 an unranged region reaching the lidar's plane first takes the lidar's range
 across it from whichever recording covers its shutter (replay_identity.add_lidar).
+--keep writes the replayed store out, for experiments/m5_changes/identity_count.py.
 """
 import argparse
 import json
@@ -53,6 +54,7 @@ def main():
     a.add_argument("out")
     a.add_argument("--lidar", nargs="*", default=[])
     a.add_argument("--session", type=int, default=67)
+    a.add_argument("--keep")
     args = a.parse_args()
     last, groups = later_looks(args.snapshot, args.later, args.session)
     print("snapshot ends at observation", last, "; looks after it", len(groups),
@@ -87,6 +89,10 @@ def main():
             "SELECT id, note FROM observations WHERE id > ?", (last,)).fetchall())
         created = store.db.execute(
             "SELECT COUNT(*) FROM entities").fetchone()[0]
+        if args.keep:
+            kept = sqlite3.connect(args.keep)
+            store.db.backup(kept)
+            kept.close()
         store.close()
     finally:
         shutil.rmtree(directory, ignore_errors=True)
