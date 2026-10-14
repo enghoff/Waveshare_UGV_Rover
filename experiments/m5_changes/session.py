@@ -274,7 +274,12 @@ def wait(name, minutes=20.0):
     p, _ = where()
     if not p or math.hypot(p["x_m"] - WAIT[0], p["y_m"] - WAIT[1]) > 0.3:
         drive(name, "wait", "wait", *WAIT)
-    note(name, "wait", begin=True, battery=battery(), until="%s or %g min" % (path_of(name, ".go"), minutes))
+    # The world as it stands before anything is staged, for replaying the
+    # session's looks from it (experiments/identity_moves/README.md, the test).
+    # Ten seconds parked; a failure is noted and the session goes on.
+    saved = call("snapshot_save", {"name": "%s before staging" % name})
+    note(name, "wait", begin=True, battery=battery(), until="%s or %g min" % (path_of(name, ".go"), minutes),
+         snapshot=(saved.get("snapshot") or {}).get("id") or saved.get("error") or saved)
     t0 = time.time()
     while time.time() - t0 < 60 * minutes and not os.path.exists(path_of(name, ".go")) \
             and not stopped(name):
