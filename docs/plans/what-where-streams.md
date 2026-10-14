@@ -140,9 +140,9 @@ six as the watch, three of its four named right, on evidence already seen.
 1. **Done:** nearest-memory streams on the shakedown, frozen before scoring.
 2. **Done: with navigation's pose from the recording**, the same code on the
    looks the store kept no pose for, and rooms judged by where a flagged thing
-   stands. All four arrivals found by where alone, gone nothing real. It shows
-   the where stream needs a pose in the rearranged room, and so the far-hit
-   heading check or a pose from settling, before it can run on the rover.
+   stands. All four arrivals found by where alone, gone nothing real. The
+   shakedown's looks predate the far-return heading check deployed the same
+   day, which has since kept most looks in a rearranged room posed.
 3. **Built and tested: the watch's geometry joined to the camera's what.**
    It failed on M5 session 1. Version 2, fixed for session 2: names asked
    over the whole session, since the run already goes to look at each change;
@@ -153,10 +153,11 @@ six as the watch, three of its four named right, on evidence already seen.
 4. **The learned viewpoint predictor and spread**, trained on revisits before a
    cutoff, tested after it.
 5. **On the rover, in shadow**: step 3's events beside the watch's own log,
-   reports only, during M5 sessions. The vectors are already computed per look
-   and the watch already runs, so the cost is joining them. It needs a pose in
-   the rearranged room first: the far-hit heading check or a pose from
-   settling.
+   reports only, on every drive. The vectors are already computed per look,
+   the watch already runs, and since 2026-10-12 the far returns keep most looks
+   posed in a rearranged room; the cost is joining them. Ordinary drives, where
+   nothing was staged, then measure its false alarms without the owner
+   staging anything.
 
 **Gate for each step:** frozen before scoring. Against the watch alone it must
 find every staged change the watch finds, add one the watch misses or name
@@ -173,9 +174,12 @@ lidar plane misses, and what changed rather than only that something did.
   watch's latest state answers it; for appearance only the newest regions at a
   place are used.
 - **A rearranged room refuses the pose.** The heading check needs 90% of the
-  scan on walls. The far-hit check proposed on
-  [2026-10-12](../progress/2026-10-12-heading-check-in-a-changed-room.md)
-  would confirm about half of those looks.
+  scan on walls. Since 2026-10-12 a look whose far returns, beyond 1.5 m, still
+  fit where the rover believes keeps navigation's heading
+  ([the measurement](../progress/2026-10-12-heading-check-in-a-changed-room.md),
+  `world_state/headingcheck.py`). In M5's sessions of 2026-10-14, 49 of 52 and
+  43 of 55 looks after the staging had a pose, where the shakedown's living
+  room had lost most of them.
 - **Two identical armchairs.** What cannot tell them apart, so a move between
   them is reported without saying which went where, and a swap is invisible
   ([R-WS-2](../requirements/world-state.md#r-ws-2)).
