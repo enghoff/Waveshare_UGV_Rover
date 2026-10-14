@@ -115,3 +115,15 @@ and named three of its four counted events right: the charger armchair's new
 place came out as an arrival, its departure already paired with the other
 armchair's arrival. **So on the shakedown step 3 would not pass**: it names,
 but finds nothing the watch misses.
+
+## The test, scored: M5 session 1 (2026-10-14)
+
+[score3_session1-1014.json](score3_session1-1014.json). The watch alone found
+six of seven staged events, step 3 the same six; step 3 named one of its four
+counted events right; false alarms five and six. **Step 3 fails.** Two of the
+scorer's rules inflated both methods' counts alike: the bean bag's arrival was
+counted for the dining chair beside it too (M5's own live count missed the
+chair, 0.64 m away), and the run, replayed on its own, re-found the staged
+changes in a room M5 counts as a control by then. The reasons it named so
+little, and what changes before a next test, are in
+[the session's entry](../../docs/progress/2026-10-14-m5-session-1.md).

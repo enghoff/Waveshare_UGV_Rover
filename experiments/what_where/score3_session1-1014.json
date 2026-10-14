@@ -1,0 +1,591 @@
+{
+ "verdict": {
+  "watch_found": 6,
+  "step3_found": 6,
+  "events_staged": 7,
+  "step3_finds_all_the_watch_finds": true,
+  "step3_finds_more": 0,
+  "named_right": 1,
+  "named_counted": 4,
+  "watch_false_alarms": 5,
+  "step3_false_alarms": 6,
+  "passes": false
+ },
+ "watch": {
+  "events": [
+   {
+    "what": "black armchair, to the balcony door",
+    "kind": "GONE",
+    "at": [
+     -18.57,
+     -16.68
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -18.57,
+     "y_m": -16.68,
+     "extent_m": 0.8
+    }
+   },
+   {
+    "what": "black armchair, to the balcony door",
+    "kind": "NEW",
+    "at": [
+     -19.17,
+     -15.87
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -19.17,
+     "y_m": -15.88,
+     "extent_m": 0.7
+    }
+   },
+   {
+    "what": "black armchair, to the black cabinet",
+    "kind": "GONE",
+    "at": [
+     -17.08,
+     -16.45
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -17.08,
+     "y_m": -16.45,
+     "extent_m": 0.65
+    }
+   },
+   {
+    "what": "black armchair, to the black cabinet",
+    "kind": "NEW",
+    "at": [
+     -17.39,
+     -16.93
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -17.3,
+     "y_m": -16.92,
+     "extent_m": 0.85
+    }
+   },
+   {
+    "what": "dining chair, to near the kitchen",
+    "kind": "GONE",
+    "at": [
+     -17.33,
+     -12.6
+    ],
+    "outcome": "missed",
+    "step": "loop B",
+    "change": null
+   },
+   {
+    "what": "dining chair, to near the kitchen",
+    "kind": "NEW",
+    "at": [
+     -16.75,
+     -12.15
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -16.32,
+     "y_m": -12.53,
+     "extent_m": 0.7
+    }
+   },
+   {
+    "what": "red bean bag",
+    "kind": "NEW",
+    "at": [
+     -16.33,
+     -12.5
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -16.32,
+     "y_m": -12.53,
+     "extent_m": 0.7
+    }
+   }
+  ],
+  "room_controls": [
+   {
+    "step": "loop A",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "living",
+    "control": true,
+    "false_alarms": [
+     {
+      "kind": "GONE",
+      "at": [
+       -18.57,
+       -16.7
+      ],
+      "extent_m": 0.7,
+      "held_up": null
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -17.45,
+       -16.92
+      ],
+      "extent_m": 0.8,
+      "held_up": null
+     },
+     {
+      "kind": "GONE",
+      "at": [
+       -17.08,
+       -16.45
+      ],
+      "extent_m": 0.65,
+      "held_up": null
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -16.36,
+       -12.45
+      ],
+      "extent_m": 0.7,
+      "held_up": null
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -19.09,
+       -16.0
+      ],
+      "extent_m": 0.65,
+      "held_up": null
+     }
+    ]
+   }
+  ],
+  "doors": []
+ },
+ "step3": {
+  "events": [
+   {
+    "what": "black armchair, to the balcony door",
+    "kind": "GONE",
+    "at": [
+     -18.57,
+     -16.68
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -18.57,
+     "y_m": -16.68,
+     "extent_m": 0.6
+    }
+   },
+   {
+    "what": "black armchair, to the balcony door",
+    "kind": "NEW",
+    "at": [
+     -19.17,
+     -15.87
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -19.17,
+     "y_m": -15.88,
+     "extent_m": 0.6
+    }
+   },
+   {
+    "what": "black armchair, to the black cabinet",
+    "kind": "GONE",
+    "at": [
+     -17.08,
+     -16.45
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -17.08,
+     "y_m": -16.45,
+     "extent_m": 0.65
+    }
+   },
+   {
+    "what": "black armchair, to the black cabinet",
+    "kind": "NEW",
+    "at": [
+     -17.39,
+     -16.93
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -17.3,
+     "y_m": -16.92,
+     "extent_m": 0.85
+    }
+   },
+   {
+    "what": "dining chair, to near the kitchen",
+    "kind": "GONE",
+    "at": [
+     -17.33,
+     -12.6
+    ],
+    "outcome": "missed",
+    "step": "loop B",
+    "change": null
+   },
+   {
+    "what": "dining chair, to near the kitchen",
+    "kind": "NEW",
+    "at": [
+     -16.75,
+     -12.15
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -16.32,
+     "y_m": -12.53,
+     "extent_m": 0.7
+    }
+   },
+   {
+    "what": "red bean bag",
+    "kind": "NEW",
+    "at": [
+     -16.33,
+     -12.5
+    ],
+    "outcome": "found",
+    "step": "loop B",
+    "change": {
+     "x_m": -16.32,
+     "y_m": -12.53,
+     "extent_m": 0.7
+    }
+   }
+  ],
+  "room_controls": [
+   {
+    "step": "loop A",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "living",
+    "control": true,
+    "false_alarms": [
+     {
+      "kind": "GONE",
+      "at": [
+       -17.08,
+       -16.45
+      ],
+      "extent_m": 0.6,
+      "held_up": null
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -17.45,
+       -16.92
+      ],
+      "extent_m": 0.6,
+      "held_up": null
+     },
+     {
+      "kind": "GONE",
+      "at": [
+       -18.57,
+       -16.7
+      ],
+      "extent_m": 0.6,
+      "held_up": null
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -19.42,
+       -15.55
+      ],
+      "extent_m": 0.6,
+      "held_up": null
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -16.36,
+       -12.45
+      ],
+      "extent_m": 0.7,
+      "held_up": null
+     },
+     {
+      "kind": "NEW",
+      "at": [
+       -19.09,
+       -16.0
+      ],
+      "extent_m": 0.65,
+      "held_up": null
+     }
+    ]
+   }
+  ],
+  "doors": []
+ },
+ "events": [
+  {
+   "kind": "moved",
+   "from": [
+    -18.57,
+    -16.68
+   ],
+   "to": [
+    -19.17,
+    -15.88
+   ],
+   "x_m": -19.17,
+   "y_m": -15.88,
+   "cos": 0.842,
+   "large": true,
+   "regions": [
+    102534,
+    102544,
+    102555,
+    102565,
+    102575
+   ],
+   "remembered": [
+    100480,
+    99598,
+    99493
+   ],
+   "step": "loop B"
+  },
+  {
+   "kind": "arrived",
+   "x_m": -17.3,
+   "y_m": -16.92,
+   "extent_m": 0.85,
+   "large": true,
+   "regions": [],
+   "step": "loop B"
+  },
+  {
+   "kind": "arrived",
+   "x_m": -16.32,
+   "y_m": -12.53,
+   "extent_m": 0.7,
+   "large": true,
+   "regions": [],
+   "step": "loop B"
+  },
+  {
+   "kind": "gone",
+   "x_m": -17.08,
+   "y_m": -16.45,
+   "extent_m": 0.65,
+   "large": true,
+   "remembered": [
+    102398,
+    102400,
+    100909,
+    100899,
+    100679
+   ],
+   "step": "loop B"
+  },
+  {
+   "kind": "moved",
+   "from": [
+    -17.08,
+    -16.45
+   ],
+   "to": [
+    -17.45,
+    -16.92
+   ],
+   "x_m": -17.45,
+   "y_m": -16.92,
+   "cos": 0.915,
+   "large": true,
+   "regions": [
+    102592,
+    102601,
+    102611,
+    102630,
+    102658,
+    102675,
+    102685,
+    102701,
+    102710,
+    102750,
+    102762,
+    102767
+   ],
+   "remembered": [
+    99540,
+    99486,
+    99477,
+    98808,
+    98800
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "moved",
+   "from": [
+    -18.57,
+    -16.7
+   ],
+   "to": [
+    -19.42,
+    -15.55
+   ],
+   "x_m": -19.42,
+   "y_m": -15.55,
+   "cos": 0.861,
+   "large": true,
+   "regions": [
+    102591,
+    102600,
+    102610,
+    102620,
+    102629,
+    102639,
+    102657,
+    102666,
+    102674,
+    102684,
+    102700,
+    102709,
+    102789
+   ],
+   "remembered": [
+    102322,
+    100480,
+    99598,
+    99493,
+    99484
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "arrived",
+   "x_m": -16.36,
+   "y_m": -12.45,
+   "extent_m": 0.7,
+   "large": true,
+   "regions": [
+    102724,
+    102803,
+    102813
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "arrived",
+   "x_m": -19.09,
+   "y_m": -16.0,
+   "extent_m": 0.65,
+   "large": true,
+   "regions": [
+    102583,
+    102591,
+    102600,
+    102610,
+    102620,
+    102629,
+    102638,
+    102639,
+    102657,
+    102666,
+    102674,
+    102684,
+    102693,
+    102700,
+    102709
+   ],
+   "step": "run"
+  }
+ ]
+}
