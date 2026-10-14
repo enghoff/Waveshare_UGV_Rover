@@ -161,6 +161,14 @@ six as the watch, three of its four named right, on evidence already seen.
    posed in a rearranged room; the cost is joining them. Ordinary drives, where
    nothing was staged, then measure its false alarms without the owner
    staging anything.
+6. **Acting on a move: the record follows its thing.** A moved event files the
+   arrival's pictures under the record that held the old place and places it
+   at the arrival, unless a look-alike stands nearer. On replay of the
+   shakedown and both M5 sessions it kept three of six moved things' records
+   against one, every move the right object
+   ([entry](../progress/2026-10-14-identity-across-a-move.md)). Development
+   only; frozen, and tested on the next staged session from a snapshot taken
+   before its staging.
 
 **Gate for each step:** frozen before scoring. Against the watch alone it must
 find every staged change the watch finds, add one the watch misses or name
