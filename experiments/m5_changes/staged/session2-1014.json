@@ -1,0 +1,12 @@
+{"note": "M5 session 2, 2026-10-14. The owner's words: one armchair moved toward wall A, the black cabinet moved along wall A, added one box, one stool, one ladder. Wall A is the living room's west wall with the three pictures, by the balcony stops. Places read off the recording's scans, as lidar hits only in loop A (where things stood) and only in loop B (where they went), and checked on the session's photographs: the plain armchair from its place by the balcony to in front of the cabinet's old place; the cabinet along the wall; the step ladder beside it against the wall by the dining table (approximate: the photographs put it between the cabinet and the dining chairs); the box on the floor by the TV stand; the white stool by the dining table. A door beyond the living room's east wall, at about (-14.8, -16.0), changed between the loops and was not staged: someone in the house was moving about during the run.",
+ "staged_in": "wait",
+ "moves": [{"what": "plain black armchair, toward wall A", "from": [-18.69, -16.54], "to": [-19.29, -15.37]},
+           {"what": "black cabinet, along wall A", "from": [-19.80, -15.44], "to": [-19.88, -14.13]}],
+ "added": [{"what": "box", "at": [-18.94, -17.04]},
+           {"what": "stool", "at": [-16.63, -12.47]},
+           {"what": "step ladder", "at": [-20.15, -12.97], "approximate": true}],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": []}

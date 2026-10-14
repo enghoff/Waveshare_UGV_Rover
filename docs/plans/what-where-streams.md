@@ -10,10 +10,11 @@ nothing real
 Step 3, chosen by the owner the same day, takes where and gone from the
 lidar's change watch and joins them to the camera's what. It failed its
 test on M5 session 1 the same day: no find the watch missed, one of four
-events named right, because a loop's camera barely looked at the arrivals and
-a returned bean bag was not new to the house
-([entry](../progress/2026-10-14-m5-session-1.md)). The watch alone found five
-of seven with no false alarm.
+events named right ([entry](../progress/2026-10-14-m5-session-1.md)). Version
+2 passed on session 2: five of seven staged changes against the watch's two,
+all named right, no extra false alarm
+([entry](../progress/2026-10-14-m5-session-2.md)). One pass and one failure;
+its rate is not known.
 This plan replaces the house model of
 [perceiving by prediction](perceiving-by-prediction.md) as the place where
 prediction and observation are compared. That plan's rules for pending changes,
