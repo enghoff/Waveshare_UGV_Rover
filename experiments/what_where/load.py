@@ -63,6 +63,7 @@ class Regions:
         self.source = np.array([r.get("source", "stored" if r["pose"] else None)
                                 for r in rows], dtype=object)
         self.shutter = np.array([r.get("shutter", r["t"]) for r in rows])
+        self.span = np.array([nan if r.get("span") is None else r["span"] for r in rows])
 
     def subset(self, mask):
         out = object.__new__(Regions)
@@ -91,47 +92,48 @@ def load(db_path, start, end, map_session=67, recordings=None):
     cur = con.execute(
         "select o.id, o.observed_at, o.frame_id, o.observer_pose_json, o.observer_pan_deg,"
         " o.bearing_deg, o.range_m, o.bbox_json, o.dino_alone_blob, o.observer_tilt_deg,"
-        " f.taken_at"
+        " f.taken_at, o.span_deg"
         " from observations o left join frames f on f.id = o.frame_id"
         " where o.source='perception' and o.camera='gimbal'"
         " and o.map_session=? and o.observed_at>=? and o.observed_at<?"
         " and o.dino_alone_blob is not null order by o.observed_at, o.id",
         (map_session, start, end))
     rows = []
-    for (oid, t, frame, pose, pan, bearing, rng, bbox, alone, tilt, taken) in cur:
+    for (oid, t, frame, pose, pan, bearing, rng, bbox, alone, tilt, taken, span) in cur:
         pose = json.loads(pose) if pose else None
         if pose is not None and bearing is None:
             pose = None
         source = None if pose is None else "stored"
         if pose is None and recordings:
-            pose, bearing = _recorded(recordings, taken or t, pan, tilt, json.loads(bbox))
+            pose, bearing, span = _recorded(recordings, taken or t, pan, tilt, json.loads(bbox))
             source = None if pose is None else "recorded"
         rows.append({"id": oid, "t": t, "frame": frame, "pose": pose,
                      "pan": float(pan or 0.0), "bearing": bearing, "range": rng,
                      "bbox": json.loads(bbox), "alone": _unit(alone),
-                     "source": source, "shutter": taken or t})
+                     "source": source, "shutter": taken or t, "span": span})
     con.close()
     return Regions(rows)
 
 
 def _recorded(recordings, t, pan, tilt, bbox):
-    """Navigation's pose at the shutter and the bearing it gives, or (None, None)."""
+    """Navigation's pose at the shutter, and the bearing and angular width it
+    gives, or (None, None, None)."""
     import recorded
     rec = recorded.for_time(recordings, t)
     if rec is None:
-        return None, None
+        return None, None, None
     rate = rec.turn_rate(t)
     if rate is None or rate > recorded.MAX_TURN_DPS:
-        return None, None
+        return None, None, None
     p = rec.pose(t)
     if p is None:
-        return None, None
+        return None, None, None
     pose = {"x_m": p[0], "y_m": p[1], "heading_deg": p[2]}
     ray = _view().ray({"pose": pose, "observer_pan_deg": pan, "observer_tilt_deg": tilt,
                        "bbox": bbox}, 130.0, size=(640, 480))
     if ray is None:
-        return None, None
-    return pose, ray["bearing_deg"]
+        return None, None, None
+    return pose, ray["bearing_deg"], ray["span_deg"]
 
 
 def _view():
