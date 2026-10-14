@@ -47,6 +47,7 @@ navigator does not need the heading put right, because it puts it right itself
 once the rover drives and Nav2 replans. Only the direction stamped on a look does,
 and this is that.
 """
+import time
 
 #: A look counts as still under these, across the shutter bracket. The bracket's
 #: own resolution is a centimetre and a tenth of a degree, and anything under a
@@ -122,6 +123,7 @@ class HeadingCheck(object):
         self.turned_deg = 0.0
         self.travelled_m = 0.0
         self.last = None
+        self.last_at = None
         self._checked = {}
         self._heading = None
         self._xy = None
@@ -171,6 +173,9 @@ class HeadingCheck(object):
                    % (type(error).__name__, error)}
         fit = fit or {"trusted": False, "why": "nothing answered"}
         self.last = fit
+        #: When `last` was measured, so that a look's lidar ranges are read only
+        #: from the scan its own check measured (world_state/lidar_ranges.py).
+        self.last_at = time.monotonic()
         if not fit.get("trusted"):
             if moving or "score" not in fit:
                 # Nothing was searched, so nothing was found wrong -- a sweep

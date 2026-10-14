@@ -5,7 +5,7 @@ import math
 import time
 from typing import Any
 
-from . import oak, outline
+from . import lidar_ranges, oak, outline, view
 from .depth_client import (NO_DEPTH_ANSWER, NOTHING_TO_MEASURE, OUTSIDE_VIEW,
                            TURNING, Ranged)
 
@@ -38,6 +38,10 @@ MATCHED_WITHIN_S = 0.10
 #: degrees a second rather than any turning at all. On 2026-10-02 the old rule
 #: dropped 347 regions' ranges in a six-minute drive.
 SHUTTER_UNKNOWN_S = 0.03
+
+#: How recently the look's own heading check must have measured the scan its
+#: lidar ranges are read from, in seconds. The check runs just after the shutter.
+LIDAR_SCAN_FRESH_S = 2.0
 
 
 class InspectionRanges:
@@ -81,6 +85,45 @@ class InspectionRanges:
                     if note else f"{dropped} ranges dropped because the rover "
                                  f"was turning")
         return found, note
+
+    def _lidar_fill(self, capture: dict[str, Any], regions: list, found, still: bool):
+        """The look's ranges, with a lidar range for each furniture-sized region
+        the depth camera gave none, and one clause for the diagnostics line.
+
+        Only for a look taken standing still, with a pose, whose own heading
+        check measured a scan in the last `LIDAR_SCAN_FRESH_S`: the scan comes
+        from that check (`nav_map.measure_pose`), and a moving look's scan and
+        shutter are not of one moment. See world_state/lidar_ranges.py."""
+        heading = getattr(self, "heading", None)
+        last = getattr(heading, "last", None) or {}
+        scan = last.get("scan") if isinstance(last, dict) else None
+        measured_at = getattr(heading, "last_at", None)
+        if (not still or not scan or capture.get("pose") is None or measured_at is None
+                or time.monotonic() - measured_at > LIDAR_SCAN_FRESH_S or not regions):
+            return found, ""
+        found = list(found or []) + [None] * (len(regions) - len(found or []))
+        pan = float(capture.get("pan") or 0.0)
+        filled = 0
+        for index, region in enumerate(regions):
+            one = found[index]
+            if one is not None and one.range_m is not None:
+                continue
+            bbox = getattr(region, "bbox", None)
+            if not lidar_ranges.floor_sized(bbox):
+                continue
+            measured = view._from_box(bbox, float(capture.get("tilt") or 0.0),
+                                      capture.get("frame_size"), capture.get("lens"))
+            if measured is None:
+                continue
+            offset_deg, span_deg = measured
+            # Left of the rover's nose: the gimbal's pan is positive to the right.
+            got = lidar_ranges.range_along(scan, offset_deg - pan, span_deg)
+            if got is None:
+                continue
+            found[index] = Ranged(range_m=got, sigma_m=lidar_ranges.SIGMA_M, valid=1.0,
+                                  absent="", method=lidar_ranges.METHOD)
+            filled += 1
+        return found, (f"{filled} ranged by the lidar" if filled else "")
 
     def _drop_turned(self, found, capture, now=None) -> int:
         """Drop the ranges whose depth frame the rover had turned away from.
@@ -173,6 +216,7 @@ class InspectionRanges:
         if self.ranger is None or not frame_id:
             return 0
         if not always and not any(one is not None and one.range_m is not None
+                                  and getattr(one, "method", "") != lidar_ranges.METHOD
                                   for one in (ranges or [])):
             return 0
         try:

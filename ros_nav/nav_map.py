@@ -153,6 +153,23 @@ MEASURE_WINDOW_DEG = 45.0
 #: What to make of it is the caller's: world_state/headingcheck.py.
 MEASURE_FAR_M = 1.5
 
+def scan_reply(scan, where):
+    """One LaserScan as plain numbers for a measure's answer: its first angle and
+    step in radians in the rover's frame, its ranges in metres to the
+    centimetre (None where nothing came back or the reading is out of the
+    lidar's band), and the map pose `(x_m, y_m, heading_deg)` it was measured
+    from."""
+    low = float(getattr(scan, "range_min", 0.0) or 0.0)
+    high = float(getattr(scan, "range_max", 0.0) or 0.0) or float("inf")
+    ranges = []
+    for value in scan.ranges:
+        value = float(value)
+        ranges.append(round(value, 2) if math.isfinite(value) and low < value < high else None)
+    return {"angle_min": float(scan.angle_min), "angle_increment": float(scan.angle_increment),
+            "ranges": ranges,
+            "from": [round(float(where[0]), 3), round(float(where[1]), 3), round(float(where[2]), 2)]}
+
+
 #: The fastest turn a scan taken on the move is measured at, in degrees a second.
 #: A sweep takes a tenth of a second, so at this rate the rover turns three degrees
 #: during one, smeared evenly either side of the pose it is measured from -- the
@@ -862,7 +879,9 @@ class NavMap:
         with self._lock:
             driving = self.driving
             scan = getattr(self, "scan_msg", None)
-        moment, turn = {}, 0.0
+        # The scan is handed to every search below, so the one returned beside
+        # the answer is the one the answer was measured from.
+        moment, turn = ({} if scan is None else {"scan": scan}), 0.0
         if driving:
             if scan is None:
                 return {"trusted": False, "why": "no scan has arrived"}
@@ -891,6 +910,7 @@ class NavMap:
             if fit is None or not fit.ok:
                 answer, fit, _where = self.map_measure(
                     MEASURE_WINDOW_M, MEASURE_WINDOW_DEG, **moment)
+            measured_from = _where if fit is not None else None
             if fit is not None and isinstance(answer, dict):
                 # The same search on the far returns alone, around where the
                 # rover thinks it is (`MEASURE_FAR_M`). Reported beside the
@@ -899,6 +919,12 @@ class NavMap:
                     MEASURE_WINDOW_M, MEASURE_WINDOW_DEG,
                     beyond_m=MEASURE_FAR_M, **moment)
                 answer = dict(answer, far=far)
+                # And the scan itself, with the pose it was measured from, so
+                # that a look can read how far the lidar saw along each of its
+                # regions' bearings (world_state/lidar_ranges.py). Ranges in
+                # metres, None where the lidar returned nothing.
+                if scan is not None and measured_from is not None:
+                    answer = dict(answer, scan=scan_reply(scan, measured_from))
         finally:
             self.map_lock.release()
         if driving and isinstance(answer, dict):
