@@ -88,6 +88,20 @@ from a service without the history, keeps the old rule, which on 2026-10-02 drop
 347 regions' ranges in a six-minute drive. The depth map kept says when it was taken
 and how far that was from the picture (`taken_at`, `off_s`).
 
+**Where the depth camera gave no range, a still look reads one from the lidar**
+([lidar_ranges.py](lidar_ranges.py), `InspectionRanges._lidar_fill`). The depth
+camera sees half the fisheye's width and sleeps when the rover has stood still for
+half a minute, and a region with no range is filed by its bearing alone: in M5
+session 1 of 2026-10-14 that put both armchairs in one record. Navigation's
+position check, which every still look already asks for, now returns the scan it
+matched (`nav_map.measure_pose`), and a region whose lower edge comes down to the
+lidar's plane takes the 25th percentile of the returns across the middle half of
+its width, with 0.4 m of uncertainty and `range_from` `lidar`. A region high in the
+picture, a moving look, or a scan more than two seconds old gets none. Half of these
+land within 0.3 m of the depth camera's own range for the same region and one in
+seven is more than 0.8 m short, where something nearer stands in the lidar's plane
+([the measurement](../docs/progress/2026-10-14-identity-with-lidar-ranges.md)).
+
 Until 2026-09-30 the OAK was bolted to the chassis, and its lens as published by
 `oak_depth` was 9.6% short in focal length. Depth maps saved before then are read
 through the bracket they were taken on (`oak.CHASSIS_MOUNT`, chosen by
