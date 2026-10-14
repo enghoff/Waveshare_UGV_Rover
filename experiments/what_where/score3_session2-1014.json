@@ -1,0 +1,478 @@
+{
+ "verdict": {
+  "watch_found": 2,
+  "step3_found": 5,
+  "events_staged": 7,
+  "step3_finds_all_the_watch_finds": true,
+  "step3_finds_more": 3,
+  "named_right": 6,
+  "named_counted": 6,
+  "watch_false_alarms": 1,
+  "step3_false_alarms": 1,
+  "passes": true
+ },
+ "watch": {
+  "events": [
+   {
+    "what": "plain black armchair, toward wall A",
+    "kind": "GONE",
+    "at": [
+     -18.69,
+     -16.54
+    ],
+    "outcome": "found small",
+    "step": "run",
+    "change": {
+     "x_m": -19.15,
+     "y_m": -16.63,
+     "extent_m": 0.4
+    }
+   },
+   {
+    "what": "plain black armchair, toward wall A",
+    "kind": "NEW",
+    "at": [
+     -19.29,
+     -15.37
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -19.34,
+     "y_m": -15.26,
+     "extent_m": 0.75
+    }
+   },
+   {
+    "what": "black cabinet, along wall A",
+    "kind": "GONE",
+    "at": [
+     -19.8,
+     -15.44
+    ],
+    "outcome": "found small",
+    "step": "run",
+    "change": {
+     "x_m": -19.91,
+     "y_m": -14.88,
+     "extent_m": 0.25
+    }
+   },
+   {
+    "what": "black cabinet, along wall A",
+    "kind": "NEW",
+    "at": [
+     -19.88,
+     -14.13
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -19.9,
+     "y_m": -14.1,
+     "extent_m": 0.7
+    }
+   },
+   {
+    "what": "box",
+    "kind": "NEW",
+    "at": [
+     -18.94,
+     -17.04
+    ],
+    "outcome": "missed",
+    "step": "run",
+    "change": null
+   },
+   {
+    "what": "stool",
+    "kind": "NEW",
+    "at": [
+     -16.63,
+     -12.47
+    ],
+    "outcome": "found small",
+    "step": "run",
+    "change": {
+     "x_m": -16.52,
+     "y_m": -12.55,
+     "extent_m": 0.25
+    }
+   },
+   {
+    "what": "step ladder",
+    "kind": "NEW",
+    "at": [
+     -20.15,
+     -12.97
+    ],
+    "outcome": "missed",
+    "step": "run",
+    "change": null
+   }
+  ],
+  "room_controls": [
+   {
+    "step": "loop A",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": [
+     {
+      "kind": "NEW",
+      "at": [
+       -14.74,
+       -16.18
+      ],
+      "extent_m": 0.85,
+      "held_up": null
+     }
+    ]
+   },
+   {
+    "step": "loop B",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   }
+  ],
+  "doors": []
+ },
+ "step3": {
+  "events": [
+   {
+    "what": "plain black armchair, toward wall A",
+    "kind": "GONE",
+    "at": [
+     -18.69,
+     -16.54
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -19.15,
+     "y_m": -16.63,
+     "extent_m": 0.6
+    }
+   },
+   {
+    "what": "plain black armchair, toward wall A",
+    "kind": "NEW",
+    "at": [
+     -19.29,
+     -15.37
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -19.34,
+     "y_m": -15.26,
+     "extent_m": 0.6
+    }
+   },
+   {
+    "what": "black cabinet, along wall A",
+    "kind": "GONE",
+    "at": [
+     -19.8,
+     -15.44
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -19.91,
+     "y_m": -14.88,
+     "extent_m": 0.6
+    }
+   },
+   {
+    "what": "black cabinet, along wall A",
+    "kind": "NEW",
+    "at": [
+     -19.88,
+     -14.13
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -19.89,
+     "y_m": -14.13,
+     "extent_m": 0.6
+    }
+   },
+   {
+    "what": "box",
+    "kind": "NEW",
+    "at": [
+     -18.94,
+     -17.04
+    ],
+    "outcome": "missed",
+    "step": "run",
+    "change": null
+   },
+   {
+    "what": "stool",
+    "kind": "NEW",
+    "at": [
+     -16.63,
+     -12.47
+    ],
+    "outcome": "missed",
+    "step": "run",
+    "change": null
+   },
+   {
+    "what": "step ladder",
+    "kind": "NEW",
+    "at": [
+     -20.15,
+     -12.97
+    ],
+    "outcome": "found",
+    "step": "run",
+    "change": {
+     "x_m": -20.26,
+     "y_m": -12.77,
+     "extent_m": 0.6
+    }
+   }
+  ],
+  "room_controls": [
+   {
+    "step": "loop A",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop A",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "run",
+    "room": "living",
+    "control": false,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "bedroom",
+    "control": true,
+    "false_alarms": []
+   },
+   {
+    "step": "loop B",
+    "room": "corridor",
+    "control": true,
+    "false_alarms": [
+     {
+      "kind": "NEW",
+      "at": [
+       -14.74,
+       -16.18
+      ],
+      "extent_m": 0.85,
+      "held_up": null
+     }
+    ]
+   },
+   {
+    "step": "loop B",
+    "room": "living",
+    "control": true,
+    "false_alarms": []
+   }
+  ],
+  "doors": []
+ },
+ "events": [
+  {
+   "kind": "moved",
+   "from": [
+    -19.15,
+    -16.63
+   ],
+   "to": [
+    -19.34,
+    -15.26
+   ],
+   "x_m": -19.34,
+   "y_m": -15.26,
+   "cos": 0.966,
+   "large": true,
+   "regions": [
+    103117,
+    103131,
+    103138,
+    103169,
+    103178,
+    103205,
+    103214,
+    103224
+   ],
+   "remembered": [
+    102853,
+    102843,
+    102836,
+    102825,
+    102789
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "moved",
+   "from": [
+    -19.91,
+    -14.88
+   ],
+   "to": [
+    -19.89,
+    -14.13
+   ],
+   "x_m": -19.89,
+   "y_m": -14.13,
+   "cos": 0.789,
+   "large": true,
+   "regions": [
+    103122,
+    103137,
+    103177,
+    103204,
+    103223
+   ],
+   "remembered": [
+    102842,
+    102834,
+    102564,
+    102554,
+    102543
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "new thing",
+   "x_m": -20.26,
+   "y_m": -12.77,
+   "large": false,
+   "by": "camera",
+   "regions": [
+    103139,
+    103227
+   ],
+   "step": "run"
+  },
+  {
+   "kind": "moved",
+   "from": [
+    -19.15,
+    -16.63
+   ],
+   "to": [
+    -19.33,
+    -15.28
+   ],
+   "x_m": -19.33,
+   "y_m": -15.28,
+   "cos": 0.943,
+   "large": true,
+   "regions": [
+    103233,
+    103240,
+    103251
+   ],
+   "remembered": [
+    102853,
+    102843,
+    102836,
+    102825,
+    102789
+   ],
+   "step": "loop B"
+  },
+  {
+   "kind": "arrived",
+   "x_m": -14.74,
+   "y_m": -16.18,
+   "extent_m": 0.85,
+   "large": true,
+   "regions": [],
+   "step": "loop B"
+  },
+  {
+   "kind": "arrived",
+   "x_m": -19.88,
+   "y_m": -14.17,
+   "extent_m": 0.8,
+   "large": true,
+   "regions": [
+    103246,
+    103252,
+    103263,
+    103264
+   ],
+   "step": "loop B"
+  }
+ ]
+}

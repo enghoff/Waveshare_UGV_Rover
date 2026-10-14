@@ -170,3 +170,13 @@ Both sessions pass on version 2, which says only that it was fixed against
 them. The pass rule for session 2 is unchanged: every staged change the watch
 finds, and one more or four in five named right, and at most one more false
 alarm.
+
+## The test, scored: M5 session 2 (2026-10-14)
+
+Version 2 (`0293ecb`, committed 12:22) on session 2 (12:39-12:55),
+[score3_session2-1014.json](score3_session2-1014.json). The watch alone found
+two of seven staged events, step 3 five: both moves, from small departures the
+camera matched with what arrived, and the step ladder by the camera alone. It
+named all it reported right, and its one counted false alarm is the watch's, a
+door the household opened. **Step 3 passes.** The write-up, with what it does
+not show, is [the session's entry](../../docs/progress/2026-10-14-m5-session-2.md).
