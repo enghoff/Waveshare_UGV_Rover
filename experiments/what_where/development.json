@@ -1,0 +1,81 @@
+{
+ "percentile": 99.0,
+ "T_what": 0.3215811528449098,
+ "T_where": 0.45874263267239557,
+ "T_gone": 0.931629678315845,
+ "n_what": 1028,
+ "n_where": 1011,
+ "n_gone": 1082,
+ "controls": [
+  {
+   "control": "08:04-08:20",
+   "regions": 307,
+   "with_references": 305,
+   "expected_twice": 316
+  },
+  {
+   "control": "08:50-09:00",
+   "regions": 192,
+   "with_references": 187,
+   "expected_twice": 165
+  },
+  {
+   "control": "09:14-09:25",
+   "regions": 175,
+   "with_references": 172,
+   "expected_twice": 184
+  },
+  {
+   "control": "09:33-09:49",
+   "regions": 203,
+   "with_references": 203,
+   "expected_twice": 247
+  },
+  {
+   "control": "12:47-12:55",
+   "regions": 57,
+   "with_references": 50,
+   "expected_twice": 66
+  },
+  {
+   "control": "12:55-12:57",
+   "regions": 17,
+   "with_references": 17,
+   "expected_twice": 18
+  },
+  {
+   "control": "13:01-13:07",
+   "regions": 77,
+   "with_references": 77,
+   "expected_twice": 86
+  }
+ ],
+ "parameters": {
+  "REF_M": 1.0,
+  "REF_DEG": 45.0,
+  "REF_LOOKS": 30,
+  "BEARING_DEG": 15.0,
+  "RANGE_M": 1.0,
+  "VIEW_HALF_DEG": 45.0,
+  "VIEW_MAX_M": 4.0,
+  "SAME_THING": 0.5
+ },
+ "what_percentiles_50_90_95_99": [
+  0.1223,
+  0.2185,
+  0.2515,
+  0.3216
+ ],
+ "where_percentiles_50_90_95_99": [
+  0.0316,
+  0.1432,
+  0.2155,
+  0.4587
+ ],
+ "gone_percentiles_50_90_95_99": [
+  0.2297,
+  0.6672,
+  0.7777,
+  0.9316
+ ]
+}
