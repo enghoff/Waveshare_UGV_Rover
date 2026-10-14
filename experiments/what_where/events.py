@@ -35,11 +35,11 @@ for _where in (os.path.join(HERE, "..", "..", "ros_nav"), os.path.expanduser("~/
         break
 for _where in (os.path.join(HERE, "..", "m5_changes"), os.path.expanduser("~/m5")):
     if os.path.exists(os.path.join(_where, "arm_replay.py")):
-        sys.path.insert(0, _where)
+        sys.path.append(_where)
         break
+sys.path.insert(0, HERE)
 import change_watch as cw  # noqa: E402
-from arm_replay import grid_of  # noqa: E402
-from change_detect import compose, interp_pose, last_pose  # noqa: E402
+from poses import compose, interp_pose, last_pose  # noqa: E402
 
 import streams  # noqa: E402
 import streams3  # noqa: E402
@@ -132,6 +132,7 @@ def replay(recordings, grid_json, skip=()):
     live watch: navigation's own trust in the pose is not in a recording, and
     the history starts with the first recording given."""
     import json
+    from arm_replay import grid_of
     watch = cw.ChangeWatch(-24.0, -22.0, 400, 360)
     if grid_json:
         watch.set_map(*grid_of(json.load(open(grid_json))))

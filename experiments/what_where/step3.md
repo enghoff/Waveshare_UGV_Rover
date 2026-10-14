@@ -180,3 +180,25 @@ camera matched with what arrived, and the step ladder by the camera alone. It
 named all it reported right, and its one counted false alarm is the watch's, a
 door the household opened. **Step 3 passes.** The write-up, with what it does
 not show, is [the session's entry](../../docs/progress/2026-10-14-m5-session-2.md).
+
+## Version 3 (2026-10-14), after the replay of 2026-10-10
+
+The replay failed version 2 on a day it had never seen
+([replay1010.md](replay1010.md)). Version 3 answers its two faults and adds a
+third rule:
+- **A thing the camera alone reports must be seen from places 0.5 m apart**,
+  as the watch's changes must: the tissue box was a close-up from one standing
+  place.
+- **Furniture-sized departures are paired first**; a small one only when no
+  large departure looks alike: the armchair's return had paired with a small
+  departure by the other, identical armchair.
+- **People are kept out**: a region whose SigLIP2 vector meets "a photo of a
+  person" at 0.085 or more is never new. On session 2 the people in the
+  corridor scored 0.086-0.106; nothing staged scored above 0.061. A person half
+  hidden in an armchair scores about 0.06 and is not caught.
+
+On every development set version 3 does as version 2, except the replay of
+2026-10-10, where its two false alarms are gone and the return is named right
+at both ends. All of it is seen. Its test is evidence not yet recorded:
+[shadow.py](shadow.py) runs it on the rover beside the watch and logs what it
+would report, so ordinary drives, with nothing staged, count its false alarms.

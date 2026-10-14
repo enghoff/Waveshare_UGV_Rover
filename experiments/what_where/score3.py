@@ -32,7 +32,7 @@ import load  # noqa: E402
 import recorded  # noqa: E402
 import score_session as m5  # noqa: E402
 from arm_replay import grid_of  # noqa: E402
-from change_detect import compose, interp_pose, last_pose  # noqa: E402
+from poses import compose, interp_pose, last_pose  # noqa: E402
 
 cw = events.cw
 #: The what threshold of step 1, from the controls of 2026-10-11.

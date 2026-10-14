@@ -13,11 +13,8 @@ import sys
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-for _where in (os.path.join(HERE, "..", "m5_changes"), os.path.expanduser("~/m5")):
-    if os.path.exists(os.path.join(_where, "change_detect.py")):
-        sys.path.insert(0, _where)
-        break
-from change_detect import compose, interp_pose, last_pose  # noqa: E402
+sys.path.insert(0, HERE)
+from poses import compose, interp_pose, last_pose  # noqa: E402
 
 #: A look taken while the rover turned faster than this gets no recorded pose:
 #: the store's pose and the shutter disagree by up to 0.2 s, which at this rate
