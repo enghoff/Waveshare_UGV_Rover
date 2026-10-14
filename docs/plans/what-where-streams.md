@@ -7,7 +7,11 @@ encoders and nearest-memory prediction, and met its frozen bar narrowly
 Step 2 added navigation's pose, and found all four arrivals, but gone found
 nothing real
 ([entry](../progress/2026-10-14-what-where-step-2-with-navigations-pose.md)).
-Step 3 is in development.
+Step 3, chosen by the owner the same day, takes where and gone from the
+lidar's change watch and joins them to the camera's what. On recordings
+already seen it names what changed but finds nothing the watch misses on the
+shakedown; its test, the next staged M5 session, is scripted
+([entry](../progress/2026-10-14-what-where-step-3-events.md)).
 This plan replaces the house model of
 [perceiving by prediction](perceiving-by-prediction.md) as the place where
 prediction and observation are compared. That plan's rules for pending changes,
@@ -47,46 +51,49 @@ trained end to end tend to leave all the work to the bottom layer (the critique
 of PredNet below).
 
 **Where.** A thing's place in map coordinates, never in the picture. The
-picture moves every time the gimbal does; the room does not. The bearing comes
-from the pose and the gimbal, as it does now, and the range from the depth
-camera under the region's outline. The depth camera covers only the middle of
-the fisheye's view, so most regions have no range. For things standing on the
-floor, the lidar's hit at the region's bearing can supply one, which is
-proposed below. A look gets a where only once the rover's place is confirmed
-([R-WS-16](../requirements/world-state.md#r-ws-16)), which in a rearranged room
-is often refused (below).
+picture moves every time the gimbal does; the room does not. Since 2026-10-14
+where comes from geometry, not from a latent: the lidar change watch the rover
+already runs keeps each place's latest state, solid or seen through, and says
+where something has arrived and where something has gone. A latent where,
+matching a region's appearance against remembered things near its place, was
+tried on the 11 October recordings and could not tell moved armchairs from
+unmoved ones ([step 3's development](../progress/2026-10-14-what-where-step-3-events.md)).
+The camera's regions are tied to those places by the depth camera's range
+under the outline or, for things on the floor, the lidar's return across the
+region's width. A region gets a bearing only once the rover's place is
+confirmed ([R-WS-16](../requirements/world-state.md#r-ws-16)), which in a
+rearranged room is often refused (below).
 
-**The errors, per thing:**
-- **New**: nothing in the house's memory looks like it.
-- **Out of place**: it looks like something remembered, but not like anything
-  memory holds where it now stands.
-- **Gone**: memory expected it and the look does not show it. A missing
-  detection is not evidence of absence. The shakedown showed that region
-  detections alone cannot carry this (below). It needs the space to be seen
-  empty: the lidar passing through where the thing stood, or the depth camera
-  measuring beyond it.
+**What is reported:**
+- **New thing**: the regions at an arrival, or at a place the lidar calls small
+  or cannot see, are unlike anything in the house's memory, in two looks.
+- **Moved**: a departure and an arrival whose regions look alike. Which of two
+  identical things moved cannot be told
+  ([R-WS-2](../requirements/world-state.md#r-ws-2)).
+- **Arrived** and **gone**: the watch's other furniture-sized changes, named by
+  the regions seen or remembered there. A missing detection is never evidence
+  of absence; gone needs the space seen empty.
 
-The scores are kept apart, never fused into one
-([R-WS-8](../requirements/world-state.md#r-ws-8)). Each comes with the error
-vector itself, the difference between the predicted and the observed embedding.
-Its direction is what the later stages learn from: a lighting change, a
+The two kinds of evidence are kept apart, never fused into one score
+([R-WS-8](../requirements/world-state.md#r-ws-8)). The what stream's error is a
+vector, the difference between the predicted and the observed embedding, and
+its direction is what the learned stages are for: a lighting change, a
 different viewpoint and a cushion moved should come to point different ways.
 
 ## How memory predicts, in three stages
 
 1. **Nearest memory (step 1, done).** The prediction for a look is the regions
    of the latest views of that place. Nothing is learned.
-2. **A memory of things in their latest state.** Each remembered thing keeps
-   its latest place and a few appearance exemplars. A later look updates them,
-   and a look that sees the space empty retires a place, so memory says where
-   things are now rather than everywhere they have been. The shakedown's misses
-   came from exactly this: its references reached back days into earlier
-   arrangements. Changes stay pending until a later look confirms them, as in
+2. **The room's latest state (step 3, built).** Geometry is the change watch's
+   latest state of every place; appearance is the newest regions remembered at
+   a place. Memory says where things are now rather than everywhere they have
+   been, which is what step 1's stale references lacked. Changes stay pending
+   until a later look confirms them, as in
    [the transaction](perceiving-by-prediction.md#changes-and-identity-kept-pending).
-   This is close to what one thing per object
+   Remembering each object as one thing
    ([R-WS-17](../requirements/world-state.md#r-ws-17),
-   [R-WS-18](../requirements/world-state.md#r-ws-18)) asks of the store, and is
-   built to the same rules.
+   [R-WS-18](../requirements/world-state.md#r-ws-18)) is not needed for this,
+   and is not attempted.
 3. **Learned predictors.** Small networks trained on the rover's own unchanged
    revisits, with the frozen encoder's vectors as targets, as DINO-WM plans in
    DINOv2's space. The first predicts how a thing's vector should shift seen
@@ -110,15 +117,15 @@ whatever changed. Spreads freeze while changes are pending, so the rover cannot
 learn its own mistakes as normal variation. Expectation never fills in what was
 not seen.
 
-## What step 1 found
+## What steps 1 to 3 found
 
-[The entry](../progress/2026-10-14-what-where-streams-on-the-shakedown.md) has
-the numbers. In short: what found both bean bags early and cleanly; where found
-one armchair's new place and separated moved from unmoved well, but from stale
-references and too few confirmed poses; gone found nothing, because a missing
-detection says little; and the untouched rooms held no persistent false alarm.
-Three of six staged changes, where the lidar watch found five. Steps 2 to 4
-answer those three weaknesses in turn.
+The entries have the numbers. What, the frozen encoder's novelty, found both
+bean bags early and cleanly, and scene 1's tipped stool, which the lidar called
+small. A latent where found the moved armchairs only with navigation's pose and
+only weakly, held back by stale memory and rough places. Gone from region
+detections found nothing. Step 3 joins the watch's geometry to the camera's
+what and reports changes as moved or new: on the shakedown the same five of
+six as the watch, three of its four named right, on evidence already seen.
 
 ## The order of work
 
@@ -128,42 +135,43 @@ answer those three weaknesses in turn.
    stands. All four arrivals found by where alone, gone nothing real. It shows
    the where stream needs a pose in the rearranged room, and so the far-hit
    heading check or a pose from settling, before it can run on the rover.
-3. **The latest-state memory and lidar ranging** for regions on the floor,
-   developed on scene 1 of 2026-10-11 and the controls. With a place for most
-   things, the where tolerances can shrink from what absorbs the region
-   finder's noise (15 degrees, 1 m) to what a ranged place needs; on the
-   shakedown the wide ones absorbed a 0.9 m move. Tested on the next
-   staged M5 session
+3. **Built: the watch's geometry joined to the camera's what**, developed on
+   the controls and scene 1 of 2026-10-11 and checked on the shakedown. Its
+   test is fixed in the branch's `step3.md` for the next staged M5 session
    ([sessions-that-serve-several-milestones](sessions-that-serve-several-milestones.md)),
-   which is fresh evidence nobody has tuned on.
-4. **Gone from free space**: a remembered thing's place passed through by the
-   lidar, or measured beyond by the depth camera, in looks that expected it.
-5. **The learned viewpoint predictor and spread**, trained on revisits before a
+   which is fresh evidence nobody has tuned on, against the watch alone on the
+   same scans. That session's recording and world store are all it needs.
+4. **The learned viewpoint predictor and spread**, trained on revisits before a
    cutoff, tested after it.
-6. **On the rover, in shadow**: the streams scored at every look beside the
-   lidar watch. The vectors are already computed per look; a nearest-neighbour
-   search over the store's vectors costs milliseconds. Reports only, through
-   the existing change log, during M5 sessions.
+5. **On the rover, in shadow**: step 3's events beside the watch's own log,
+   reports only, during M5 sessions. The vectors are already computed per look
+   and the watch already runs, so the cost is joining them. It needs a pose in
+   the rearranged room first: the far-hit heading check or a pose from
+   settling.
 
-**Gate for each step:** frozen before scoring. It must find more staged changes
-than the step before, with no more persistent false alarms in the
-room-controls. A step that only matches the lidar watch is kept for what it
-adds that the watch cannot see: things the lidar plane misses, and what changed
-rather than only that something did.
+**Gate for each step:** frozen before scoring. Against the watch alone it must
+find every staged change the watch finds, add one the watch misses or name
+four in five of its events right, and raise at most one more false alarm in
+the room-controls. What it adds is what the watch cannot give: things the
+lidar plane misses, and what changed rather than only that something did.
 
 ## Risks
 
 - **The region finder crops the same thing differently every look.** One region
   in seven found no look-alike in the latest three views of an unchanged place,
   which is why every score is graded and every flag needs persistence.
-- **Memory deep enough to absorb that noise is stale.** The latest-state memory
-  is the answer proposed, not yet shown.
+- **Memory deep enough to absorb that noise is stale.** For geometry the
+  watch's latest state answers it; for appearance only the newest regions at a
+  place are used.
 - **A rearranged room refuses the pose.** The heading check needs 90% of the
   scan on walls. The far-hit check proposed on
   [2026-10-12](../progress/2026-10-12-heading-check-in-a-changed-room.md)
   would confirm about half of those looks.
-- **Two identical armchairs.** What cannot tell them apart; only where can, so
-  a swap is invisible ([R-WS-2](../requirements/world-state.md#r-ws-2)).
+- **Two identical armchairs.** What cannot tell them apart, so a move between
+  them is reported without saying which went where, and a swap is invisible
+  ([R-WS-2](../requirements/world-state.md#r-ws-2)).
+- **Camera-only new things bring their own false alarms**: one in seven
+  controls on development, a bright patch of floor.
 - **People.** A person is new to what every time. Persistence and the region
   floor keep a passer-by from being a change; a person who stays is reported
   as one.
