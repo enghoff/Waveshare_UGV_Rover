@@ -115,6 +115,21 @@ an estimated gyro offset and leaving whatever the estimate was wrong by. The
 check remains, because "the rover cannot tell whether it is wrong" is a separate
 fault from "the rover drifts".
 
+A turn only the gyro reports is not believed either. A turn base_node commanded
+integrates as it comes, but one it did not -- through the board bridge, or a hand
+on the tracks -- is held until either track's own count moves, and dropped if
+none does within `TRACK_WAIT_S` (`base_node.witnessed`). A gyro reporting a turn
+that no track shows has been a faulty gyro: on 2026-10-14 it came up reading
+210 deg/s with the rover parked, turned the believed heading round for twelve
+minutes and smeared the live map into a disc of free floor across the walls.
+Three seconds of that, or two of the gyro reporting exactly nothing, latches
+`gyro_fault` in the base's state until base_node restarts. The heading is then
+held, `nav_status` carries the reason and the drive console shows it, autonomy
+will not drive ([R-SAFE-17](../docs/requirements/safety.md#r-safe-17)), the
+world state takes no bearings, and the map keeper saves nothing
+(`nav_map.map_trustworthy`). A full power cycle has cleared every such fault so
+far.
+
 The same search is offered read-only, as the bridge's `measure` op
 (`nav_map.measure_pose`): half a metre and 45 degrees around where the rover
 thinks it is, about a tenth of a second, with no move mutex, refusing a moving

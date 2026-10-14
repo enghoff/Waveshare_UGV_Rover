@@ -4,7 +4,11 @@ A tick difference taken across a counter reset and a gyro bias that never
 settles are both silent faults -- the rover simply believes it is somewhere it
 is not -- so they are checked here as arithmetic on recorded samples.
 """
+import gzip
+import json
 import math
+import os
+import time
 
 from test_harness import check, section
 
@@ -199,6 +203,27 @@ class _Debiasing:
         self._still_for = 0.0
         self._bias = None
         self._bias_samples = 0
+        self._last_tracks = None
+        self._held = self._unwitnessed_for = self._unwitnessed = 0.0
+        self._frozen_for = 0.0
+        self.gyro_fault = ""
+        self.faults_logged = []
+
+    def witnessed(self, *args):
+        from base_node import BaseNode
+        return BaseNode.witnessed(self, *args)
+
+    def watch_frozen(self, *args):
+        from base_node import BaseNode
+        return BaseNode.watch_frozen(self, *args)
+
+    def fault(self, why):
+        from base_node import BaseNode
+        return BaseNode.fault(self, why)
+
+    def get_logger(self):
+        logged = self.faults_logged
+        return type("Logger", (), {"error": lambda _self, text: logged.append(text)})()
 
 
 def test_a_spin_nobody_commanded_here_is_still_a_spin():
@@ -342,7 +367,152 @@ def test_a_daemon_restart_is_not_a_turn():
               moved, 0.0, tolerance=0.5)
 
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+# The board bridge as recorded: still and healthy for 30 s on 2026-10-14, and the
+# gyro frozen for 3 s on 2026-10-05 (docs/progress/2026-10-05-frozen-imu.md).
+AT_REST = os.path.join(HERE, "fixtures", "gyro-at-rest-2026-10-14.json.gz")
+FROZEN = os.path.join(HERE, "fixtures", "gyro-frozen-2026-10-05.json.gz")
+
+
+def _replay(node, records, tracks=True):
+    """Bridge records through the real `integrate`, new samples only.
+
+    Recorded before the bridge sent each track's count, so each sample takes them
+    from the newest full telemetry line before it -- which is the same numbers, as
+    nothing moved. Carries on from wherever the last call left the node."""
+    last_at, counts = getattr(node, "replayed", (None, None))
+    for record in records:
+        telemetry = record.get("telemetry") or {}
+        if telemetry.get("odl") is not None:
+            counts = (float(telemetry["odl"]), float(telemetry["odr"]))
+        motion = dict(record.get("motion") or {})
+        at = motion.get("at")
+        if at is None or at == last_at:
+            continue
+        if tracks and counts is not None and "left" not in motion:
+            motion["left"], motion["right"] = counts
+        node.integrate(motion, record, dt=None if last_at is None else at - last_at)
+        last_at = at
+    node.replayed = (last_at, counts)
+    return node
+
+
+def _board(seconds, rate_dps, tracks=(-14.0, 15.0), step=None, at=1000.0, gz=0.0,
+           samples=0):
+    """A board's records at 17 a second: the gyro at `rate_dps`, and each track's
+    count either standing (`step` None) or moving a tick opposite ways every
+    `step` samples, as on the spot."""
+    out, (left, right) = [], tracks or (0.0, 0.0)
+    for i in range(int(round(seconds * 17))):
+        at += 1.0 / 17.0
+        gz += rate_dps * 16.1461 / 17.0
+        samples += 1
+        if step and i % step == step - 1:
+            left, right = left - 1.0, right + 1.0
+        motion = {"at": at, "gz_lsb_s": gz, "ticks": (left + right) / 2.0,
+                  "samples": samples, "breaks": 0}
+        if tracks is not None:
+            motion["left"], motion["right"] = left, right
+        out.append({"kind": "motion", "motion": motion})
+    return out
+
+
+def _after(records, seconds, rate_dps, **kwargs):
+    """`_board` carrying on from the last of `records`."""
+    last = records[-1]["motion"]
+    tracks = kwargs.pop("tracks", (last["left"], last["right"]) if "left" in last else None)
+    return _board(seconds, rate_dps, tracks=tracks, at=last["at"], gz=last["gz_lsb_s"],
+                  samples=last["samples"], **kwargs)
+
+
+def _turned(node, records):
+    """Degrees `records` turn the node's heading, unwrapped."""
+    before, total = node.yaw, 0.0
+    for record in records:
+        _replay(node, [record])
+        total += (node.yaw - before + math.pi) % (2 * math.pi) - math.pi
+        before = node.yaw
+    return math.degrees(total)
+
+
+def test_a_gyro_turning_with_no_track_moving():
+    """**The boot of 2026-10-14.** The gyro came up reading 210.6 deg/s with the
+    rover parked, nothing commanded and neither track moving. `SPINNING_DPS` read
+    that as a spin nobody here commanded, so it was integrated, never learned as a
+    bias, and for twelve minutes the base logged "not estimated yet (rover not
+    still)" while the heading went round and the live map smeared into a disc."""
+    section("a gyro reporting a turn that no track shows (2026-10-14)")
+    head = _board(1.0, 0.46)
+    node = _Integrating()
+    _replay(node, head)
+    spun = _turned(node, _after(head, 60.0, 210.6, tracks=None))
+    check("reproduced without the tracks: a parked rover's heading turns %.0f "
+          "degrees in a minute" % spun, spun, 210.6 * 60.0, tolerance=60.0)
+    check("...the console's 210.6 deg/s", math.degrees(node.turn_rate), 210.6,
+          tolerance=1.0)
+    check("...with no bias ever learned, so the bias rule saw nothing",
+          node._bias, None)
+
+    node = _Integrating()
+    _replay(node, head)
+    stuck = _after(head, 60.0, 210.6)
+    check("with them, the heading does not move",
+          _turned(node, stuck[:int(2.5 * 17)]), 0.0, tolerance=0.01)
+    check("...and after 2.5 s the gyro is not yet called faulty", node.gyro_fault, "")
+    check("...after 3.5 s it is", "+211 deg/s" in _replay(
+        node, stuck[int(2.5 * 17):int(3.5 * 17)]).gyro_fault, True)
+    check("...said once in the log", len(node.faults_logged), 1)
+    check("...and the heading still has not moved",
+          _turned(node, stuck[int(3.5 * 17):]), 0.0, tolerance=0.01)
+    node._cmd_at = time.monotonic()
+    check("once faulty, even a commanded turn is not taken from it",
+          _turned(node, _after(stuck, 2.0, 60.0, step=1)), 0.0, tolerance=0.01)
+
+
+def test_a_turn_the_tracks_show_is_kept():
+    """A spin base_node did not command still reads whole once a track shows it:
+    calibrate_chassis.py through the board bridge, or a hand on the tracks."""
+    section("a turn only the gyro and the tracks report")
+    parked = _board(30.0, 0.46)
+    node = _Integrating()
+    _replay(node, parked)
+    fast = _after(parked, 3.0, 60.0 + 0.46, step=1)
+    check("three seconds at 60 deg/s with the tracks moving reads about 180 degrees",
+          _turned(node, fast), 180.0, tolerance=3.0)
+    # 9.2 deg/s is the slowest the turn curve holds; at 0.18 ticks a degree each
+    # track ticks every 0.6 s, which is every tenth sample.
+    slow = _after(fast, 6.0, 9.2 + 0.46, step=10)
+    check("six seconds at 9.2 deg/s, a tick every 0.6 s, reads about 55 degrees",
+          _turned(node, slow), 55.2, tolerance=6.0)
+    check("...and neither turn is a fault", node.gyro_fault, "")
+    lifted = _after(slow, 1.0, 90.0)
+    check("a rover turned in the air for a second is not noticed",
+          _turned(node, lifted), 0.0, tolerance=0.01)
+    check("...nor taken for a faulty gyro",
+          (_replay(node, _after(lifted, 5.0, 0.46)).gyro_fault, node._unwitnessed_for),
+          ("", 0.0))
+
+
+def test_the_gyro_recorded_at_rest_and_frozen():
+    """The real board, through the real `integrate`: healthy at rest on 2026-10-14,
+    and frozen on 2026-10-05."""
+    section("the gyro as recorded, at rest and frozen")
+    with gzip.open(AT_REST, "rt") as fh:
+        node = _replay(_Integrating(), json.load(fh))
+    check("at rest: no fault", node.gyro_fault, "")
+    check("...an offset learned inside the healthy band, 0.2 to 0.8 deg/s",
+          0.2 <= math.degrees(node._bias) <= 0.8, True)
+    check("...and the heading has not moved", math.degrees(node.yaw), 0.0, tolerance=1.0)
+    with gzip.open(FROZEN, "rt") as fh:
+        node = _replay(_Integrating(), json.load(fh))
+    check("frozen: a sensor that has stopped updating",
+          "stopped updating" in node.gyro_fault, True)
+
+
 TESTS = (
+    test_a_gyro_turning_with_no_track_moving,
+    test_a_turn_the_tracks_show_is_kept,
+    test_the_gyro_recorded_at_rest_and_frozen,
     test_a_daemon_restart_is_not_a_turn,
     test_idle_behaviour,
     test_gyro_bias,

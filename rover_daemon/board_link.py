@@ -267,6 +267,9 @@ class SerialLink:
         self._sample_at: float | None = None
         self._gz_lsb_s = 0.0      # integral of raw gz over time, LSB-seconds
         self._ticks: float | None = None
+        # Each track's own count. The mean above stands still while the rover
+        # turns on the spot, and these are what say a turn is real (base_node).
+        self._tracks: tuple[float, float] | None = None
         self._samples = 0
         self._breaks = 0          # intervals the integral cannot vouch for
         # Guards the port's read side and the half-line left over from the last
@@ -494,6 +497,7 @@ class SerialLink:
                             and abs(mean - self._ticks) > MAX_TICK_STEP):
                         self._breaks += 1     # the board restarted its counters
                     self._ticks = mean
+                    self._tracks = (odl, odr)
         log = self.battery_log
         if log is not None:
             log.fold(lines)
@@ -515,9 +519,10 @@ class SerialLink:
         with self._motion_lock:
             if self._samples == 0:
                 return None
+            left, right = self._tracks if self._tracks is not None else (None, None)
             return {"at": self._sample_at, "gz_lsb_s": self._gz_lsb_s,
-                    "ticks": self._ticks, "samples": self._samples,
-                    "breaks": self._breaks}
+                    "ticks": self._ticks, "left": left, "right": right,
+                    "samples": self._samples, "breaks": self._breaks}
 
     def telemetry(self) -> dict[str, Any] | None:
         """The newest line the board has sent, or None if none arrived in time.

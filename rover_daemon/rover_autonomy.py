@@ -212,7 +212,8 @@ class RoverAutonomy:
                     "error": "the rover has not confirmed where it is on the map"}
         if facts.get("map_settled") is False:
             return {"ok": False, "error": "the map has not settled yet"}
-        turning = permission_mod.rotation_fault(facts.get("gyro_bias_dps"))
+        turning = permission_mod.rotation_fault(facts.get("gyro_bias_dps"),
+                                                facts.get("gyro_fault"))
         if turning:
             return {"ok": False, "error": turning}
         base = (permission_mod.CONSOLE_BUDGET if via == "console"
@@ -543,6 +544,7 @@ class RoverAutonomy:
             "heading_deg": (None if not pose or pose.get("heading_deg") is None
                             else float(pose["heading_deg"])),
             "gyro_bias_dps": status.get("gyro_bias_dps"),
+            "gyro_fault": status.get("gyro_fault"),
         })
         return facts
 

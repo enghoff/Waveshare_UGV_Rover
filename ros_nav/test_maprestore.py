@@ -475,6 +475,12 @@ def test_a_rover_with_nothing_saved_still_starts_a_map() -> None:
           node.map_parked_at, None)
     check("...and a map this session drew needs no permission to be saved",
           node.map_trustworthy(), True)
+    # 2026-10-14: the gyro read 210 deg/s with the rover parked and the live
+    # map smeared into a disc; only the restore being unsettled kept it off disk.
+    node.base_state = {"gyro_fault": "the gyro reported the rover turning"}
+    check("...unless the base says its gyro is faulty", node.map_trustworthy(), False)
+    node.base_state = {"gyro_fault": ""}
+    check("...and an empty verdict is no fault", node.map_trustworthy(), True)
 
 
 def test_a_restore_that_landed_cleanly_needs_nothing_further() -> None:

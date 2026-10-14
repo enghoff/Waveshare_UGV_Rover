@@ -478,6 +478,8 @@ class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, Node):
             "dropped_scans": None if not room else room.get("thin"),
             "pwm": None if not base else base.get("pwm"),
             "gyro_bias_dps": None if not base else base.get("gyro_bias_dps"),
+            # Why the gyro is not to be believed, or "" (base_node.GYRO_FAULT_S).
+            "gyro_fault": "" if not base else (base.get("gyro_fault") or ""),
             "board_ok": None if not base else base.get("board_ok"),
             "lidar_ok": lidar_live and mapped,
             "lidar_live": lidar_live,

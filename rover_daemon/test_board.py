@@ -280,6 +280,13 @@ def test_reading_the_board():
           0.09 < link.motion()["at"] - started < 0.5, True)
     check("and the newest wheel count is the one kept",
           link.motion()["ticks"], 120.0)
+    # And each side's own, because the mean stands still while the rover turns
+    # on the spot: base_node reads these to tell a turn from a faulty gyro.
+    port.feed(LINE.format(gz=100, odl=118, odr=122))
+    link.pump()
+    check("each track's own count goes with it",
+          (link.motion()["left"], link.motion()["right"], link.motion()["ticks"]),
+          (118.0, 122.0, 120.0))
 
     # A gap this thread was not awake for is the one thing that must not be
     # integrated: a yaw rate multiplied by it is rotation that never happened.

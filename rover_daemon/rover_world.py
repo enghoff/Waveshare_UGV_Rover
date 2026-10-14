@@ -907,6 +907,10 @@ class RoverWorld:
             return None, ("the rover has not yet confirmed where it is on its map "
                           "since it started; a position check from the drive "
                           "console settles that")
+        # And a settled map is no help once the gyro is wrong: the heading is
+        # held from then on, so it is right only for as long as nobody turns.
+        if status.get("gyro_fault"):
+            return None, "the rover's gyro is faulty: " + str(status["gyro_fault"])
         where = status.get("pose")
         unreadable = "the navigation sent a position that could not be read"
         if not isinstance(where, dict):

@@ -233,13 +233,20 @@ DRIVING_ACTIONS = frozenset({"drive_to"})
 GYRO_BIAS_LIMIT_DPS = 5.0
 
 
-def rotation_fault(bias_dps: Any) -> str:
+def rotation_fault(bias_dps: Any, said: Any = None) -> str:
     """Why the rover cannot measure its own turning, or '' when it can.
+
+    `said` is the base's own verdict (`gyro_fault` in the navigator's status),
+    which comes first because it watches the gyro against each track's count:
+    on 2026-10-14 the gyro read 210 deg/s with the rover parked, which it took for
+    a spin and never learned as a bias, so the bias rule below saw nothing at all.
 
     '' as well when the base has not yet reported a bias at all: that is a rover
     still standing still long enough to measure one, not a fault, and the base
     drives on the raw gyro meanwhile as it always has.
     """
+    if said:
+        return str(said)
     if bias_dps is None:
         return ""
     try:
@@ -644,7 +651,7 @@ class Permission:
                 return Verdict(False, "pose",
                                "the rover does not know where it is on the map "
                                "well enough to be sent to a place on it")
-            turning = rotation_fault(facts.get("gyro_bias_dps"))
+            turning = rotation_fault(facts.get("gyro_bias_dps"), facts.get("gyro_fault"))
             if turning:
                 return Verdict(False, "rotation", turning)
             if facts.get("map_settled") is False:
@@ -919,7 +926,7 @@ class Permission:
         # A rover that has lost its sense of turning cannot finish a turn, and
         # one in the middle of a drive will stand there trying until something
         # else gives up.
-        turning = rotation_fault(facts.get("gyro_bias_dps"))
+        turning = rotation_fault(facts.get("gyro_bias_dps"), facts.get("gyro_fault"))
         if turning:
             return "the rover cannot measure its own turning: " + turning
         fence = run.budget.get("geofence")

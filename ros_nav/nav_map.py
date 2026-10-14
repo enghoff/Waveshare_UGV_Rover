@@ -488,7 +488,16 @@ class NavMap:
         rover was parked, which on a rover nobody moved is confirmation, or a fit
         somebody asked for putting it right. An unconfirmed anchor must not be
         the thing the next boot trusts.
+
+        **Nor a map drawn while the gyro was wrong**, settled or not. On
+        2026-10-14 the gyro came up reading 210 deg/s with the rover parked, and
+        the live map became a disc of free floor drawn across the walls; only the
+        restore being unsettled kept that off the disk. The base says so in
+        `gyro_fault`, latched until it restarts (base_node.GYRO_FAULT_S).
         """
+        base = getattr(self, "base_state", None) or {}
+        if base.get("gyro_fault"):
+            return False
         return self.map_settled or not self.map_restored
 
     def still_parked(self):

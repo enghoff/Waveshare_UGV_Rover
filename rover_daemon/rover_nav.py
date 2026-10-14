@@ -629,7 +629,7 @@ class RoverNav:
             # fault arrives with a boot and lasts until the power is cut, and the
             # person at the console is the one who has to cut it.
             "rotation_fault": permission_mod.rotation_fault(
-                status.get("gyro_bias_dps")),
+                status.get("gyro_bias_dps"), status.get("gyro_fault")),
             # The open autonomous run, or None: what the console's run button
             # is drawn from, so that it shows a run an agent started too.
             "autonomy": self.autonomy_brief()}

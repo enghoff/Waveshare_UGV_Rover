@@ -85,6 +85,28 @@ STILL_SETTLE_S = 1.0
 # spin was thrown away and learned as offset. Three degrees a second is several
 # times the still noise and far below any real turn.
 SPINNING_DPS = 3.0
+# But a turn the gyro reports and neither track shows is not one. Each track's own
+# count stands exactly still at rest -- a whole minute without a tick, measured on
+# 2026-10-14 -- and moves about 0.18 ticks a degree, opposite ways, while the
+# rover turns on the spot (a 65-degree spin on 2026-10-05,
+# captures/2026-10-05-spin-diagnostic/board-after-reboot.json). At the slowest
+# point on the turn curve, 9.2 deg/s, that is a tick from each track every 0.6 s.
+# So a turn only the gyro reports is held back rather than integrated, and
+# dropped if no track joins it within this long. That is what the gyro said
+# through the boot of 2026-10-14: 210 deg/s for twelve minutes with the rover
+# parked and nothing moving, which turned the believed heading round and round
+# and smeared the live map into a disc of free floor across the walls.
+TRACK_WAIT_S = 1.5
+# And this long of it is a faulty gyro rather than a rover lifted and turned by
+# hand. Latched for the life of this node, because every fault on record lasted
+# until the power was cut (docs/progress/2026-10-06-a-rover-that-cannot-feel-
+# itself-turn.md): the heading is held, and the map keeper stops saving.
+GYRO_FAULT_S = 3.0
+# A gyro reporting exactly nothing. Healthy, its integral moves on nearly every
+# sample -- the offset alone is about 7 LSB -- and the longest run of unchanged
+# samples in a still minute on 2026-10-14 was 0.11 s. Frozen on 2026-10-05, it did
+# not move once in the 3 s recorded (captures/2026-10-05-spin-diagnostic).
+FROZEN_S = 2.0
 # Slow. The offset drifts with temperature over minutes, so the average has to be
 # long compared with the noise and short compared with that drift; at ~18 samples
 # a second this is a time constant of about a minute.
@@ -279,6 +301,15 @@ class BaseNode(Node):
         self._bias = None
         self._bias_samples = 0
         self._still_for = 0.0
+        # Each track's own count, and a turn only the gyro has reported so far.
+        # See `witnessed`.
+        self._last_tracks = None
+        self._held = 0.0
+        self._unwitnessed_for = 0.0
+        self._unwitnessed = 0.0
+        self._frozen_for = 0.0
+        # Why the gyro cannot be believed, or "". Latched: see GYRO_FAULT_S.
+        self.gyro_fault = ""
 
         self.turn_points = self.calibration["turn_pwm_points"]
         self.drive_points = self.calibration["drive_pwm_points"]
@@ -355,12 +386,17 @@ class BaseNode(Node):
             "board_ok": self._motion_at > 0.0
                         and time.monotonic() - self._motion_at < 1.0,
             "commanded": [round(self._cmd[0], 3), round(self._cmd[1], 3)],
+            # Why the gyro is not to be believed, or "". The console shows it and
+            # the map keeper stops saving on it (nav_map.map_trustworthy).
+            "gyro_fault": self.gyro_fault,
         }
         self.state_pub.publish(
             String(data=json.dumps(state, separators=(",", ":"))))
 
     def report_bias(self):
-        if self._bias is None:
+        if self.gyro_fault:
+            self.get_logger().error("gyro fault: %s" % self.gyro_fault)
+        elif self._bias is None:
             self.get_logger().info("gyro bias: not estimated yet (rover not still)")
         else:
             self.get_logger().info(
@@ -496,7 +532,9 @@ class BaseNode(Node):
             # and 158 degrees that way. Begin again from the next sample.
             self._connects_seen = self.bridge.connects
             self._last_gz = self._last_ticks = self._last_breaks = None
-            self._last_at = self._last_samples = None
+            self._last_at = self._last_samples = self._last_tracks = None
+            self._held = self._unwitnessed_for = self._unwitnessed = 0.0
+            self._frozen_for = 0.0
         if record is None:
             return
         motion = record.get("motion")
@@ -518,7 +556,7 @@ class BaseNode(Node):
         self.integrate(motion, record,
                        dt=(at - previous) if previous is not None else None)
 
-    def debias(self, d_yaw, dt, ticks):
+    def debias(self, d_yaw, dt, ticks, tracks=None):
         """Take the gyro's zero-offset out of one interval's rotation.
 
         This is the difference between odometry that is usable over a run and
@@ -562,7 +600,10 @@ class BaseNode(Node):
 
         **What this gives up**, and it is worth being plain about: a rover rotated
         while its wheels do not turn -- carried, or lifted and set down facing
-        another way -- is no longer noticed. Dead reckoning never measured that
+        another way -- is no longer noticed, and since 2026-10-14 not however fast
+        it is turned either, once the tracks can be read (`witnessed`), because a
+        gyro that reports a turn no track shows has been a faulty gyro far more
+        often than a rover in somebody's hands. Dead reckoning never measured that
         rover's *position* either, since the encoders see nothing, so this takes
         away half of a measurement that was already missing rather than a
         working one. Being moved while switched on is what the refit is for.
@@ -574,14 +615,20 @@ class BaseNode(Node):
         """
         if not dt or dt <= 0:
             return d_yaw
+        if self.gyro_fault:
+            # A gyro known to be wrong turns nothing. See `witnessed`.
+            return 0.0
         rate = d_yaw / dt
         moving = (self._cmd_at > 0.0
                   and time.monotonic() - self._cmd_at <= CMD_TIMEOUT_S)
         if ticks is not None and self._last_ticks is not None:
             moving = moving or abs(ticks - self._last_ticks) > STILL_TICKS
+        spinning = False
         if not moving:
             offset = self._bias if self._bias is not None else 0.0
-            moving = abs(math.degrees(rate - offset)) > SPINNING_DPS
+            spinning = moving = abs(math.degrees(rate - offset)) > SPINNING_DPS
+        if not spinning:
+            self._held = self._unwitnessed_for = self._unwitnessed = 0.0
         if not moving:
             self._still_for += dt
             # A moment's grace after stopping, so the coast is not averaged in as
@@ -598,9 +645,55 @@ class BaseNode(Node):
                 return 0.0
         else:
             self._still_for = 0.0
-        if self._bias is None:
-            return d_yaw
-        return d_yaw - self._bias * dt
+        turned = d_yaw if self._bias is None else d_yaw - self._bias * dt
+        if spinning and tracks is not None:
+            return self.witnessed(turned, dt, tracks)
+        return turned
+
+    def witnessed(self, turned, dt, tracks):
+        """A turn only the gyro reports, passed on once a track shows it.
+
+        `tracks` is whether either track's count moved over this interval. A turn
+        nobody here commanded is held until one does -- and then passed on whole,
+        so a spin through the board bridge or a hand on the tracks loses nothing --
+        and dropped if none does within TRACK_WAIT_S. GYRO_FAULT_S of turning with
+        no track moving at all is a gyro reporting a turn that is not happening:
+        what a lifted rover turned in the air would also look like, for a moment,
+        and what nothing else looks like for seconds. See TRACK_WAIT_S.
+        """
+        if tracks:
+            out = self._held + turned
+            self._held = self._unwitnessed_for = self._unwitnessed = 0.0
+            return out
+        self._unwitnessed_for += dt
+        self._unwitnessed += turned
+        self._held = self._held + turned if self._unwitnessed_for <= TRACK_WAIT_S else 0.0
+        if self._unwitnessed_for >= GYRO_FAULT_S:
+            self.fault("the gyro reported the rover turning at %+.0f deg/s for %.0f s "
+                       "while neither track moved"
+                       % (math.degrees(self._unwitnessed / self._unwitnessed_for),
+                          self._unwitnessed_for))
+        return 0.0
+
+    def watch_frozen(self, raw, dt):
+        """Count the time the gyro's integral has not moved at all. See FROZEN_S."""
+        if raw != 0.0 or not dt or dt <= 0:
+            self._frozen_for = 0.0
+            return
+        self._frozen_for += dt
+        if self._frozen_for >= FROZEN_S:
+            self.fault("the gyro has reported exactly nothing for %.0f s, which is a "
+                       "sensor that has stopped updating" % self._frozen_for)
+
+    def fault(self, why):
+        """Stop believing the gyro until this node starts again. See GYRO_FAULT_S."""
+        if self.gyro_fault:
+            return
+        self.gyro_fault = (why + ", so the rover cannot measure its own turning: its "
+                           "heading is held and the map is not saved. A full power "
+                           "cycle has cleared this before")
+        self._held = 0.0
+        self.get_logger().error("gyro fault: %s" % self.gyro_fault)
 
     def integrate(self, motion, record, dt=None):
         """Fold one motion sample into the pose.
@@ -627,13 +720,24 @@ class BaseNode(Node):
             broken = True
         self._last_samples = samples
 
+        # Whether either track's own count moved, or None where that cannot be
+        # said: a daemon too old to send them, the first sample, or a hole.
+        tracks = None
+        left, right = motion.get("left"), motion.get("right")
+        if left is not None and right is not None:
+            if self._last_tracks is not None and not broken:
+                tracks = (abs(left - self._last_tracks[0]) >= 1
+                          or abs(right - self._last_tracks[1]) >= 1)
+            self._last_tracks = (left, right)
+
         d_yaw = 0.0
         if gz is not None and self._last_gz is not None and not broken:
+            self.watch_frozen(gz - self._last_gz, dt)
             # LSB-seconds since the last sample, over LSB per degree-per-second,
             # is degrees.
             d_yaw = math.radians((gz - self._last_gz)
                                  / self.calibration["gyro_lsb_per_dps"])
-            d_yaw = self.debias(d_yaw, dt, ticks)
+            d_yaw = self.debias(d_yaw, dt, ticks, tracks)
         self._last_gz = gz
 
         d_s = 0.0

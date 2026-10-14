@@ -901,6 +901,16 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
           "position", ("not yet confirmed" in why, "publishing" in why),
           (True, False))
 
+    # **A settled place, and a gyro that is wrong.** On 2026-10-14 the gyro came
+    # up reading 210 deg/s with the rover parked. The base now holds the heading
+    # and says so, and a heading held is right only until somebody turns.
+    rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0})
+    status = rover.nav.status
+    rover.nav.status = lambda: dict(status(), gyro_fault="the gyro reported a turn")
+    _pose, why = rover._world_pose_and_why()
+    check("a faulty gyro gives no direction, and says so",
+          (_pose, "gyro is faulty" in why), (None, True))
+
     class Silent:
         """A navigator too old to have been asked this question."""
 

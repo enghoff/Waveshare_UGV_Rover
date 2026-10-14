@@ -53,12 +53,13 @@ class FakeNav:
     """
 
     def __init__(self, *, where=(0.0, 0.0), map_id="map-1", trusted=True,
-                 settled=True, gyro=0.41) -> None:
+                 settled=True, gyro=0.41, gyro_fault="") -> None:
         self.where = where
         self.map_id = map_id
         self.trusted = trusted
         self.settled = settled
         self.gyro = gyro
+        self.gyro_fault = gyro_fault
         self.driving = False
         self.stops = 0
         self.sent: list[dict[str, Any]] = []
@@ -74,7 +75,7 @@ class FakeNav:
                 "pose": pose, "map_id": self.map_id,
                 "map_settled": self.settled, "map_kept": True,
                 "position_trusted": self.trusted, "match_score": 0.9,
-                "gyro_bias_dps": self.gyro}
+                "gyro_bias_dps": self.gyro, "gyro_fault": self.gyro_fault}
 
     def stop(self) -> dict[str, Any]:
         self.stops += 1
@@ -407,6 +408,20 @@ def test_a_rover_that_cannot_feel_itself_turn_does_not_drive():
     check("...and no healthy reading, nor one not yet measured, is",
           [bool(permission_mod.rotation_fault(v)) for v in healthy],
           [False] * len(healthy))
+    # 2026-10-14: 210 deg/s with the rover parked, read as a spin and never
+    # learned as a bias -- so the bias said nothing, and the base's own verdict,
+    # from the gyro against each track, is what speaks.
+    said = "the gyro reported the rover turning at +211 deg/s for 3 s"
+    check("the base's own verdict is a fault when no bias was ever learned",
+          permission_mod.rotation_fault(None, said), said)
+    check("...and an empty one is not", permission_mod.rotation_fault(0.42, ""), "")
+    rover = a_rover(Clock(), nav=FakeNav(gyro=None, gyro_fault=said))
+    rover.executive_launcher = lambda run_id: {"ok": True}
+    refused = rover.call("autonomy_start", {"via": "console"})
+    check("a run is not opened on it either", (refused["ok"], refused["error"]),
+          (False, said))
+    check("...and the console is told the same",
+          rover.call("nav_status", {})["rotation_fault"], said)
 
     rover = a_rover(Clock(), nav=FakeNav(gyro=-2062.868))
     rover.executive_launcher = lambda run_id: {"ok": True}

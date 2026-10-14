@@ -297,6 +297,14 @@ because it turns nothing. The same reason is carried in `nav_status` as
 as it lasts, since only a person can cut the power. What would make this false is an autonomous drive
 dispatched while the base reports such a bias.
 
+Since 2026-10-14 the base also gives its own verdict, `gyro_fault`, and it comes
+first. That boot the gyro read 210 deg/s with the rover parked, which the base
+took for a spin and so never learned as a bias, and the bias rule saw nothing.
+The base now watches the gyro against each track's own count and calls it
+faulty after 3 s of a turn no track shows, or 2 s of the gyro reporting exactly
+nothing. It then holds the heading, and the map is not saved while the fault
+stands, so the fault cannot be written into the next boot's map.
+
 Proposed rather than settled: no fault has happened since the rule was
 deployed. Replayed over the 21,528 readings the base has logged, it refuses all
 339 taken during the three faults, and one other.
