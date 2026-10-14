@@ -1,0 +1,66 @@
+{
+ "T_what": 0.3215811528449098,
+ "T_where": 0.4574887281150041,
+ "T_gone": 0.9315623189114565,
+ "n_what": 1028,
+ "n_where": 1024,
+ "n_gone": 1096,
+ "controls": [
+  {
+   "control": "08:04-08:20",
+   "regions": 307,
+   "posed": 307,
+   "recorded_pose": 2,
+   "with_references": 307,
+   "expected_twice": 316
+  },
+  {
+   "control": "08:50-09:00",
+   "regions": 192,
+   "posed": 191,
+   "recorded_pose": 4,
+   "with_references": 191,
+   "expected_twice": 164
+  },
+  {
+   "control": "09:14-09:25",
+   "regions": 175,
+   "posed": 172,
+   "recorded_pose": 0,
+   "with_references": 172,
+   "expected_twice": 184
+  },
+  {
+   "control": "09:33-09:49",
+   "regions": 203,
+   "posed": 203,
+   "recorded_pose": 0,
+   "with_references": 203,
+   "expected_twice": 247
+  },
+  {
+   "control": "12:47-12:55",
+   "regions": 57,
+   "posed": 57,
+   "recorded_pose": 7,
+   "with_references": 57,
+   "expected_twice": 80
+  },
+  {
+   "control": "12:55-12:57",
+   "regions": 17,
+   "posed": 17,
+   "recorded_pose": 0,
+   "with_references": 17,
+   "expected_twice": 19
+  },
+  {
+   "control": "13:01-13:07",
+   "regions": 77,
+   "posed": 77,
+   "recorded_pose": 0,
+   "with_references": 77,
+   "expected_twice": 86
+  }
+ ]
+}

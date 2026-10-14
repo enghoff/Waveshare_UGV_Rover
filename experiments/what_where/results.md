@@ -118,3 +118,55 @@ pan sign and the floor filter. Against the protocol as written:
   on the rover.
 - Persistence grouping is greedy and depends on order, and gone is taken per
   remembered region, so one thing seen in different reference looks can split.
+
+# Step 2: with navigation's pose (2026-10-14)
+
+Fixed in [step2.md](step2.md) before running (`f7141e3`); numbers from
+[step2_results.json](step2_results.json). Looks the store kept no pose for took
+navigation's pose at the shutter from the drive recordings, unless the rover
+was turning faster than 20 degrees a second; rooms were judged by where a
+flagged thing stands (its depth point, else the lidar's return along its
+bearing). The thresholds, derived again on the controls by the same rule,
+barely moved: what 0.3216, where 0.4575, gone 0.9316.
+
+**Coverage.** The where stream now sees 23 of the charger armchair's 27
+furniture-sized regions (8 before), 21 of the balcony armchair's 23 (6), 23 of
+the red bean bag's 23 (10) and 25 of the black's 28 (4).
+
+| Staged change | Found by the rule | Looks flagged | By where | Before 08:17:15 |
+|---|---|---|---|---|
+| red bean bag | yes | 16 | 5 | yes |
+| black bean bag | yes | 17, first 42 s into the run | 11 | yes |
+| charger armchair, new place | yes | 4 | 3 | yes |
+| balcony armchair, new place | yes | 2 (08:00:57, 08:20:51) | 2 | no |
+| charger armchair, old place | yes, but not on the evidence | gone, 2 looks | | |
+| balcony armchair, old place | no | | | |
+
+**By the rule: five of six, with one persistent false alarm, so it shows
+promise; the lidar watch's count on the same session was also five of six with
+one.** On the pictures it is less:
+- The gone flag at the charger armchair's old place is a patch of floor in a
+  look of 2026-10-10 whose unranged sight line happened to pass within 0.5 m of
+  the old place. It says nothing about the armchair. On the evidence, gone
+  found neither old place.
+- The persistent false alarm is a gone flag: a strip of bedroom floor under the
+  chest of drawers, remembered from a look during scene 1 of 2026-10-11, when a
+  stool stood at the edge of it. No region flag persisted in the corridor or
+  bedroom.
+- The balcony armchair's two flags are at 08:00:57, one second before the pose
+  began to go wrong, and at 08:20:51, after the rover stood 20 cm out by the
+  charger. Without looks after 08:17:15, three arrivals are found.
+- Each of the four arrivals is found by where alone in two or more looks.
+
+**Separation.** Against the room-controls' 60 regions: where scores the
+armchairs' 44 posed regions at 0.89 (0.89 before 08:17:15), the bean bags' at
+0.95; what scores the bean bags at 0.89. Only 5 of the 44 armchair regions pass
+the where threshold: their median where is 0.14 against a threshold of 0.46.
+Persistence found them, and the stale, wide references of step 1 are still what
+keeps most armchair regions under it.
+
+**Flags in the living room not on a staged thing's label.** Eight, all after
+the refit. Four show the staged armchairs. Four do not (cables by the charger, a
+bright patch of floor, the balcony door, floor shadows), all at 08:17:56-08:20:36
+by the charger, when the pose was 20 cm out. Three flags had no place: two of
+the black bean bag in the run and one patch of floor.
