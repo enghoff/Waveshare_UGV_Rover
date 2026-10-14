@@ -1,0 +1,6 @@
+{"note": "Labelled by the coding agent from identity_sheets.py's sheets, 2026-10-14. The two black armchairs are told apart by the patterned throw: the one by the black cabinet carries it (backlit, it reads purple), the one by the balcony door is plain. The plain armchair's dark close-ups are from living-1, beside it. Identical dining chairs have kind labels only and are left out. Small, edge-only and mixed crops are left out.",
+ "things": {
+  "black armchair, to the balcony door": [102322, 102330, 102534, 102544, 102555, 102565, 102773, 102782, 102789, 102836, 102843, 102853, 102864, 102571, 102575, 102591, 102600, 102610, 102620, 102629, 102639, 102657, 102666, 102674, 102684, 102700, 102709],
+  "black armchair, to the black cabinet": [102577, 102584, 102592, 102601, 102611, 102621, 102630, 102640, 102658, 102667, 102675, 102685, 102694, 102701, 102710, 102750, 102757, 102762, 102767, 102841, 102852],
+  "red bean bag": [102653, 102724, 102803, 102813, 102867]},
+ "before_records": {}}
