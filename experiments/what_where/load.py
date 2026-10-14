@@ -40,9 +40,11 @@ class Regions:
     def __init__(self, rows):
         self.n = len(rows)
         self.id = np.array([r["id"] for r in rows], dtype=np.int64)
-        self.t = np.array([r["t"] for r in rows])
+        self.t = np.array([r["t"] for r in rows], dtype=float)
         self.frame = np.array([r["frame"] for r in rows], dtype=object)
-        self.posed = np.array([r["pose"] is not None for r in rows])
+        # bool even when empty: an empty list makes a float array, and `&` with
+        # one fails -- every minute the rover took no look, in the shadow runner.
+        self.posed = np.array([r["pose"] is not None for r in rows], dtype=bool)
         nan = float("nan")
         self.cx = np.array([r["pose"]["x_m"] if r["pose"] else nan for r in rows])
         self.cy = np.array([r["pose"]["y_m"] if r["pose"] else nan for r in rows])

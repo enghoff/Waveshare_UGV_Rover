@@ -141,7 +141,8 @@ class Store:
         after = 0 if self.regions is None or self.regions.n == 0 else int(self.regions.id.max())
         new = load.load(DB, 1.7e9, time.time() + 1.0, map_session=self.map_session,
                         recordings=[rec], after_id=after)
-        self.regions = new if self.regions is None else load.concat(self.regions, new)
+        if self.regions is None or new.n:
+            self.regions = new if self.regions is None else load.concat(self.regions, new)
         return self.regions
 
 
