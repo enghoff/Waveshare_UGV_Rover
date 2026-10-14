@@ -13,7 +13,11 @@ prediction and error at several levels, and [Levels of prediction](#levels-of-pr
 was added after two literature surveys, a verification pass and Codex's
 critique (`ugv-rover-25-hier-*.md` beside the others). The first experiment ran
 on 2026-10-13 and triggered its stop rule for pixel-level recall, which the owner does not take as a gate on the levels above: see step 1 of
-[the order of work](#the-order-of-work).
+[the order of work](#the-order-of-work). On 2026-10-14 the owner moved the
+comparison off the image and depth level altogether:
+[prediction in what and where streams](what-where-streams.md) replaces the
+house model below as the place prediction meets observation. The rules for
+pending changes, not filling in, settling, levels and gates here still hold.
 
 ## In short
 
