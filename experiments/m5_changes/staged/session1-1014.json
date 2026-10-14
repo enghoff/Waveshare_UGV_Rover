@@ -1,0 +1,11 @@
+{"note": "M5 session 1, 2026-10-14. The owner's words: two black armchairs moved, to near the balcony door and next to the black cabinet; one red bean bag added; one dining chair moved near to the kitchen; no door. Places read off the recording's scans (the change watch's loop B report, furniture-sized) and loop B's photographs. Which armchair went where is not told: they are identical. The dining chair's places are approximate: its old place from lidar hits loop A had at the table's east end and loop B did not; its new place beside the red bean bag, where loop B's photographs show it and the lidar draws one outline round both.",
+ "staged_in": "wait",
+ "moves": [{"what": "black armchair, to the balcony door", "from": [-18.57, -16.68], "to": [-19.17, -15.87]},
+           {"what": "black armchair, to the black cabinet", "from": [-17.08, -16.45], "to": [-17.39, -16.93]},
+           {"what": "dining chair, to near the kitchen", "from": [-17.33, -12.60], "to": [-16.75, -12.15], "approximate": true}],
+ "added": [{"what": "red bean bag", "at": [-16.33, -12.5]}],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": []}

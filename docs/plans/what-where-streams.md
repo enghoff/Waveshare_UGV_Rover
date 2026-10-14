@@ -8,10 +8,12 @@ Step 2 added navigation's pose, and found all four arrivals, but gone found
 nothing real
 ([entry](../progress/2026-10-14-what-where-step-2-with-navigations-pose.md)).
 Step 3, chosen by the owner the same day, takes where and gone from the
-lidar's change watch and joins them to the camera's what. On recordings
-already seen it names what changed but finds nothing the watch misses on the
-shakedown; its test, the next staged M5 session, is scripted
-([entry](../progress/2026-10-14-what-where-step-3-events.md)).
+lidar's change watch and joins them to the camera's what. It failed its
+test on M5 session 1 the same day: no find the watch missed, one of four
+events named right, because a loop's camera barely looked at the arrivals and
+a returned bean bag was not new to the house
+([entry](../progress/2026-10-14-m5-session-1.md)). The watch alone found five
+of seven with no false alarm.
 This plan replaces the house model of
 [perceiving by prediction](perceiving-by-prediction.md) as the place where
 prediction and observation are compared. That plan's rules for pending changes,
@@ -135,12 +137,12 @@ six as the watch, three of its four named right, on evidence already seen.
    stands. All four arrivals found by where alone, gone nothing real. It shows
    the where stream needs a pose in the rearranged room, and so the far-hit
    heading check or a pose from settling, before it can run on the rover.
-3. **Built: the watch's geometry joined to the camera's what**, developed on
-   the controls and scene 1 of 2026-10-11 and checked on the shakedown. Its
-   test is fixed in the branch's `step3.md` for the next staged M5 session
-   ([sessions-that-serve-several-milestones](sessions-that-serve-several-milestones.md)),
-   which is fresh evidence nobody has tuned on, against the watch alone on the
-   same scans. That session's recording and world store are all it needs.
+3. **Built and tested: the watch's geometry joined to the camera's what.**
+   It failed on M5 session 1. Before it is tested again on a later session:
+   the camera aimed at each change the watch reports (the executive's look at
+   a change already exists, in shadow); "new" meaning new to this place, not
+   to the house; and the scorer matching staged events one to one and judging
+   room-controls from one continuous replay.
 4. **The learned viewpoint predictor and spread**, trained on revisits before a
    cutoff, tested after it.
 5. **On the rover, in shadow**: step 3's events beside the watch's own log,
