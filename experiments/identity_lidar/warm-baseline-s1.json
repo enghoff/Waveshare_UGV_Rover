@@ -1,0 +1,57 @@
+{
+ "things": {
+  "black armchair, to the balcony door": {
+   "-": 4,
+   "object:314": 1,
+   "object:320": 3,
+   "object:379": 2,
+   "object:838": 3,
+   "object:466": 3,
+   "object:923": 11
+  },
+  "black armchair, to the black cabinet": {
+   "-": 4,
+   "object:488": 6,
+   "object:838": 1,
+   "object:379": 8,
+   "object:317": 1,
+   "object:784": 1
+  },
+  "red bean bag": {
+   "object:924": 3,
+   "-": 1,
+   "object:914": 1
+  }
+ },
+ "records": 685,
+ "replayed": 3047,
+ "filed": 1193,
+ "two_things": {
+  "object:379": {
+   "black armchair, to the balcony door": [
+    102544,
+    102864
+   ],
+   "black armchair, to the black cabinet": [
+    102630,
+    102640,
+    102658,
+    102667,
+    102675,
+    102685,
+    102694,
+    102701
+   ]
+  },
+  "object:838": {
+   "black armchair, to the balcony door": [
+    102555,
+    102565,
+    102853
+   ],
+   "black armchair, to the black cabinet": [
+    102621
+   ]
+  }
+ }
+}

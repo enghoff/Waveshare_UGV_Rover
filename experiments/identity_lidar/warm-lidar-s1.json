@@ -1,0 +1,28 @@
+{
+ "things": {
+  "black armchair, to the balcony door": {
+   "-": 4,
+   "object:314": 1,
+   "object:320": 1,
+   "object:379": 5,
+   "object:838": 2,
+   "object:466": 3,
+   "object:924": 11
+  },
+  "black armchair, to the black cabinet": {
+   "-": 3,
+   "object:488": 13,
+   "object:317": 4,
+   "object:784": 1
+  },
+  "red bean bag": {
+   "object:925": 1,
+   "object:920": 3,
+   "object:919": 1
+  }
+ },
+ "records": 685,
+ "replayed": 3047,
+ "filed": 1181,
+ "two_things": {}
+}
