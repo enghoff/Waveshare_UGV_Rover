@@ -1,6 +1,6 @@
 # What M5's sessions count, set before the first
 
-Status: proposed 2026-10-11, for the owner; the false-alarm budget set the same
+Status: proposed 2026-10-11, for the owner; amended 2026-10-14 by the owner, a replay in place of the third session (below); the false-alarm budget set the same
 day at under one room-control in seven, the owner having no preference between
 it and one in ten. Nothing else here is in force until agreed; it is written now because the plan wants every count of the
 [sessions](../plans/sessions-that-serve-several-milestones.md) set before the
@@ -101,3 +101,20 @@ found small or missed; per room-control the furniture-sized changes and whether
 each held up; per arm the answers to "what moved?"; per staged move kept, split
 or unresolved, and any confident wrong merge, from labelled crops. The sessions
 plan's "about forty room-controls" becomes about twenty.
+
+## Amended 2026-10-14: a replay in place of the third session
+
+After two counted sessions on 2026-10-14, the owner chose to replay earlier
+recordings instead of running a third. The replay is of 2026-10-10, when the
+owner moved the grey armchair by the charger and put it back. Only the return
+can be replayed, because no usable recording precedes the first move:
+- **The return:** two events, gone where it stood and new at its place. They
+  are counted with the sessions' events, from the places that day's entry
+  measured on the lidar before any of this was set.
+- **The runs where nothing had moved:** they are counted as room-controls,
+  each room once.
+
+The watch replayed is today's code, fed the day's recordings in order, with
+its history starting at the first of them. The replay is reported beside the
+sessions, not mixed into them. The multi-day benchmark still wants three
+separate days of sessions and is not served by it.
