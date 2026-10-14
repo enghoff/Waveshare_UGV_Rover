@@ -11,7 +11,8 @@ import sqlite3
 
 import numpy as np
 
-#: Range limits the store's own placement uses (world_state/locate.py).
+#: Ranges counted as measured. Not the store's own limits (world_state/locate.py
+#: uses 0.75-12 m); the result is the same with those (results.md).
 MIN_RANGE_M = 0.2
 MAX_RANGE_M = 8.0
 
