@@ -18,8 +18,11 @@ day it had never seen, it found what the watch found, named neither end of a
 move right and raised two false alarms the watch did not, both from novelty
 that was not change
 ([entry](../progress/2026-10-14-what-where-step-3-replayed-on-10-10.md)).
-Failed, passed, failed: the camera-only "new thing" needs the watch's own test,
-seen before without it, and people kept out.
+Failed, passed, failed. Version 3 answers the replay's faults (a camera-only
+new thing seen from two places 0.5 m apart, furniture-sized departures paired
+first, people kept out by SigLIP2) and is as before on everything else seen;
+its test is ordinary drives, logged in shadow on the rover by
+`experiments/what_where/shadow.py` on branch `what-where`, not yet run.
 This plan replaces the house model of
 [perceiving by prediction](perceiving-by-prediction.md) as the place where
 prediction and observation are compared. That plan's rules for pending changes,
