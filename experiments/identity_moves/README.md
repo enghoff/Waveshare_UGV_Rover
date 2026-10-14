@@ -68,9 +68,21 @@ wrong one, two cannot be judged. The record that still holds both armchairs
 is the shakedown's `object:838`, which neither change touches. No region
 moved with a record shows a second thing.
 
+## The deployed version
+
+Deployed on 2026-10-14 as `world_state/relocate.py` and the daemon's
+`world_state_relocate`, journalled and undoable, called by the shadow runner
+with `--act`. Its decisions are the experiment's, but a moved record takes a
+fresh placement stated at 0.3 m rather than keeping the old fix's figures.
+Replayed the same way, that record then matched more of its thing's pictures,
+and session 1's armchair with the throw was moved too, to its own record of the
+shakedown (317): four of nine events acted on, each the right object. The
+counts are the same: three kept, three split, the one two-thing record the
+shakedown's 838.
+
 ## The test
 
-`relocate.py` as committed, unchanged, on the next staged session that moves
+The deployed `world_state/relocate.py`, unchanged, on the next staged session that moves
 things the store already holds: a world snapshot taken just before the
 staging, the session's looks replayed from it with and without moves, counted
 `--across` by labels made before either replay is run.
