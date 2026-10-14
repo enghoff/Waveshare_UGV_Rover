@@ -63,12 +63,25 @@ SAME_CHANGE_M = 0.5
 MIN_MOVE_M = 0.5
 
 
+#: A thing's evidence is persistent across looks this far apart, as the
+#: watch's own (change_watch.PERSIST_S).
+PERSIST_S = 20.0
+#: Regions are attached to a NEW from this long before the watch first saw it
+#: until a GONE is first seen at the same place (or the visit ends), so that
+#: successive rearrangements in one visit stay apart.
+ATTACH_S = 60.0
+
+
 def merged(changes):
-    """One change per place and kind: the largest of those within SAME_CHANGE_M."""
+    """One change per place, kind and visit: the largest of those within
+    SAME_CHANGE_M whose evidence overlaps in time or falls within the watch's
+    visit gap of each other (a place logged again when it grows)."""
     out = []
-    for c in sorted(changes, key=lambda c: -c["extent_m"]):
+    for c in sorted(changes, key=lambda c: (-c["extent_m"], c["logged_at"])):
         if not any(o["kind"] == c["kind"] and
-                   math.hypot(o["x_m"] - c["x_m"], o["y_m"] - c["y_m"]) <= SAME_CHANGE_M
+                   math.hypot(o["x_m"] - c["x_m"], o["y_m"] - c["y_m"]) <= SAME_CHANGE_M and
+                   c["seen_from"] <= o["seen_until"] + cw.VISIT_GAP_S and
+                   o["seen_from"] <= c["seen_until"] + cw.VISIT_GAP_S
                    for o in out):
             out.append(c)
     return out
@@ -76,31 +89,38 @@ def merged(changes):
 
 def replay(recordings, grid_json, skip=()):
     """Every change the watch would have logged, in time order, over the
-    recordings fed oldest first; scans inside a (start, end) in skip are not
-    fed (a window with the pose known to be wrong)."""
+    recordings fed oldest first. Scans inside a (start, end) in skip are not
+    fed (a window with the pose known to be wrong). An approximation of the
+    live watch: navigation's own trust in the pose is not in a recording, and
+    the history starts with the first recording given."""
     import json
-    bounds = (-24.0, -22.0, 400, 360)
-    watch = cw.ChangeWatch(*bounds)
+    watch = cw.ChangeWatch(-24.0, -22.0, 400, 360)
     if grid_json:
         watch.set_map(*grid_of(json.load(open(grid_json))))
     logged, previous, last_report = [], [], None
+    received = 0
+
+    def report(t):
+        nonlocal previous
+        now = watch.changes()
+        for group in cw.ChangeWatch.news(now, previous, logged, t):
+            logged.append(dict(group, logged_at=t))
+        previous = now
+
     for rec in sorted(recordings, key=lambda r: r.start):
         meta, ranges = rec.meta, rec.ranges
-        last_yaw, seen = None, 0
+        last_yaw, t = None, None
         for k in range(len(ranges)):
             t = float(meta[k][0])
             if any(a <= t <= b for a, b in skip):
                 continue
-            seen += 1
+            received += 1
             if last_report is None:
                 last_report = t
             if t - last_report >= REPORT_EVERY_S:
                 last_report = t
-                now = watch.changes()
-                for group in cw.ChangeWatch.news(now, previous, logged, t):
-                    logged.append(dict(group, logged_at=t))
-                previous = now
-            if seen % EVERY:
+                report(t)
+            if received % EVERY:
                 continue
             ob, mo = interp_pose(rec.odom, t), last_pose(rec.map, t)
             if ob is None or mo is None:
@@ -116,11 +136,44 @@ def replay(recordings, grid_json, skip=()):
             last_yaw = (t, yaw)
             r = ranges[k]
             watch.add_scan(x, y, yaw, r, meta[k][2] + meta[k][3] * np.arange(len(r)), t)
+        if t is not None:
+            # The node's timer keeps reporting after the last scan.
+            last_report = t
+            report(t)
     return logged
 
 
 def _near(xs, ys, x, y, r):
     return np.flatnonzero(np.isfinite(xs) & (np.hypot(xs - x, ys - y) <= r))
+
+
+def persistent(query, rows):
+    """Two or more looks at least PERSIST_S apart among these regions."""
+    if len(rows) < 2:
+        return False
+    times = sorted({float(query.shutter[i]) for i in rows})
+    return times[-1] - times[0] >= PERSIST_S
+
+
+def _components(rows, linked):
+    """Connected components of rows under a symmetric `linked(i, j)`, in a
+    stable order whatever order the rows came in."""
+    rows = sorted(rows)
+    parent = {i: i for i in rows}
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for a, i in enumerate(rows):
+        for j in rows[a + 1:]:
+            if linked(i, j):
+                parent[root(j)] = root(i)
+    groups = {}
+    for i in rows:
+        groups.setdefault(root(i), []).append(i)
+    return sorted(groups.values(), key=lambda g: g[0])
 
 
 def build(changes, query, memory, recs, t_what):
@@ -135,78 +188,103 @@ def build(changes, query, memory, recs, t_what):
     events, used_novel = [], set()
     news = [c for c in changes if c["kind"] == "NEW"]
     gones = [c for c in changes if c["kind"] == "GONE"]
+    end_of_visit = float(query.shutter.max()) if query.n else 0.0
     for c in news:
-        rows = [i for i in _near(qx, qy, c["x_m"], c["y_m"], ATTACH_M + c["extent_m"] / 2) if fl[i]]
+        later = [g["seen_from"] for g in gones if g["seen_from"] > c["seen_from"] and
+                 math.hypot(g["x_m"] - c["x_m"], g["y_m"] - c["y_m"]) <= ATTACH_M + c["extent_m"] / 2]
+        until = min(later) if later else end_of_visit
+        when = (query.shutter >= c["seen_from"] - ATTACH_S) & (query.shutter <= until)
+        rows = [i for i in _near(qx, qy, c["x_m"], c["y_m"], ATTACH_M + c["extent_m"] / 2)
+                if fl[i] and when[i]]
         nov = [i for i in rows if novel[i]]
-        c["regions"] = [int(query.id[i]) for i in rows]
-        c["novel_looks"] = len({query.frame[i] for i in nov})
-        c["_vec"] = query.vec[rows] if rows else np.zeros((0, query.vec.shape[1]))
+        # New to the house: novel regions alike to one another, persistent.
+        best = max(_components(nov, lambda i, j: query.vec[i] @ query.vec[j] >= GROUP_COS),
+                   key=len, default=[])
+        c["rows"] = rows
+        c["novel"] = persistent(query, best)
         used_novel.update(nov)
     for c in gones:
+        # What stood there: the newest remembered regions at the place, and
+        # anything seen there earlier in this visit (a thing that arrived and
+        # left again within it).
         rows = _near(mx, my, c["x_m"], c["y_m"], ATTACH_M + c["extent_m"] / 2)
-        rows = rows[np.argsort(-memory.t[rows])][:20]
-        c["remembered"] = [int(memory.id[i]) for i in rows]
-        c["_vec"] = memory.vec[rows] if len(rows) else np.zeros((0, memory.vec.shape[1]))
-    # Moved: the most alike GONE for each NEW, each used once.
-    pairs, taken = [], set()
-    cand = []
-    for a, n in enumerate(news):
-        for b, g in enumerate(gones):
-            if len(n["_vec"]) == 0 or len(g["_vec"]) == 0:
+        c["mrows"] = [("m", int(i)) for i in rows[np.argsort(-memory.t[rows])][:20]]
+        seen = [int(i) for i in _near(qx, qy, c["x_m"], c["y_m"], ATTACH_M + c["extent_m"] / 2)
+                if fl[i] and query.shutter[i] < c["seen_from"] - ATTACH_S]
+        c["mrows"] += [("q", i) for i in seen]
+    # Moved: a GONE and a NEW whose evidence looks alike in two looks at least
+    # PERSIST_S apart, one of them furniture-sized. Each region, seen or
+    # remembered, supports one move only.
+    used_q, used_m, taken, pairs = set(), set(), set(), []
+    while True:
+        best = None
+        for a, n in enumerate(news):
+            if ("n", a) in taken or n["novel"]:
                 continue
-            d = math.hypot(n["x_m"] - g["x_m"], n["y_m"] - g["y_m"])
-            if d > PAIR_M or d < MIN_MOVE_M:
-                continue
-            cos = float((n["_vec"] @ g["_vec"].T).max())
-            if cos >= PAIR_COS:
-                cand.append((cos, a, b))
-    for cos, a, b in sorted(cand, reverse=True):
-        if ("n", a) in taken or ("g", b) in taken:
-            continue
-        if news[a]["novel_looks"] >= 2:
-            continue
+            qrows = [i for i in n["rows"] if i not in used_q]
+            for b, g in enumerate(gones):
+                if ("g", b) in taken or not (n["large"] or g["large"]):
+                    continue
+                d = math.hypot(n["x_m"] - g["x_m"], n["y_m"] - g["y_m"])
+                if d > PAIR_M or d < MIN_MOVE_M:
+                    continue
+                mrows = [r for r in g["mrows"] if r not in used_m and r[1] not in used_q]
+                if not qrows or not mrows:
+                    continue
+                gvec = np.stack([(memory if src == "m" else query).vec[i] for src, i in mrows])
+                sims = query.vec[qrows] @ gvec.T
+                support = [qrows[k] for k in np.flatnonzero(sims.max(axis=1) >= PAIR_COS)]
+                if not persistent(query, support):
+                    continue
+                cos = float(sims.max())
+                if best is None or cos > best[0]:
+                    best = (cos, a, b, support,
+                            [mrows[k] for k in np.flatnonzero(sims.max(axis=0) >= PAIR_COS)])
+        if best is None:
+            break
+        cos, a, b, support, remembered = best
         taken |= {("n", a), ("g", b)}
-        pairs.append((a, b, cos))
-    for a, b, cos in pairs:
+        used_q.update(support)
+        used_m.update(remembered)
+        pairs.append((a, b, cos, support, remembered))
+    for a, b, cos, support, remembered in pairs:
         n, g = news[a], gones[b]
         events.append({"kind": "moved", "from": [g["x_m"], g["y_m"]], "to": [n["x_m"], n["y_m"]],
                        "x_m": n["x_m"], "y_m": n["y_m"], "cos": round(cos, 3),
                        "large": bool(n["large"] or g["large"]),
-                       "regions": n["regions"], "remembered": g["remembered"][:5]})
+                       "regions": [int(query.id[i]) for i in support],
+                       "remembered": [int((memory if src == "m" else query).id[i])
+                                      for src, i in remembered[:5]]})
     for a, n in enumerate(news):
         if ("n", a) in taken:
             continue
-        if n["novel_looks"] >= 2:
+        ids = [int(query.id[i]) for i in n["rows"]]
+        if n["novel"]:
             events.append({"kind": "new thing", "x_m": n["x_m"], "y_m": n["y_m"],
                            "extent_m": n["extent_m"], "large": n["large"], "by": "lidar and camera",
-                           "regions": n["regions"]})
+                           "regions": ids})
         elif n["large"]:
             events.append({"kind": "arrived", "x_m": n["x_m"], "y_m": n["y_m"],
-                           "extent_m": n["extent_m"], "large": True, "regions": n["regions"]})
+                           "extent_m": n["extent_m"], "large": True, "regions": ids})
     for b, g in enumerate(gones):
         if ("g", b) in taken or not g["large"]:
             continue
         events.append({"kind": "gone", "x_m": g["x_m"], "y_m": g["y_m"], "extent_m": g["extent_m"],
-                       "large": True, "remembered": g["remembered"][:5]})
-    # New things the watch did not log: regions new to the house in two looks
-    # at one place, away from every watch NEW.
-    rest = [i for i in np.flatnonzero(novel & np.isfinite(qx)) if i not in used_novel
+                       "large": True, "remembered": [int((memory if src == "m" else query).id[i])
+                                                     for src, i in g["mrows"][:5]]})
+    # New things the watch did not log: regions new to the house, alike and at
+    # one place, in looks at least PERSIST_S apart, away from every watch NEW.
+    rest = [int(i) for i in np.flatnonzero(novel & np.isfinite(qx)) if i not in used_novel
             and not any(math.hypot(qx[i] - n["x_m"], qy[i] - n["y_m"]) <= NEAR_NEW_M for n in news)]
-    groups = []
-    for i in rest:
-        for gr in groups:
-            if any(query.vec[i] @ query.vec[j] >= GROUP_COS and
-                   math.hypot(qx[i] - qx[j], qy[i] - qy[j]) <= GROUP_M for j in gr):
-                gr.append(i)
-                break
-        else:
-            groups.append([i])
+    groups = _components(rest, lambda i, j: query.vec[i] @ query.vec[j] >= GROUP_COS and
+                         math.hypot(qx[i] - qx[j], qy[i] - qy[j]) <= GROUP_M)
     for gr in groups:
-        if len({query.frame[i] for i in gr}) < 2:
+        if not persistent(query, gr):
             continue
         events.append({"kind": "new thing", "x_m": round(float(np.mean(qx[gr])), 2),
                        "y_m": round(float(np.mean(qy[gr])), 2), "large": False, "by": "camera",
                        "regions": [int(query.id[i]) for i in gr]})
     for c in changes:
-        c.pop("_vec", None)
+        for k in ("rows", "mrows"):
+            c.pop(k, None)
     return events, changes
