@@ -27,6 +27,10 @@ class Scan(object):
         self.header = type("Header", (), {"stamp": 100.0})()
         self.scan_time = 0.1
         self.time_increment = 0.0
+        self.angle_min = -math.pi
+        self.angle_increment = 2.0 * math.pi / 360
+        self.range_min = 0.05
+        self.range_max = 12.0
         self.ranges = [1.0] * 360
 
 
@@ -66,6 +70,37 @@ class Node(object):
 
     def pose_deg(self):
         return (1.0, 2.0, 90.0)
+
+
+class Measured(Node):
+    """A search that says which pose it was measured from, as the real one does."""
+
+    def map_measure(self, window_m=None, window_deg=None, min_score=None,
+                    around=None, where=None, scan=None, beyond_m=None):
+        answer, fit, _ = Node.map_measure(self, window_m, window_deg, min_score,
+                                          around, where, scan, beyond_m)
+        self.scans_given = getattr(self, "scans_given", []) + [scan]
+        return answer, fit, (1.0, 2.0, 90.0)
+
+
+def test_measure_returns_its_scan():
+    section("measure_pose: the scan it was measured from, beside the answer")
+    node = Measured()
+    node.scan_msg.ranges = [1.0] * 358 + [float("inf"), 40.0]
+    answer = nav_map.NavMap.measure_pose(node)
+    scan = answer.get("scan") or {}
+    check("the answer carries the scan, and the pose it was measured from",
+          (len(scan.get("ranges", [])), scan.get("from")), (360, [1.0, 2.0, 90.0]))
+    check("...its angles in the rover's frame",
+          (round(scan["angle_min"], 4), round(scan["angle_increment"], 6)),
+          (round(-math.pi, 4), round(2.0 * math.pi / 360, 6)))
+    check("...a reading that came back nothing, or past the lidar's reach, as None",
+          scan["ranges"][-2:], [None, None])
+    check("...and every search was given that one scan",
+          all(given is node.scan_msg for given in node.scans_given), True)
+    plain = Node()
+    check("a search that reports no pose adds no scan",
+          "scan" in nav_map.NavMap.measure_pose(plain), False)
 
 
 def test_measure_pose_is_read_only_and_never_waits():
@@ -168,4 +203,5 @@ def test_the_far_search_keeps_only_the_far_returns():
 
 
 TESTS = (test_measure_pose_is_read_only_and_never_waits,
-         test_the_far_search_keeps_only_the_far_returns)
+         test_the_far_search_keeps_only_the_far_returns,
+         test_measure_returns_its_scan)

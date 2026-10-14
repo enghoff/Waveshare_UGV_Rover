@@ -770,6 +770,13 @@ class Inspector(InspectionRanges):
         # boxes exist, and before the write because a range is part of what the
         # look measured rather than something added to it afterwards.
         ranges, ranged_note = self._ranges(capture, look.regions)
+        # And by the lidar, for what the depth camera could not range and the
+        # rover stood still for. See world_state/lidar_ranges.py.
+        ranges, lidar_note = self._lidar_fill(
+            capture, look.regions, ranges,
+            moved <= headingcheck.STILL_M and turned <= headingcheck.STILL_DEG)
+        if lidar_note:
+            ranged_note = f"{ranged_note}; {lidar_note}" if ranged_note else lidar_note
         # And the depth behind those ranges, kept beside the frame. Nothing reads
         # it here; it is what lets a question about a distance be asked again of
         # this look after the room has changed, which the recording of
