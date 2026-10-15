@@ -82,6 +82,12 @@ CONSOLIDATE_COS = 0.75  # two standing objects together, never in one picture, t
 CLOSE_COS = 0.6         # ... or this alike when within one spread of each other
 PENDING_S = 600.0       # a new object can still turn out to be a gone one, moved, this long
 PENDING_COS = 0.75      # ... when it looks this like it, and clearly more than any other
+COLOUR_MIN = 0.35       # two things whose colours match less than this are two things
+PATH_S = 3600.0         # a record seen gone this recently and a look-alike found standing ...
+PATH_COS = 0.7          # ... this alike, never seen in one visit, are one object at two places
+PATH_STALE_S = 1800.0   # ... when the one found standing had not been seen for this long before
+MOVE_LEAD_COS = 0.68    # a move on less likeness than MOVE_COS needs ...
+MOVE_LEAD = 0.1         # ... this much lead over every other gone look-alike
 MOVE_COS = 0.75         # a cluster and a gone object this alike can be a move
 MOVE_MARGIN = 0.04      # ... when no other gone object is within this
 PLACE_FLOOR_M2 = 0.01
@@ -93,6 +99,47 @@ GONE_REACH_M = 4.0
 #: The end of development: M5 session 2's last labelled look was before this
 #: (2026-10-14 13:00 local). Development runs see nothing after it.
 DEVELOPMENT_END = 1791963000.0
+
+
+#: Use the likeness learned from the rover's own pictures (metric.py) where
+#: the looks carry it, mapped onto the image vectors' scale so that every bar
+#: above keeps its rate of false matches.
+USE_LEARNED = True
+_SIM = {"map": None}
+
+
+def sim(x):
+    """A likeness on the scale the bars were set on."""
+    m = _SIM["map"]
+    if m is None:
+        return x
+    return np.interp(x, m[0], m[1])
+
+
+def learn_scale(a, learned):
+    """The mapping from the learned likeness to the image vectors' own, matched
+    on pairs of regions of one picture -- two things by construction -- so
+    that a bar lets through the same share of two-thing pairs either way."""
+    fr = a["frame"].astype(str)
+    order = np.argsort(fr, kind="stable")
+    bounds = np.flatnonzero(np.r_[True, fr[order][1:] != fr[order][:-1], True])
+    i0, i1 = [], []
+    for s0, e0 in zip(bounds[:-1], bounds[1:]):
+        idx = order[s0:e0]
+        for p in range(len(idx)):
+            for q in range(p + 1, len(idx)):
+                i0.append(idx[p])
+                i1.append(idx[q])
+    i0, i1 = np.array(i0), np.array(i1)
+    old = np.sum(a["vec"][i0] * a["vec"][i1], axis=1)
+    new = np.sum(learned[i0] * learned[i1], axis=1)
+    qs = np.linspace(0.0, 1.0, 201)
+    xo, xn = np.quantile(old, qs), np.quantile(new, qs)
+    # Above every two-thing pair, straight on to 1 = 1.
+    xn = np.append(xn, 1.0)
+    xo = np.append(xo, 1.0)
+    keep = np.r_[True, np.diff(xn) > 1e-9]
+    return xn[keep], xo[keep]
 
 
 def windows(t, gap=GAP_S, longest=WINDOW_S):
@@ -131,6 +178,9 @@ class Looks:
 
     def __init__(self, a):
         a = dict(a)
+        if USE_LEARNED and "lvec" in a:
+            _SIM["map"] = learn_scale(a, a["lvec"])
+            a["vec"] = a["lvec"]
         src = np.array([str(s) for s in a["place_from"]])
         if "wx" in a:
             # A raised thing hangs where its sight line meets a wall
@@ -162,6 +212,8 @@ class Looks:
         self.width = np.where(ranged, np.nan_to_num(a["range"]) *
                               np.radians(np.nan_to_num(a["span"])), np.nan)
         self.frame = a["frame"].astype(str)
+        self.colour = a.get("colour")
+        self.has_colour = a.get("has_colour")
 
 
 def _links(L, idx):
@@ -171,7 +223,7 @@ def _links(L, idx):
     if len(idx) < 2:
         return []
     V = a["vec"][idx]
-    S = V @ V.T
+    S = sim(V @ V.T)
     out = []
     frames = L.frame[idx]
     for p in range(len(idx)):
@@ -325,23 +377,33 @@ class Memory:
     def __init__(self):
         self.objects = []
         self.alias = {}
+        self.visit = 0
 
-    def new(self, p, vecs, frames, t):
+    def new(self, p, vecs, frames, t, cols=None):
         o = {"id": "v%d" % (len(self.objects) + len(self.alias)), "x": p["x"], "y": p["y"],
              "var": p["var"], "extent": p["extent"], "z": p["z"], "ex": diverse(vecs),
-             "frames": set(frames), "state": "present", "seen": t, "since": t,
+             "col": diverse(cols) if cols is not None else np.zeros((0, 1)),
+             "frames": set(frames), "visits": {self.visit}, "state": "present", "seen": t,
+             "since": t, "gone_at": None,
              "solid_hits": 0, "solid_judged": 0, "path": [[round(p["x"], 2), round(p["y"], 2), round(t)]]}
         self.objects.append(o)
         return o
 
     def likeness(self, vecs, o):
-        return float((vecs @ o["ex"].T).max())
+        return float(sim((vecs @ o["ex"].T).max()))
+
+    def colour(self, cols, o):
+        """How well a cluster's colours match an object's: the mean of each
+        region's best match. 1 when there is nothing to compare."""
+        if cols is None or not len(cols) or not len(o["col"]):
+            return 1.0
+        return float((cols @ o["col"].T).max(axis=1).mean())
 
     def gate(self, o, p):
         return HERE_K * math.sqrt(p["var"] + o["var"] + SYSTEMATIC_M ** 2) + \
             (o["extent"] + p["extent"]) / 4.0
 
-    def update(self, o, p, vecs, frames, t, moved=False):
+    def update(self, o, p, vecs, frames, t, moved=False, cols=None):
         if p is not None and moved:
             o["x"], o["y"], o["var"] = p["x"], p["y"], p["var"]
             o["path"].append([round(p["x"], 2), round(p["y"], 2), round(t)])
@@ -355,14 +417,22 @@ class Memory:
             if math.isfinite(p["z"]):
                 o["z"] = p["z"] if not math.isfinite(o["z"]) else 0.8 * o["z"] + 0.2 * p["z"]
         o["ex"] = diverse(np.vstack([vecs, o["ex"]]))
+        if cols is not None and len(cols):
+            o["col"] = diverse(np.vstack([cols, o["col"]]) if len(o["col"]) else cols)
         o["frames"] |= set(frames)
+        if self.visit not in o["visits"]:
+            o["seen_before"] = o["seen"]
+        o["visits"].add(self.visit)
         o["state"] = "present"
         o["seen"] = t
 
     def merge(self, keep, gone):
         """Fold one object into another: the same thing, recorded twice."""
         keep["ex"] = diverse(np.vstack([keep["ex"], gone["ex"]]))
+        if len(gone["col"]):
+            keep["col"] = diverse(np.vstack([keep["col"], gone["col"]]) if len(keep["col"]) else gone["col"])
         keep["frames"] |= gone["frames"]
+        keep["visits"] |= gone["visits"]
         keep["solid_hits"] += gone["solid_hits"]
         keep["solid_judged"] += gone["solid_judged"]
         self.alias[gone["id"]] = keep["id"]
@@ -398,6 +468,8 @@ def reconcile(L, mem, clusters, t, decisions):
                 if d[oi] > mem.gate(o, p) or not _heights_agree(o["z"], p["z"]):
                     continue
                 cos = mem.likeness(vecs, o)
+                if mem.colour(cols_of(L, m), o) < COLOUR_MIN:
+                    continue
                 if cos >= HERE_COS + (LONE_EXTRA_COS if len(m) == 1 else 0.0):
                     cost[ci, oi] = -(cos - DISTANCE_COST * d[oi])
                     fits.setdefault(ci, []).append((oi, cos))
@@ -410,9 +482,10 @@ def reconcile(L, mem, clusters, t, decisions):
             frames = set(L.frame[m])
             decisions.append({"t": round(t), "here": o["id"], "at": [round(p["x"], 2), round(p["y"], 2)],
                               "was": [round(o["x"], 2), round(o["y"], 2)], "n": len(m)})
-            mem.update(o, p, a["vec"][m], frames, t)
+            mem.update(o, p, a["vec"][m], frames, t, cols=cols_of(L, m))
             filed.update({i: o["id"] for i in m})
             used.add(ci)
+            o = link_path(mem, o, t, decisions)
             # Two standing objects this cluster fits, never in one picture: one.
             for other, cos in fits.get(ci, []):
                 dup = standing[other]
@@ -432,22 +505,25 @@ def reconcile(L, mem, clusters, t, decisions):
             continue
         vecs = a["vec"][m]
         frames = set(L.frame[m])
+        cols = cols_of(L, m)
         best = sorted(((mem.likeness(vecs, o), k) for k, o in enumerate(gone)
-                       if _heights_agree(o["z"], p["z"])), reverse=True)
-        if len(m) >= 2 and best and best[0][0] >= MOVE_COS and \
-                (len(best) == 1 or best[0][0] - best[1][0] >= MOVE_MARGIN):
+                       if _heights_agree(o["z"], p["z"]) and mem.colour(cols, o) >= COLOUR_MIN),
+                      reverse=True)
+        lead = best[0][0] - best[1][0] if len(best) > 1 else 1.0
+        if len(m) >= 2 and best and ((best[0][0] >= MOVE_COS and lead >= MOVE_MARGIN) or
+                                     (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD)):
             o = gone[best[0][1]]
             decisions.append({"t": round(t), "moved": o["id"], "from": [round(o["x"], 2), round(o["y"], 2)],
                               "to": [round(p["x"], 2), round(p["y"], 2)], "cos": round(best[0][0], 3),
                               "runner_up": round(best[1][0], 3) if len(best) > 1 else None})
-            mem.update(o, p, vecs, frames, t, moved=True)
+            mem.update(o, p, vecs, frames, t, moved=True, cols=cols)
             gone.remove(o)
         elif len(m) < NEW_MIN_REGIONS:
             # One picture is not an object: left unfiled rather than starting
             # one that competes with the real thing for every later sighting.
             continue
         else:
-            o = mem.new(p, vecs, frames, t)
+            o = mem.new(p, vecs, frames, t, cols)
             decisions.append({"t": round(t), "new": o["id"], "at": [round(p["x"], 2), round(p["y"], 2)],
                               "n": len(m), "gone_alike": [[gone[k]["id"], round(c, 3)] for c, k in best[:3]]})
         filed.update({i: o["id"] for i in m})
@@ -470,13 +546,17 @@ def reconcile(L, mem, clusters, t, decisions):
             if not cand:
                 continue
             vecs = a["vec"][m]
+            cols = cols_of(L, m)
+            cand = [k for k in cand if mem.colour(cols, standing[k]) >= COLOUR_MIN]
+            if not cand:
+                continue
             score = {k: mem.likeness(vecs, standing[k]) for k in cand}
             k = max(score, key=score.get)
             if score[k] >= SIGHTED_COS:
                 decisions.append({"t": round(t), "sighted": standing[k]["id"], "n": len(m),
                                   "from": [round(float(a["cx"][m[0]]), 2), round(float(a["cy"][m[0]]), 2)],
                                   "bearing": round(float(a["bearing"][m[0]]), 1), "cos": round(score[k], 3)})
-                mem.update(standing[k], None, vecs, frames, t)
+                mem.update(standing[k], None, vecs, frames, t, cols=cols)
                 filed.update({i: standing[k]["id"] for i in m})
     return filed
 
@@ -522,14 +602,60 @@ def absent(L, mem, idx, filed, recs, decisions):
     for o, p, j in zip(cand, passes, judged):
         if j >= GONE_MIN_SCANS and p >= GONE_SHARE * j:
             o["state"] = "gone"
+            o["gone_at"] = t1
             decisions.append({"t": round(t1), "gone": o["id"], "at": [round(o["x"], 2), round(o["y"], 2)],
                               "passes": int(p), "judged": int(j)})
+
+
+def cols_of(L, m):
+    """The colours of a cluster's regions that have one."""
+    if L.colour is None:
+        return None
+    m = np.asarray(m)
+    m = m[L.has_colour[m]]
+    return L.colour[m] if len(m) else None
+
+
+def _object_colour(o0, o1):
+    if not len(o0["col"]) or not len(o1["col"]):
+        return 1.0
+    s = o0["col"] @ o1["col"].T
+    return 0.5 * (float(s.max(axis=1).mean()) + float(s.max(axis=0).mean()))
+
+
+def link_path(mem, o, t, decisions):
+    """One object at two places: a record found standing in a visit in which
+    a look-alike record was seen gone, the two never seen in one visit, are
+    the same thing, moved back to a place it stood before. In session 3 the
+    cabinet's arrival found the record left from session 2 while its main
+    record was being seen gone. Joined into the older; returns the object
+    the cluster is now filed to."""
+    if t - o.get("seen_before", t) < PATH_STALE_S:
+        return o
+    recent = [g for g in mem.objects if g["state"] == "gone" and g["gone_at"] is not None
+              and t - g["gone_at"] <= PATH_S and not (g["visits"] & o["visits"])
+              and _heights_agree(o["z"], g["z"]) and _object_colour(o, g) >= COLOUR_MIN]
+    if not recent:
+        return o
+    best = sorted(((_object_likeness(o, g), k) for k, g in enumerate(recent)), reverse=True)
+    if best[0][0] < PATH_COS or (len(best) > 1 and best[0][0] - best[1][0] < MOVE_MARGIN):
+        return o
+    g = recent[best[0][1]]
+    keep, fold = (g, o) if g["since"] <= o["since"] else (o, g)
+    decisions.append({"t": round(t), "path": fold["id"], "into": keep["id"], "from": [round(g["x"], 2), round(g["y"], 2)],
+                      "to": [round(o["x"], 2), round(o["y"], 2)], "cos": round(best[0][0], 3)})
+    if keep is g:
+        g["x"], g["y"], g["var"], g["extent"], g["z"] = o["x"], o["y"], o["var"], o["extent"], o["z"]
+        g["path"].append([round(o["x"], 2), round(o["y"], 2), round(t)])
+        g["state"], g["seen"], g["gone_at"] = "present", o["seen"], None
+    mem.merge(keep, fold)
+    return keep
 
 
 def _object_likeness(o0, o1):
     """How alike two objects look: the mean of each one's exemplars' best
     match among the other's, both ways."""
-    s = o0["ex"] @ o1["ex"].T
+    s = sim(o0["ex"] @ o1["ex"].T)
     return 0.5 * (float(s.max(axis=1).mean()) + float(s.max(axis=0).mean()))
 
 
@@ -549,6 +675,8 @@ def consolidate(mem, touched, t, decisions):
             if d > MERGE_M + min(o["extent"], other["extent"]) / 4.0 + \
                     math.sqrt(o["var"] + other["var"]) or \
                     not _heights_agree(o["z"], other["z"]):
+                continue
+            if _object_colour(o, other) < COLOUR_MIN:
                 continue
             cos = _object_likeness(o, other)
             # Two objects nearly on top of each other need less likeness: the
@@ -578,9 +706,11 @@ def settle_pending(mem, t, decisions):
     for o in [x for x in mem.objects if x["state"] == "present" and not x.get("settled")
               and t - x["since"] <= PENDING_S and len(x["frames"]) >= 2]:
         best = sorted(((_object_likeness(o, g), k) for k, g in enumerate(gone)
-                       if g["since"] < o["since"] and _heights_agree(o["z"], g["z"])), reverse=True)
-        if best and best[0][0] >= PENDING_COS and \
-                (len(best) == 1 or best[0][0] - best[1][0] >= MOVE_MARGIN):
+                       if g["since"] < o["since"] and _heights_agree(o["z"], g["z"])
+                       and _object_colour(o, g) >= COLOUR_MIN), reverse=True)
+        lead = best[0][0] - best[1][0] if len(best) > 1 else 1.0
+        if best and ((best[0][0] >= PENDING_COS and lead >= MOVE_MARGIN) or
+                     (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD)):
             g = gone[best[0][1]]
             decisions.append({"t": round(t), "moved": g["id"], "from": [round(g["x"], 2), round(g["y"], 2)],
                               "to": [round(o["x"], 2), round(o["y"], 2)], "cos": round(best[0][0], 3),
@@ -600,6 +730,7 @@ def run(a, recs):
     mem = Memory()
     filing, decisions = {}, []
     for idx in windows(a["t"]):
+        mem.visit += 1
         clusters = cluster(L, idx)
         t = float(a["t"][idx].max())
         filed = reconcile(L, mem, clusters, t, decisions)

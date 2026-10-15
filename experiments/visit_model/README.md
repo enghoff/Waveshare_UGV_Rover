@@ -34,3 +34,42 @@ Scored 2026-10-15, before any new model was run:
 "Kept" is count_all's lenient rule: the record holding most of the thing's
 pictures after the move held any one of them before. By the strict rule (the
 record that held most of them before) the deployed store keeps none.
+
+## Version 1 and its test
+
+`model.py` (frozen at `f1eb342`): clusters per visit, one assignment against
+memory, lidar absence, pending identity, consolidation of objects never seen
+together, raised things placed on the stable walls (`walls.py`,
+`wallplace.py`), lidar ranges as floors, spreads and likeness bars from
+`calibrate.py`. `run_dev.sh` runs development (nothing after 10-14 13:00);
+`run_test.sh` ran the test once, `gate.py` judging it by the plan.
+
+| | Moves kept (strict) | Mixed records | Unmoved in two records or fewer | Filed |
+|---|---|---|---|---|
+| development | 4 of 7 (3) | 2 | 9 of 11 | 88% |
+| test | 5 of 5 (0) | 1 | 10 of 11 | 95% |
+
+The test does not pass (docs/progress/2026-10-15-a-world-model-kept-per-visit-tested.md).
+`why.py`, `splits.py` and `merges.py` trace a filing's decisions for one object,
+every split and every mixed record.
+
+## Version 2
+
+Development on all five sessions, since the test has been seen.
+
+- `colour.py`, run on the rover: each region's colour inside its own outline,
+  merged into the looks as `colour`.
+- `metric.py`: a likeness learned with no labels from pairs the pictures give
+  for free (KISSME); `metric-1015.npz` is the one trained on every look to
+  session 4, frozen for version 2's test. With `--save` it writes each
+  region's learned vector into the looks (`lvec`).
+- `model.py` now uses the learned likeness (mapped onto the old scale on
+  same-picture pairs), vetoes matches whose colours differ, and joins a
+  record found standing after half an hour unseen to a look-alike seen gone
+  in the same hour (`link_path`).
+- `run_v2.sh` runs it over every look and scores all five sessions.
+
+Over all five sessions, version 2 against version 1: moves kept 7 (2 strict)
+against 9 (3) of 12, mixed records 2 against 3 -- not separable on a benchmark
+whose moves are half the two armchairs. Its test is the staged session the
+plan describes.
