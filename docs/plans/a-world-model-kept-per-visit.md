@@ -1,9 +1,14 @@
 # A world model kept per visit
 
 Status: proposed 2026-10-15 at the owner's direction, after
-[M5 session 4](../progress/2026-10-15-m5-session-4.md); nothing built. Step 1,
-the benchmark and the deployed store's numbers on it, is live, offline, on
-branch `visit-model`. It aims at
+[M5 session 4](../progress/2026-10-15-m5-session-4.md). Steps 1 to 4 ran
+offline the same day on branch `visit-model`. The test did not pass: one record
+mixed two paintings, and the blue painting sat in two records against one.
+Unmoved things now stay together, and nearly every picture is filed, but no
+moved thing's record followed it
+([entry](../progress/2026-10-15-a-world-model-kept-per-visit-tested.md)).
+Version 2, below, is next, and its test needs a session it has not seen.
+Nothing is on the rover. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
 [R-WS-2](../requirements/world-state.md#r-ws-2) and
@@ -120,17 +125,29 @@ sessions, with labels by someone else.
 
 ## The order of work
 
-1. **The benchmark and the baseline.** Loaders over the store copy and the
-   recordings, the labels for objects that stayed put, the deployed store's
-   numbers.
-2. **Tracks per visit**, scored on development by how many tracks each
-   labelled object makes in a session and whether any track holds two.
-3. **Matching visits to memory, and absence**, over the whole development
-   history in time order.
-4. **The test** on sessions 3 and 4.
-5. **On the rover in shadow**: the model kept beside the deployed store from
+1. **Done: the benchmark and the baseline.**
+2. **Done: clusters per visit.**
+3. **Done: matching visits to memory, and absence.**
+4. **Done, not passed: the test** on sessions 3 and 4.
+5. **Version 2: an object is a path, and colour tells look-alikes apart.**
+   - *Paths.* Records that were never present at the same time, look alike,
+     and of which one was seen gone before the other appeared are one object
+     at two places. The arrival in the test found an older record of itself
+     every time; this joins them instead of leaving two.
+   - *Colour.* A colour description of each region inside its outline, made
+     on the rover from the stored pictures, and calibrated on the labels
+     beside the image vectors. The red and the black bean bag scored 0.74 and
+     0.73 against one arrival.
+   - Development uses all five labelled sessions, since the test has been
+     seen.
+6. **Version 2's test**, frozen before it runs, on the next staged session,
+   whose labels are made before the model is run on it. The same five
+   conditions, with one change: a move is kept only by the strict reading,
+   where the record holding most of the thing afterwards held most of it
+   before.
+7. **On the rover in shadow**: the model kept beside the deployed store from
    the live looks, reports only, the next staged sessions as its acceptance.
-6. **In place of the resolver**, once accepted, with the world state's
+8. **In place of the resolver**, once accepted, with the world state's
    consumers (search, the executive's looks, the console) moved over one at a
    time.
 
