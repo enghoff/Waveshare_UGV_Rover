@@ -87,7 +87,11 @@ map least, so it belongs to a person: the console's "refit to map" button, or
 the daemon's `refit_pose`. While the rover has not moved since it woke and its
 anchor is still unconfirmed, that fit searches around the pose the map was left
 at rather than around the anchor, which is what lets it undo a large error at
-all.
+all. A fit that settles the rover writes its pose to disk at once, whether it
+moved the rover or found it already right; the keeper otherwise writes the pose
+only after the wheels turn, and on 2026-10-14 a rover confirmed in place sat
+with a pose 44 degrees out on disk until the next navigation restart brought it
+back.
 
 **But the rover does check, and says so.** Every five minutes, while it is not
 driving, it matches the current scan against the whole map and reports the

@@ -1148,10 +1148,15 @@ class NavMap:
         if not fit.ok or fit.settled:
             answer["fitted"] = False
             # A fit that agrees with where the rover already is has confirmed the
-            # pose just as firmly as one that corrects it, so the keeper may write
-            # it down. A refusal has confirmed nothing and must not.
+            # pose just as firmly as one that corrects it, so it is written down
+            # now, for the reason given below the corrected case: the keeper waits
+            # for the wheels, and on 2026-10-14 a rover confirmed after its boot
+            # had put it right sat still with a pose 44 degrees out on disk, which
+            # the next navigation restart came back at. A refusal has confirmed
+            # nothing and must not.
             if fit.ok:
                 self.map_settled = True
+                self.keep_pose(self.travelled_deg())
             return answer
 
         saved, why = self.save_graph()

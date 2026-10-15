@@ -954,7 +954,35 @@ def test_a_refit_reports_where_the_mapper_put_the_rover() -> None:
     check("...and nothing is written down", node.kept, [])
 
 
+class Confirmed(Refitted):
+    """A refit that finds the rover already where it believes it is."""
+
+    def map_measure(self, *_a, **_k):
+        answer, fit, where = Refitted.map_measure(self)
+        fit.settled, fit.moved_m, fit.turned_deg = True, 0.01, 0.4
+        return answer, fit, where
+
+
+def test_a_refit_that_confirms_the_pose_writes_it_down() -> None:
+    """**2026-10-14: a confirmed rover, and a pose on disk 44 degrees out.**
+
+    The rover stood facing about 152 degrees; the pose on disk said 108, written
+    at 12:55 before it was turned. After a boot the mapper's own anchor put it
+    right, "refit to map" was pressed and agreed, and the map counted as settled
+    -- but nothing wrote the pose, because a fit that moves nothing returned
+    before the write and the keeper only writes once the wheels turn. The next
+    navigation restart came back at 108 degrees, unsettled.
+    """
+    section("a refit that confirms where the rover already is")
+    node = Confirmed()
+    answer = _refit(node)
+    check("it moves nothing", answer["fitted"], False)
+    check("...the rover's place counts as confirmed", node.map_settled, True)
+    check("...and that place is written down for the next boot", node.kept, [BELIEVED])
+
+
 TESTS = (
+    test_a_refit_that_confirms_the_pose_writes_it_down,
     test_a_restore_that_lands_is_a_restore,
     test_a_cold_boot_is_not_a_map_that_could_not_be_read,
     test_a_pose_that_lands_somewhere_else_is_still_refused,
