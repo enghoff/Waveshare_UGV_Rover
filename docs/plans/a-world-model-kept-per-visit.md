@@ -7,8 +7,14 @@ mixed two paintings, and the blue painting sat in two records against one.
 Unmoved things now stay together, and nearly every picture is filed, but no
 moved thing's record followed it
 ([entry](../progress/2026-10-15-a-world-model-kept-per-visit-tested.md)).
-Version 2, below, is next, and its test needs a session it has not seen.
-Nothing is on the rover. It aims at
+Version 2 adds a likeness learned from the rover's own pictures (0.97 against
+0.90 at telling one object from two, no labels), a colour veto and records
+joined into paths
+([entry](../progress/2026-10-15-a-likeness-learned-from-the-rovers-own-pictures.md)).
+Over the twelve staged moves it cannot be told from version 1, because six of
+them are the two armchairs, which nothing tells apart. Its test is a staged
+session of several distinguishable things (step 6), which needs the rover and
+the owner. Nothing is on the rover. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
 [R-WS-2](../requirements/world-state.md#r-ws-2) and
@@ -129,7 +135,8 @@ sessions, with labels by someone else.
 2. **Done: clusters per visit.**
 3. **Done: matching visits to memory, and absence.**
 4. **Done, not passed: the test** on sessions 3 and 4.
-5. **Version 2: an object is a path, and colour tells look-alikes apart.**
+5. **Built: version 2, an object is a path, and colour and a learned
+   likeness tell look-alikes apart.**
    - *Paths.* Records that were never present at the same time, look alike,
      and of which one was seen gone before the other appeared are one object
      at two places. The arrival in the test found an older record of itself
@@ -138,13 +145,28 @@ sessions, with labels by someone else.
      on the rover from the stored pictures, and calibrated on the labels
      beside the image vectors. The red and the black bean bag scored 0.74 and
      0.73 against one arrival.
-   - Development uses all five labelled sessions, since the test has been
+   - *A learned likeness* (`metric.py`): KISSME on pairs the pictures give
+     for free, two regions of one picture and one visit's clusters.
+   - Development used all five labelled sessions, since the test had been
      seen.
-6. **Version 2's test**, frozen before it runs, on the next staged session,
-   whose labels are made before the model is run on it. The same five
-   conditions, with one change: a move is kept only by the strict reading,
-   where the record holding most of the thing afterwards held most of it
-   before.
+6. **Version 2's test**, frozen before it runs, on a staged session built to
+   decide it: several distinguishable things, each seen at its place before
+   the staging. Proposed for session 5:
+   - Before the session the owner sets out in the living room five movable
+     things that can be told apart: the red and the black bean bag, the box,
+     the stool and the step ladder from session 2. Loop A sees each where it
+     stands.
+   - In the wait the owner moves three of them, at least 1 m, and leaves two
+     where they are. The armchairs and the cabinet are not touched.
+   - Labels are made from the session's photographs before the model is run
+     on it, and the learned likeness is the one trained before the session.
+   - The same five conditions, with one change: a move is kept only by the
+     strict reading, where the record holding most of the thing afterwards
+     held most of it before. Version 1 is scored beside it.
+   - The two armchairs: no feature the rover has tells them apart (0.57). By
+     R-WS-17's own rule, things this component cannot tell apart are left out
+     and counted separately. Whether that applies to them is the owner's
+     decision.
 7. **On the rover in shadow**: the model kept beside the deployed store from
    the live looks, reports only, the next staged sessions as its acceptance.
 8. **In place of the resolver**, once accepted, with the world state's
