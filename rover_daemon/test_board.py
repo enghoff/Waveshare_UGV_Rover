@@ -297,6 +297,25 @@ def test_reading_the_board():
     check("a thirty-second hole is counted, not integrated",
           link.motion()["breaks"], breaks + 1)
 
+    # **2026-10-15: a stall is not a hole when the lines waited for it.** The
+    # reader went 0.48 s unread in the middle of a 60 deg/s recovery spin, the
+    # gap was counted as a hole, and the 30 degrees turned in it were thrown away
+    # -- more than the mapper's 20-degree search can put back, and the rover was
+    # lost on its way home. The board had gone on sending: twelve lines, about
+    # 20 a second, were waiting in the port, and they are the measurement.
+    breaks = link.motion()["breaks"]
+    before = link.motion()["gz_lsb_s"]
+    for _ in range(12):
+        port.feed(LINE.format(gz=1000, odl=150, odr=150))
+    started = rover_daemon.time.monotonic() - 0.6
+    link._drained_at = started
+    link.pump()
+    turned = link.motion()["gz_lsb_s"] - before
+    check("a 0.6 s stall whose twelve lines all arrived is not a hole",
+          link.motion()["breaks"], breaks)
+    check("...and the turn in it is integrated, at the rate the lines report",
+          abs(turned - 1000.0 * (link.motion()["at"] - started)) < 1e-6, True)
+
     # Two drains in the same instant are ordinary -- the navigator's loop and the
     # backstop thread share this port -- and must not read as a hole. Calling one
     # of those a hole marks the span untrustworthy, which switches off the prior

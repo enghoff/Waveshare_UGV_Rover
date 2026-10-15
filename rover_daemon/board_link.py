@@ -59,11 +59,23 @@ BOARD_SILENT_S = 3.0
 # seconds for an hour only fills the log.
 BOARD_REOPEN_S = 5.0
 BOARD_REOPEN_MAX_S = 120.0
-# The longest gap between two lines that a yaw rate may be integrated across.
-# Lines arrive about every 50 ms; a gap ten times that is the reader having been
-# starved of the core, and multiplying a rate by it invents rotation that never
-# happened. Such an interval is counted instead of integrated -- see SerialLink.
+# The longest gap between two drains that a yaw rate may be integrated across
+# without asking whether the lines in it arrived. A gap ten times the line period
+# is the reader having been starved of the core.
+#
+# **Starved is not the same as missing, and treating them alike lost a rover.**
+# The board goes on sending while the reader waits, and the port holds what it
+# sent: on 2026-10-15 the reader went about half a second unread in the middle of
+# a 60 deg/s recovery spin, the gap was counted as a hole, and the 30 degrees
+# turned in it were thrown away -- more than the mapper's 20-degree search can
+# put back, so the rover was lost on its way home. A gap is a hole only when the
+# lines that arrive for it cover less than half of it (LINE_S); then a rate
+# multiplied across it would be invented. Such an interval is counted instead of
+# integrated -- see SerialLink.
 MAX_SAMPLE_GAP_S = 0.5
+# How long the board takes over one line: about 20 a second (111,484 in 5,613 s
+# on 2026-10-15).
+LINE_S = 0.05
 # A wheel count that moves further than this between two lines did not come from
 # wheels. The board restarts its counters from zero when it reboots, and the
 # difference across that reads as several metres of travel.
@@ -463,7 +475,7 @@ class SerialLink:
         hole = False
         if previous is not None:
             elapsed = now - previous
-            if elapsed > MAX_SAMPLE_GAP_S:
+            if elapsed > MAX_SAMPLE_GAP_S and len(lines) * LINE_S < elapsed / 2.0:
                 hole = True
             elif elapsed > 0.0:
                 share = elapsed / len(lines)
