@@ -1,7 +1,11 @@
 # What brains and video models suggest for how the rover sees, remembers and finds its way
 
 Status: a design, proposed 2026-10-12 at the owner's request, who asked to go
-back to first principles and set hardware aside. Nothing in it is built. It is
+back to first principles and set hardware aside. Nothing in it is on the rover.
+Test 1 below ran on 2026-10-15 and did not pass: stable cells keep the
+matcher's original setting from walking off among moved armchairs, but tie the
+deployed strict setting rather than beat it
+([entry](../progress/2026-10-15-localising-on-stable-cells.md)). It is
 the longer view behind [the perception plan](perception-that-keeps-what-it-learns.md),
 which is what can be built on today's hardware. That plan's layers are the first
 steps of this design, and its research sections already cover dense 3D feature

@@ -78,8 +78,11 @@ Localising on what does not move is the second half
 mapper's scans weighted by how stable each cell has been, replayed through
 [`experiments/nav_replay`](../../experiments/nav_replay/README.md) on the
 shakedown and session 3, against the frozen criteria that test already
-declares. It runs after this plan's step 3 and shares nothing with it but the
-recordings.
+declares. It shares nothing with this plan but the recordings. It ran on
+2026-10-15 and did not pass: with moving cells taken out, the original
+matcher setting no longer walks off, but it ties the deployed strict setting
+on the shakedown and does not fix session 3's 08:07 miss
+([entry](../progress/2026-10-15-localising-on-stable-cells.md)).
 
 ## The benchmark
 
