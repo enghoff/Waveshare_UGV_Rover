@@ -34,6 +34,9 @@ SESSIONS = [
     ("session 2", "tmp/session2-1014/session2-1014.json",
      "experiments/m5_changes/staged/session2-1014.json",
      "experiments/m5_changes/labels-session2-1014.json"),
+    ("session 3", "tmp/session3-1015/session3-1015.json",
+     "experiments/m5_changes/staged/session3-1015.json",
+     "experiments/m5_changes/labels-session3-1015.json"),
 ]
 
 
@@ -44,6 +47,8 @@ OBJECTS = {
     "black armchair, to the balcony door": "plain", "black armchair, to the black cabinet": "throw",
     "plain black armchair, toward wall A": "plain", "black cabinet, along wall A": "cabinet",
     "black armchair with the throw (not moved in session 2)": "throw",
+    "black armchair with the throw": "throw", "black cabinet": "cabinet",
+    "plain black armchair (not moved in session 3)": "plain",
 }
 
 
@@ -77,8 +82,10 @@ def main():
                 handle, used = tempfile.mkstemp(suffix=".json")
                 with os.fdopen(handle, "w") as f:
                     json.dump(lab, f)
+            # A session's bad-pose windows, where its staged file names them.
+            bad = [x for w in json.load(open(staged)).get("bad", []) for x in ("--bad", w)]
             out = subprocess.run([sys.executable, "experiments/m5_changes/identity_count.py",
-                                  record, staged, db, used], capture_output=True, text=True)
+                                  record, staged, db, used] + bad, capture_output=True, text=True)
             lines = out.stdout.strip().splitlines()
             if not lines:
                 print("  ", session, "failed:", out.stderr[-300:])
