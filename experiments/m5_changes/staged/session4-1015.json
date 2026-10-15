@@ -1,0 +1,10 @@
+{"note": "M5 session 4, 2026-10-15, planned in session4-planned.json. After loop A the owner was asked to move the red bean bag only (session.py seen passed it and failed the plain armchair, whose seven loop A pictures went to eight records); the message crossed with the staging and the plain armchair was moved too. Places from the change watch's reports, checked on loop B's photographs: the plain armchair (no throw) from beside the balcony window (gone at (-19.10, -16.74)) to beside stop 2 (new at (-19.37, -14.28)); the shadow runner paired them (cosine 0.82) and world_state_relocate abstained for object:379. The red bean bag lives in a room the rover never enters and was carried in for the staging, put down at about (-16.65, -13.43) (the watch's arrival, furniture-sized); it was last in the living room in session 3, taken away about 09:14 (the watch's departure at (-16.28, -12.34)). Nobody was in the living room. No bad-pose window: every stop's position check stayed inside the session's limits.",
+ "staged_in": "wait",
+ "moves": [{"what": "plain black armchair (no throw)", "from": [-19.10, -16.74], "to": [-19.37, -14.28]}],
+ "added": [{"what": "red bean bag, carried in from a room the rover never enters", "at": [-16.65, -13.43]}],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": [],
+ "bad": []}

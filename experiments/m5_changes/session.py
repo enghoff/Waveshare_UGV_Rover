@@ -66,6 +66,10 @@ DWELL_S = 20.0
 SWEEP_LEFT_DEG = (60.0, 120.0, -60.0, -120.0)
 #: How far out the point aimed at is put; any distance gives the same pan.
 SWEEP_M = 2.0
+#: How long a sweep's look waits for the rover's own look to let go of the
+#: camera. In session 4, 22 of 64 were refused at 5 s, the rover's own having
+#: held it for up to 12 s.
+SWEEP_WAIT_S = 15.0
 #: A record stands at a place for `seen` when placed this near it: the
 #: record-moving step's own limit (world_state/relocate.py, FROM_M).
 SEEN_M = 1.0
@@ -237,7 +241,9 @@ def sweep(name, step, label):
     go on. The gimbal turns the camera and leaves the chassis, the lidar and
     the pose alone; the lidar's change watch sees all round either way. The
     looks are recorded without a resolver pass (`settle`), which took 15 s a
-    look on the charger; the looking loop's own pass files them."""
+    look on the charger; the looking loop's own pass files them. `seen`
+    counts records near a place, not the thing's own: in session 4 it passed
+    the red bean bag on a record of the empty floor where it had been."""
     p, _ = where()
     if not p:
         return
@@ -246,7 +252,8 @@ def sweep(name, step, label):
         a = math.radians(p["heading_deg"] + left)
         r = call("world_inspect", {"aim_at": {"x_m": p["x_m"] + SWEEP_M * math.cos(a),
                                               "y_m": p["y_m"] + SWEEP_M * math.sin(a)},
-                                   "wait": True, "settle": False}, timeout=30)
+                                   "wait": True, "wait_s": SWEEP_WAIT_S, "settle": False},
+                 timeout=30)
         looks.append({"left": left, "pan": (r.get("aimed") or {}).get("pan_deg"),
                       "frame": r.get("frame_id"), "error": r.get("error"), "s": r.get("took_s")})
     note(name, step, sweep=label, looks=looks)

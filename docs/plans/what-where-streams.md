@@ -172,9 +172,11 @@ six as the watch, three of its four named right, on evidence already seen.
    the nine events, each right, with the same counts. Its test, M5 session 3
    on 2026-10-15, does not pass: the step declined its one move, rightly, and
    the counts with and without it were the same
-   ([entry](../progress/2026-10-15-m5-session-3.md)). The next test needs a
-   session whose moved things are seen at their old places before the staging,
-   which session 3's were not.
+   ([entry](../progress/2026-10-15-m5-session-3.md)). Session 4 the same day
+   gave it the first move paired at both ends, and it declined it for a stale
+   record of both armchairs ([entry](../progress/2026-10-15-m5-session-4.md)).
+   Paused: the store it acts on is replaced by
+   [a world model kept per visit](a-world-model-kept-per-visit.md).
 
 **Gate for each step:** frozen before scoring. Against the watch alone it must
 find every staged change the watch finds, add one the watch misses or name
