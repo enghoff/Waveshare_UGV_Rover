@@ -8,6 +8,8 @@ docs/plans/sessions-that-serve-several-milestones.md. Run on the rover.
     python3 session.py run NAME [MINUTES]     an autonomy run over the flat, a loop's time by default
     python3 session.py home NAME              back to the charger, for the owner to plug in
     python3 session.py count NAME             the change log counted step by step
+    python3 session.py sweep NAME             the camera aimed all round where the rover stands
+    python3 session.py seen NAME LABEL:X,Y .. the records the session's looks went to at each place
     python3 session.py all NAME [--b-first]   the steps in order: start, loop A, wait,
                                               run and loop B (swapped with --b-first), home, count
 
@@ -24,7 +26,8 @@ viewpoint is one the rover has stood on in the runs of 2026-10-10 and 11, and
 none is within reach of the rug under the dining table, which the rover stuck on
 on 2026-10-11, or through the four doors the owner keeps shut. A goal without a
 heading faces the way the rover travelled, so the loop spends no time turning;
-the lidar sees all round.
+the lidar sees all round, and since session 4 the camera is aimed all round
+from every stop inside its dwell (`sweep`).
 """
 import json
 import math
@@ -56,6 +59,16 @@ WAIT = VIEWS[-1][1:]
 HOME = (-17.20, -15.93, 135.0)
 #: Long enough for the change watch's 20 s of evidence from each viewpoint.
 DWELL_S = 20.0
+#: Where the camera is aimed at every stop, in degrees left of the way the
+#: rover faces. The rover's own looking takes the picture straight ahead as it
+#: comes to rest; with these four the 130-degree camera has seen all round, and
+#: the 65-degree depth camera all but 50 degrees behind.
+SWEEP_LEFT_DEG = (60.0, 120.0, -60.0, -120.0)
+#: How far out the point aimed at is put; any distance gives the same pan.
+SWEEP_M = 2.0
+#: A record stands at a place for `seen` when placed this near it: the
+#: record-moving step's own limit (world_state/relocate.py, FROM_M).
+SEEN_M = 1.0
 #: The rug under the dining table, min/max x and y with the chairs round it.
 RUG = (-19.8, -17.1, -13.5, -11.9)
 #: The owner's floor for supervised drives, at rest.
@@ -201,7 +214,9 @@ def loop(name, which):
         if not p or math.hypot(p["x_m"] - x, p["y_m"] - y) > 0.3:
             face(name, step, x, y)
             drive(name, step, label, x, y)
-        time.sleep(DWELL_S)
+        began = time.time()
+        sweep(name, step, label)
+        time.sleep(max(0.0, DWELL_S - (time.time() - began)))
         check = pose_check()
         note(name, step, viewpoint=label, **check)
         lost = lost + 1 if disagrees(check) else 0
@@ -211,6 +226,54 @@ def loop(name, which):
             open(path_of(name, ".stop"), "w").close()
             break
     note(name, step, end=True, battery=battery(), report=report())
+
+
+def sweep(name, step, label):
+    """The camera aimed all round from a stop, one look a direction, inside the
+    stop's dwell. **A loop that drives facing the way it travels photographs
+    only what is ahead**: in session 3 none of the three things staged had a
+    picture from loop A, the armchair by the charger being behind the rover at
+    every stop, so the record-moving step had nothing at their old places to
+    go on. The gimbal turns the camera and leaves the chassis, the lidar and
+    the pose alone; the lidar's change watch sees all round either way. The
+    looks are recorded without a resolver pass (`settle`), which took 15 s a
+    look on the charger; the looking loop's own pass files them."""
+    p, _ = where()
+    if not p:
+        return
+    looks = []
+    for left in SWEEP_LEFT_DEG:
+        a = math.radians(p["heading_deg"] + left)
+        r = call("world_inspect", {"aim_at": {"x_m": p["x_m"] + SWEEP_M * math.cos(a),
+                                              "y_m": p["y_m"] + SWEEP_M * math.sin(a)},
+                                   "wait": True, "settle": False}, timeout=30)
+        looks.append({"left": left, "pan": (r.get("aimed") or {}).get("pan_deg"),
+                      "frame": r.get("frame_id"), "error": r.get("error"), "s": r.get("took_s")})
+    note(name, step, sweep=label, looks=looks)
+
+
+def seen(name, places):
+    """What the store has filed since the session began at each place: the
+    records placed within SEEN_M of it and how many of the session's looks
+    each holds. Run after loop A, before the owner stages anything: a thing
+    to be moved wants its record to have taken looks here."""
+    import sqlite3
+    with open(path_of(name)) as f:
+        since = json.load(f)["entries"][0]["at"]
+    db = sqlite3.connect("file:%s?mode=ro" % os.path.expanduser("~/.ugv/world/world.db"), uri=True)
+    rows = db.execute("SELECT e.id, e.placement_json, COUNT(o.id) FROM observations o"
+                      " JOIN entities e ON e.id = o.entity_id WHERE o.observed_at >= ?"
+                      " AND e.placement_json IS NOT NULL GROUP BY e.id", (since,)).fetchall()
+    out = {}
+    for label, x, y in places:
+        near = []
+        for rid, placement, n in rows:
+            p = json.loads(placement)
+            if p.get("x_m") is not None and math.hypot(p["x_m"] - x, p["y_m"] - y) <= SEEN_M:
+                near.append([rid, n, round(math.hypot(p["x_m"] - x, p["y_m"] - y), 2)])
+        out[label] = sorted(near, key=lambda r: -r[1])
+        print("%-16s %s" % (label, out[label] or "nothing filed here this session"))
+    note(name, "seen", places=out)
 
 
 def disagrees(check):
@@ -442,6 +505,14 @@ def main():
         home(name)
     elif what == "count":
         count(name)
+    elif what == "sweep":
+        sweep(name, "sweep", "where it stands")
+    elif what == "seen":
+        places = []
+        for one in args[2:]:
+            label, xy = one.rsplit(":", 1)
+            places.append((label, *(float(v) for v in xy.split(","))))
+        seen(name, places)
     elif what == "all":
         start(name)
         loop(name, "A")
