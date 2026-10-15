@@ -6,7 +6,8 @@
 # STEM is the session's starting graph (the session script keeps it), X Y HEADING
 # the pose the session started from. The recording's /tf is relayed without the
 # live mapper's map -> odom (graph_replay_tool.py), so the replay mapper's own
-# correction is the only one, and OUT.json records it. Kills only what it started.
+# correction is the only one, and OUT.json records it. With STABLE=cells.npz in the
+# environment, the scans pass through stable_filter.py first. Kills only what it started.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 BAG="$1"; STEM="$2"; X="$3"; Y="$4"; H="$5"; SECONDS_="$6"; OUT="$7"; shift 7
@@ -46,7 +47,16 @@ for _ in $(seq 300); do [ -f "$OUT.loaded" ] && break; sleep 1; done
 [ -f "$OUT.loaded" ] || { echo "graph never loaded"; tail -5 "$OUT.tool.log"; exit 1; }
 cat "$OUT.tool.log"
 
-ros2 bag play "$BAG" --clock --remap /tf:=/tf_bag \
+REMAPS=(/tf:=/tf_bag)
+if [ -n "${STABLE:-}" ]; then
+    # Only returns from cells that stayed put reach the mapper (stable_filter.py).
+    python3 "$DIR/stable_filter.py" "$STABLE" > "$OUT.filter.log" 2>&1 &
+    pids+=($!)
+    REMAPS+=(/scan:=/scan_bag)
+    sleep 3
+fi
+# One --remap with every mapping: given twice, the second replaces the first.
+ros2 bag play "$BAG" --clock --remap "${REMAPS[@]}" \
     --topics /scan /tf /tf_static /odom --playback-duration "$((SECONDS_ + 20))" > "$OUT.play.log" 2>&1 &
 pids+=($!)
 wait "$tool" || true
