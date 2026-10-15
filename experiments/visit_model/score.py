@@ -126,7 +126,7 @@ def summary(out, role):
             "wrong_merges": len(merges), "filed_share": out["filed"][role], "stayed_put_keys": sp}
 
 
-def report(out):
+def report(out, roles=("development", "test")):
     for t in out["trials"]:
         print("  %-10s %-15s %-10s strict=%-5s before %s after %s, %d unfiled" % (
             t["session"], t["object"], t["outcome"], t.get("strict"), t["before"], t["after"],
@@ -135,12 +135,18 @@ def report(out):
         print("  %-10s wrong merge: %s holds %s" % (m["session"], m["key"], m["objects"]))
     for obj, per in out["stayed_put"].items():
         print("  stayed put %-22s %s" % (obj, per))
-    for role in ("development", "test"):
+    for role in roles:
         print("  %s: %s" % (role, summary(out, role)))
 
 
 if __name__ == "__main__":
-    looks = data.load(sys.argv[1])
-    filing, baseline = filing_of(looks, sys.argv[2] if len(sys.argv) > 2 else None)
-    out = score(filing, looks, baseline=baseline)
-    report(out)
+    args = sys.argv[1:]
+    roles = ("development", "test") if "--test" in args else ("development",)
+    args = [x for x in args if x != "--test"]
+    looks = data.load(args[0])
+    filing, baseline = filing_of(looks, args[1] if len(args) > 1 else None)
+    out = score(filing, looks, baseline=baseline, roles=roles)
+    if "test" not in roles:
+        out["stayed_put"] = {k: {"development": v["development"]} for k, v in out["stayed_put"].items()}
+        out["filed"].pop("test", None)
+    report(out, roles)

@@ -11,7 +11,8 @@ range, its masked DINOv2 vector, and what the deployed store filed it under
 **Where a region stands** is the store's range where it has one (the depth
 camera under the outline, its box, or since 2026-10-14 the lidar), else the
 lidar's return across its width from a drive recording that covers its shutter
-(`lidar.place`), else nothing: a bearing only. A look the store kept no pose
+(`lidar.place`) when its lower edge reaches the lidar's plane (the deployed
+rule), else nothing: a bearing only. A look the store kept no pose
 for takes navigation's pose from a recording, as the what/where streams did
 (`recorded.py`, `lidar.py` and `poses.py` are theirs, from branch what-where).
 """
@@ -47,6 +48,19 @@ def _unit(blob):
 def _view():
     from world_state import view
     return view
+
+
+def _reaches_down(bbox, tilt):
+    """The deployed rule for a lidar range (world_state/lidar_ranges.py): the
+    region's lower edge comes down to the lidar's plane. Without it a painting
+    takes the range of whatever stands under it -- on the shakedown, the
+    cabinet under the snowy painting."""
+    from world_state import lidar_ranges, locate
+    x0, _y0, x1, y1 = bbox
+    lower = _view().elevation_deg((x0 + x1) / 2.0, y1, float(tilt or 0.0), (640, 480), None)
+    if lower is None:
+        return False
+    return lidar_ranges.reaches_down(lower - locate.ELEVATION_BIAS_DEG.get(round(float(tilt or 0.0)), 0.0))
 
 
 def build(db_path, recordings=()):
@@ -118,7 +132,7 @@ def build(db_path, recordings=()):
             out["range"][i] = rng
             out["px"][i], out["py"][i] = pose["x_m"] + rng * math.cos(b), pose["y_m"] + rng * math.sin(b)
             out["place_from"][i] = rfrom or "depth"
-        elif recs:
+        elif recs and _reaches_down(json.loads(bbox), tilt):
             p = lidar.place(recs, taken or t, bearing, out["span"][i])
             if p is not None:
                 out["px"][i], out["py"][i] = p

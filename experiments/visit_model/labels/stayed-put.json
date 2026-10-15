@@ -1,5 +1,5 @@
 {
- "note": "Objects that were never staged, labelled by the coding agent on 2026-10-15 from sheets.py's contact sheets, before the new model was run on any of it. Candidates per object: regions in the five sessions whose sight line passes within 0.6 m of its place (the rug 1.3 m, the bed 1.0, the mirror wardrobe 0.7), looking at least 0.45 alike to sixty pictures from records chosen by their photo strips; a region is labelled when the picture clearly shows the object, so edge-on slivers and crops mostly of something else are left out. Left out as objects: a dark painting by the charger, almost always seen edge-on beside two others; the dining chairs and ceiling fans, which are alike. The forest painting's three regions from 11:26-11:30 on session 4 were seen on the rug's sheets.",
+ "note": "Objects that were never staged, labelled by the coding agent on 2026-10-15 from sheets.py's contact sheets, before the new model was run on any of it. Candidates per object: regions in the five sessions whose sight line passes within 0.6 m of its place (the rug 1.3 m, the bed 1.0, the mirror wardrobe 0.7), looking at least 0.45 alike to sixty pictures from records chosen by their photo strips; a region is labelled when the picture clearly shows the object, so edge-on slivers and crops mostly of something else are left out. Left out as objects: a dark painting by the charger, almost always seen edge-on beside two others; the dining chairs and ceiling fans, which are alike. The forest painting's three regions from 11:26-11:30 on session 4 were seen on the rug's sheets. The village painting's labels were checked against full pictures after the first development runs showed two of its regions in one picture: eight were a smaller painting to its right, above the lamp, and sixteen at a picture's edge could be either; all 24 are left out.",
  "objects": {
   "snowy-tree painting": {
    "shakedown": [
@@ -212,7 +212,6 @@
     100929
    ],
    "session 1": [
-    102404,
     102579,
     102586,
     102595,
@@ -233,72 +232,49 @@
     102753,
     102759,
     102764,
-    102806,
-    102810,
-    102859
+    102810
    ],
    "session 2": [
-    102932,
     102938,
-    102969,
     102974,
     102983,
-    102992,
     102997,
-    103001,
     103155,
-    103158,
     103283,
-    103286,
     103291,
-    103299,
-    103305,
-    103309
+    103305
    ],
    "session 3": [
-    104002,
     104087,
     104101,
     104105,
     104110,
     104124,
     104131,
-    104177,
-    104182,
     104195,
     104229,
     104264,
-    104277,
     104295
    ],
    "session 4": [
     104555,
-    104589,
     104596,
-    104607,
     104615,
     104622,
     104643,
     104654,
-    104658,
-    104665,
     104671,
-    104808,
     104817,
-    104822,
     104837,
     104860,
     104880,
     104905,
     104923,
     104952,
-    104990,
     105003,
     105016,
     105027,
-    105033,
-    105038,
-    105045
+    105038
    ]
   },
   "blue painting": {
