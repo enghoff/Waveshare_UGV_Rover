@@ -1,0 +1,44 @@
+{
+ "note": "M5 session 4 (2026-10-15), labelled by the coding agent from sheets.py's contact sheets before any new model was run on the session. Candidates: regions whose sight line passes within 0.7 m of the armchair's two places and 0.6 m of the bean bag's arrival, in the session (the armchair's old place from 30 min before the session to the staging), looking at least 0.45 alike to the thing's earlier labelled pictures. The plain armchair before the staging includes four pictures at 10:47-10:48 with a person sitting in it, before the session began.",
+ "things": {
+  "plain black armchair (no throw)": [
+   104477,
+   104489,
+   104513,
+   104525,
+   104550,
+   104552,
+   104652,
+   104829,
+   104871,
+   104894,
+   104937,
+   104962,
+   104976,
+   105008,
+   105142,
+   105148,
+   105154,
+   105166
+  ],
+  "red bean bag, carried in from a room the rover never enters": [
+   104788,
+   104792,
+   104795,
+   104939,
+   104949,
+   104963,
+   104986,
+   104997,
+   105014,
+   105036,
+   105066,
+   105125,
+   105130,
+   105132,
+   105136,
+   105144,
+   105164
+  ]
+ }
+}
