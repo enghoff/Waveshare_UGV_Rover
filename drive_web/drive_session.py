@@ -51,6 +51,12 @@ DEFAULT_HTTP_PORT = 8770
 # On the rover. 8770 is already oak_depth's depth server; the desk still uses
 # DEFAULT_HTTP_PORT because that collision does not exist there.
 ROVER_HTTP_PORT = 8771
+#: How long a refit's connection waits for the answer. A refit that moves the
+#: rover writes the graph and reads it back, and on 2026-10-15 the read alone took
+#: 38 s; the rover allows the whole of it 200 s (ros_navigator.REFIT_TIMEOUT_S),
+#: and this is past that. On the map's connection, which gives up after twelve, a
+#: refit that worked would be reported as one that had not.
+REFIT_TIMEOUT_S = 210.0
 
 
 class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
@@ -102,6 +108,7 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         # minute on this board, so it gets a connection nothing else can be stuck
         # behind -- least of all the status poll or a stop.
         self.world_link: Channel | None = None
+        self.refit_link: Channel | None = None   # a refit's own, for its length
         self.channels: list[Channel] = []
 
         self.address = ""
@@ -687,7 +694,7 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         # already returned, so the map simply never comes back and the "one at a
         # time" flag stays set for good.
         self.moves = self.halt = self.watch = self.picture = self.camera = None
-        self.scanner = self.world_link = None
+        self.scanner = self.world_link = self.refit_link = None
         self.snap_abandon()
         self.frame_outstanding = False
         self.depth_mm_outstanding = False
@@ -787,11 +794,15 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         # panel and the map stopped for as long as it took.
         self.world_link = Channel("world", address, self.replies,
                                   timeout=WORLD_TIMEOUT_S)
+        # A refit's own, for its length (REFIT_TIMEOUT_S): on the map's, the
+        # pictures would queue behind it and the answer would arrive too late.
+        self.refit_link = Channel("refit", address, self.replies,
+                                  timeout=REFIT_TIMEOUT_S)
         # And the snapshots', for the same reason as the world's: a restore is
         # two minutes, and a stop must never queue behind one.
         self.channels = [self.moves, self.halt, self.watch, self.picture,
                          self.camera, self.scanner, self.world_link,
-                         self.snap_connect(address)]
+                         self.refit_link, self.snap_connect(address)]
         self.link_text = f"{address}: asking what it can do"
         self.watch.submit("list_tools")
         # The board cannot be read back, so the daemon only knows the level it last

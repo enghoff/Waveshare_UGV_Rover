@@ -314,24 +314,26 @@ class SessionActions:
     def refit_pose(self) -> None:
         """Ask the rover to find itself on the map it already has.
 
-        On the map's connection rather than the status one, for `clear_map`'s
+        On a connection of its own rather than the status one, for `clear_map`'s
         reason and one more of its own: this takes seconds -- the search is a
-        tenth of one and writing and reading the pose graph is the rest -- and the
-        status poll behind that wait is what holds the stop button.
+        tenth of one and writing and reading the pose graph is the rest, which on
+        2026-10-15 was 38 s for the read alone -- and the status poll behind that
+        wait is what holds the stop button. Not the map's either, whose twelve
+        seconds would call a refit that worked a failure (REFIT_TIMEOUT_S).
 
         No arming, unlike the clear beside it. Nothing is destroyed: the mapper
         does not fold the scan it matches into the graph, so the worst a wrong
         answer can do is move the rover by less than the window it searched, and
         pressing it again puts that right.
         """
-        if self.picture is None:
+        if self.refit_link is None:
             self.say("not connected, so the rover was not refitted", "bad")
             return
         if self.refitting:
             return
         self.refitting = True
         self.say("matching what the lidar can see against the map...", "note")
-        self.picture.submit("refit_pose")
+        self.refit_link.submit("refit_pose")
 
     def map_settings(self, action: dict[str, Any]) -> None:
         """How wide a view of the map to draw, from the two zoom controls on it.

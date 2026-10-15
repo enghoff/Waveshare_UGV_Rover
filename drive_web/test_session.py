@@ -985,16 +985,23 @@ def test_the_refit_button_says_what_happened() -> None:
 
     session = drive_web.Session(None, 3.0, 480)
     session.picture = Fake()
+    session.refit_link = Fake()
     session.act({"do": "refit"})
-    check("the press goes to the rover", [n for n, _ in session.picture.sent],
+    check("the press goes to the rover", [n for n, _ in session.refit_link.sent],
           ["refit_pose"])
-    check("...on the map's connection rather than the status one, because the "
+    check("...on a connection of its own rather than the status one, because the "
           "poll behind that wait is what holds the stop button",
           session.snapshot()["refitting"], True)
+    # 2026-10-15: a refit that moves the rover writes the graph and reads it back,
+    # and the read alone took 38 s; the map's connection gives up after twelve,
+    # which would report a refit that worked as one that had not.
+    import drive_session
+    check("...whose patience outlasts the rover's own limit on a refit (200 s)",
+          drive_session.REFIT_TIMEOUT_S > 200.0, True)
 
     session.act({"do": "refit"})
     check("a second press while one is running is not sent",
-          len(session.picture.sent), 1)
+          len(session.refit_link.sent), 1)
 
     session.handle(Reply("refit_pose", {}, {
         "ok": True, "fitted": True, "moved_m": 0.31, "turned_deg": -12.0,
@@ -1009,6 +1016,7 @@ def test_the_refit_button_says_what_happened() -> None:
     # A refusal is not a failure and must not read as one: the rover is where it
     # was, and the sentence explains why it stayed there.
     session.picture.sent.clear()
+    session.refit_link.sent.clear()
     session.act({"do": "refit"})
     session.handle(Reply("refit_pose", {}, {
         "ok": True, "fitted": False, "settled": True,
@@ -1016,7 +1024,7 @@ def test_the_refit_button_says_what_happened() -> None:
     check("a rover that was already right is reported quietly",
           session.snapshot()["notice"]["tag"], "quiet")
     check("...and no new map is asked for, because nothing moved",
-          [n for n, _ in session.picture.sent], ["refit_pose"])
+          [n for n, _ in session.picture.sent], [])
 
 
 def test_the_run_button_starts_a_run_and_shows_the_rovers_answer() -> None:
