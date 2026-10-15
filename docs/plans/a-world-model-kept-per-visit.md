@@ -103,7 +103,11 @@ passes when, on the test sessions and counted across sessions:
   matches fails it, as it does criterion 4;
 - it keeps more staged-move trials than the deployed store, and at least half;
 - the labelled objects that stayed put are each held by no more records than in
-  the deployed store, and by two or fewer for at least three in four of them.
+  the deployed store, and by two or fewer for at least three in four of them;
+- it files at least as large a share of all the labelled pictures in the test
+  sessions as the deployed store does, so that leaving pictures unfiled cannot
+  pass the two conditions above (added 2026-10-15, after the deployed store
+  was scored and before the new model was run).
 
 It also reports, without a bar: the records placed in the living room, gone
 objects and when the evidence came, and every move it made or held pending.
