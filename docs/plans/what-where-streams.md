@@ -169,8 +169,12 @@ six as the watch, three of its four named right, on evidence already seen.
    ([entry](../progress/2026-10-14-identity-across-a-move.md)). Development
    only. Deployed on 2026-10-14 as `world_state_relocate`, called by the
    shadow runner with `--act`; replayed, the deployed version acts on four of
-   the nine events, each right, with the same counts. Its test is the next
-   staged session, from a snapshot taken before its staging.
+   the nine events, each right, with the same counts. Its test, M5 session 3
+   on 2026-10-15, does not pass: the step declined its one move, rightly, and
+   the counts with and without it were the same
+   ([entry](../progress/2026-10-15-m5-session-3.md)). The next test needs a
+   session whose moved things are seen at their old places before the staging,
+   which session 3's were not.
 
 **Gate for each step:** frozen before scoring. Against the watch alone it must
 find every staged change the watch finds, add one the watch misses or name
