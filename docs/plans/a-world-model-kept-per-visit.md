@@ -103,7 +103,10 @@ passes when, on the test sessions and counted across sessions:
   matches fails it, as it does criterion 4;
 - it keeps more staged-move trials than the deployed store, and at least half;
 - the labelled objects that stayed put are each held by no more records than in
-  the deployed store, and by two or fewer for at least three in four of them;
+  the deployed store, counting at least one (amended 2026-10-15 before the
+  test was run: the deployed store holds the front door's test pictures in no
+  record, so as first written any model filing them would fail), and by two
+  or fewer for at least three in four of them;
 - it files at least as large a share of all the labelled pictures in the test
   sessions as the deployed store does, so that leaving pictures unfiled cannot
   pass the two conditions above (added 2026-10-15, after the deployed store
