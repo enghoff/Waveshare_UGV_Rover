@@ -187,6 +187,16 @@ MEASURE_WAIT_S = 0.3
 #: large map they are seconds rather than milliseconds.
 GRAPH_TIMEOUT_S = 30.0
 
+#: And how long for a deserialise in particular, which outgrew that. A load reads
+#: the whole graph and rebuilds the matcher's state from every node in it: on
+#: 2026-10-15 the 190 MB graph took 38 s in a second mapper beside the live one,
+#: and a snapshot's map put back that morning was reported as not loaded while
+#: the mapper went on loading it. On 2026-10-14 the same thirty seconds had a
+#: boot ask for the graph 23 times, each ask a fresh load on top of the last,
+#: while the mapper grew from 2.2 to 4.2 GB. A load still running when this runs
+#: out is waited for again, never asked for twice (`load_graph`).
+LOAD_TIMEOUT_S = 90.0
+
 #: How long to wait for a deserialised pose to actually reach the transform tree,
 #: and how close counts as arrived cleanly.
 #:
@@ -598,7 +608,7 @@ class NavMap:
         with self.map_lock:
             if landed is None:
                 self.map_note = ("the saved map has not loaded yet (%s); it is "
-                                 "untouched on disk and will be asked for "
+                                 "untouched on disk and will be looked for "
                                  "again, attempt %d"
                                  % (why, self.map_restore_tries))
                 self.get_logger().warn(self.map_note)
@@ -763,16 +773,30 @@ class NavMap:
             # near the pose asked for waits for the mapper to move it rather
             # than passing for landed -- see `MOVED_S`.
             before = self.pose_deg()
-            request = DeserializePoseGraph.Request()
-            request.filename = self.saved.stem if stem is None else stem
-            request.match_type = request.START_AT_GIVEN_POSE
-            request.initial_pose.x = float(pose[0])
-            request.initial_pose.y = float(pose[1])
-            request.initial_pose.theta = math.radians(float(pose[2]))
-            future = self.deserialize_client.call_async(request)
-            if not self.wait(future, GRAPH_TIMEOUT_S):
-                return False, ("slam_toolbox did not finish loading the graph in "
-                               "%.0f seconds" % (GRAPH_TIMEOUT_S,)), None
+            filename = self.saved.stem if stem is None else stem
+            # A load the mapper is still working through is waited for again,
+            # not asked for a second time: each ask is a whole graph read on
+            # top of the last, which is how the mapper reached 4.2 GB.
+            pending = getattr(self, "_loading", None)
+            if pending is not None and not pending[0].done():
+                if pending[1] != filename:
+                    return False, ("slam_toolbox is still loading another graph "
+                                   "(%s)" % (pending[1],)), None
+                future = pending[0]
+            else:
+                request = DeserializePoseGraph.Request()
+                request.filename = filename
+                request.match_type = request.START_AT_GIVEN_POSE
+                request.initial_pose.x = float(pose[0])
+                request.initial_pose.y = float(pose[1])
+                request.initial_pose.theta = math.radians(float(pose[2]))
+                future = self.deserialize_client.call_async(request)
+                self._loading = (future, filename)
+            if not self.wait(future, LOAD_TIMEOUT_S):
+                return False, ("slam_toolbox has not finished loading the graph "
+                               "after %.0f seconds and is still at it"
+                               % (LOAD_TIMEOUT_S,)), None
+            self._loading = None
             # **Two failures, and they were one sentence.** A transform tree that
             # never says anything and one that puts the rover in the wrong room
             # are different faults with different cures, and the message that

@@ -74,7 +74,7 @@ class Mapper:
         self.saved = types.SimpleNamespace(stem="/tmp/current")
         self.deserialize_client = types.SimpleNamespace(
             wait_for_service=lambda timeout_sec=None: True,
-            call_async=lambda request: object())
+            call_async=lambda request: types.SimpleNamespace(done=lambda: self.answers))
 
     # --- what nav_map calls -------------------------------------------------
     def wait(self, _future, _limit_s):
@@ -144,9 +144,9 @@ class Saved(types.SimpleNamespace):
         return odom is not None
 
 
-def _restorer(poses, note=NOTE, parked=None, **fields):
+def _restorer(poses, note=NOTE, parked=None, make=None, **fields):
     """A stand-in ready for `map_restore`, with a note already on disk."""
-    node = Mapper(poses, **fields)
+    node = (make or Mapper)(poses, **fields)
     node.said = []
     node.map_id = None
     node.map_restored = False
@@ -954,6 +954,52 @@ def test_a_refit_reports_where_the_mapper_put_the_rover() -> None:
     check("...and nothing is written down", node.kept, [])
 
 
+class SlowLoad(Mapper):
+    """A mapper whose load answers `takes_s` after it is asked, on the fake clock,
+    and that counts how many times it was asked."""
+
+    def __init__(self, poses, takes_s=38.0, **fields):
+        super().__init__(poses, **fields)
+        self.asked = 0
+        self.takes_s = takes_s
+        self.deserialize_client = types.SimpleNamespace(
+            wait_for_service=lambda timeout_sec=None: True, call_async=self._load)
+
+    def _load(self, _request):
+        self.asked += 1
+        due = self.clock + self.takes_s
+        return types.SimpleNamespace(done=lambda: self.clock >= due, due=due)
+
+    def wait(self, future, limit_s):
+        if future.due <= self.clock + limit_s:
+            self.clock = max(self.clock, future.due)
+            return True
+        self.clock += limit_s
+        return False
+
+
+def test_a_slow_load_is_waited_for_and_asked_for_once() -> None:
+    """**2026-10-14 and 15: a graph that loads in more than thirty seconds.**
+
+    The 190 MB graph took 38 s to load in a second mapper beside the live one.
+    Navigation gave a load thirty: a snapshot's map put back on 10-15 was
+    reported as not loaded while the mapper went on loading it, and on 10-14 a
+    boot asked for the graph 23 times, every ask a fresh load on top of the last,
+    while the mapper grew from 2.2 to 4.2 GB.
+    """
+    section("a load slower than thirty seconds")
+    node = _restore_map(_restorer([LANDED], make=SlowLoad, takes_s=38.0))
+    check("a load that answers in 38 s restores the map", node.map_id, "map-one")
+
+    node = _restore_map(_restorer([LANDED], make=SlowLoad, takes_s=150.0))
+    check("one that takes 150 s has not restored it at the first wait", node.map_id, None)
+    check("...and says the mapper is still at it", "still at it" in node.map_note, True)
+    node.clock += nav_map.RESTORE_RETRY_S
+    _restore_map(node)
+    check("...and the next attempt restores it", node.map_id, "map-one")
+    check("...having asked the mapper for the graph once", node.asked, 1)
+
+
 class Confirmed(Refitted):
     """A refit that finds the rover already where it believes it is."""
 
@@ -982,6 +1028,7 @@ def test_a_refit_that_confirms_the_pose_writes_it_down() -> None:
 
 
 TESTS = (
+    test_a_slow_load_is_waited_for_and_asked_for_once,
     test_a_refit_that_confirms_the_pose_writes_it_down,
     test_a_restore_that_lands_is_a_restore,
     test_a_cold_boot_is_not_a_map_that_could_not_be_read,

@@ -68,15 +68,16 @@ MEASURE_TIMEOUT_S = 1.5
 MAP_TIMEOUT_S = 8.0
 STOP_TIMEOUT_S = 3.0
 # Fitting the rover to its map is a tenth of a second of searching and then the
-# pose graph written and read again, which on a house-sized graph is most of a
-# minute in the worst case. The bridge has its own thirty-second limit on each of
-# those two, so this is the point at which a silent socket is a dead bridge.
-REFIT_TIMEOUT_S = 90.0
+# pose graph written and read again. The bridge allows the write thirty seconds
+# and the read ninety (nav_map.LOAD_TIMEOUT_S: the 190 MB graph of 2026-10-15
+# took 38 s to read), then up to a minute for the pose to land, so this is the
+# point at which a silent socket is a dead bridge.
+REFIT_TIMEOUT_S = 200.0
 # A snapshot's copy of the graph is one serialisation, which the bridge allows
-# thirty seconds; putting one back is a deserialisation with the same allowance
-# and then up to a minute for the rover's pose to land (nav_map.LANDED_S).
+# thirty seconds; putting one back is a deserialisation, allowed ninety, and then
+# up to a minute for the rover's pose to land (nav_map.LANDED_S).
 SNAPSHOT_MAP_TIMEOUT_S = 45.0
-RESTORE_MAP_TIMEOUT_S = 120.0
+RESTORE_MAP_TIMEOUT_S = 180.0
 # A move is answered by Nav2 when Nav2 is done, and a long route across a house
 # legitimately takes minutes. This is not a schedule -- the bridge has its own
 # time allowance per goal, worked out from the goal -- it is the point at which a

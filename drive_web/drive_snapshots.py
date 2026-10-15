@@ -31,9 +31,9 @@ from console_model import CLEAR_ARM_S, Channel
 #: agent or a second browser took turns up without anybody pressing anything.
 SNAP_POLL_S = 5.0
 #: How long the connection waits for an answer. A restore keeps the state it
-#: replaces first, then waits up to two minutes for the map to come back
+#: replaces first, then waits up to three minutes for the map to come back
 #: (ros_navigator.RESTORE_MAP_TIMEOUT_S); this is past both.
-SNAP_TIMEOUT_S = 200.0
+SNAP_TIMEOUT_S = 260.0
 #: What the popup's header says while each of the three slow calls runs.
 DOING = {"snapshot_save": "saving", "snapshot_restore": "restoring",
          "snapshot_delete": "deleting"}
