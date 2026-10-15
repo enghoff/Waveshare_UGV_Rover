@@ -1,0 +1,12 @@
+{"note": "M5 session 3, 2026-10-15, the staged test of a record following its moved thing (experiments/identity_moves/README.md on branch what-where). The owner was asked to move the red bean bag about 2 m, the armchair with the throw about 1.5 m (leaving the plain one) and the black cabinet about 1 m out from the wall. Places from the change watch's reports, checked on the session's photographs: the armchair with the throw from beside the charger to in front of the rover's way home (gone at (-17.11, -16.48), new at (-17.15, -14.44); the shadow runner paired them, cosine 0.81); the cabinet from along wall A to about half a metre out (gone at (-19.84, -15.11), new at (-19.36, -14.94)). The red bean bag is not in any picture or report before the staging; after it, six pictures place it at about (-16.33, -12.2), within half a metre of where session 1 added it, so its old place here is session 1's and approximate. A person sat in the plain armchair by the window during loop A and the run. The pose went wrong in the living room twice, by the scans scored against the session's starting map (tmp/session3-1015/pose-timeline.txt): 08:07:03-08:07:43, up to 0.5 m and 12 deg, and from 08:10:45 on the drive home, 25 deg or more; looks in those windows are given as --bad. The rover was blocked 2 m from the charger by the moved armchair and the owner drove it back.",
+ "staged_in": "wait",
+ "moves": [{"what": "black armchair with the throw", "from": [-17.11, -16.48], "to": [-17.15, -14.44]},
+           {"what": "black cabinet", "from": [-19.84, -15.11], "to": [-19.36, -14.94]},
+           {"what": "red bean bag", "from": [-16.33, -12.5], "to": [-16.33, -12.2], "approximate": true}],
+ "added": [],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": [],
+ "bad": ["08:07:03-08:07:43", "08:10:45-08:30:00"]}

@@ -1,0 +1,9 @@
+{"note": "Labelled by the coding agent from identity_sheets.py's sheets for staged/session3-1015.json, each candidate drawn again with its whole frame, 2026-10-15, before either replay was run. Session 3 moved the armchair with the throw (from beside the charger to the middle of the room), the tall black cabinet (half a metre out from wall A) and the red bean bag. None of the three is in a picture before the staging: loop A's living-room looks show the plain armchair with a person sitting in it, a small two-tier black stand by the window (not the cabinet), the dining chairs, and the tall cabinet at 07:57:28 with no region drawn round it. The throw armchair is told from the plain one by its brown throw where that shows, and otherwise by where it stands in each frame against the rover's pose (the small dark block beside the red bean bag at 08:06-08:07 is the throw armchair seen side-on at 2.6-2.8 m). The plain armchair, not moved, is labelled so that a record holding both armchairs shows; most of its close views from behind have no region on the armchair itself. Regions 104228, 104239, 104242, 104257, 104235 and 104371 fall in the session's bad-pose windows (staged file) and are labelled but left out by the count.",
+ "things": {
+  "black armchair with the throw": [104050, 104053, 104058, 104062, 104069, 104176, 104184, 104196, 104220, 104228, 104239, 104261, 104270, 104282, 104291, 104300, 104371],
+  "black cabinet": [104080, 104085, 104090, 104096, 104146, 104154, 104161, 104179, 104187, 104194, 104203, 104212, 104235],
+  "red bean bag": [104242, 104257, 104265, 104276, 104284, 104293, 104303, 104310],
+  "plain black armchair (not moved in session 3)": [103971, 103980, 104082, 104086, 104091, 104093, 104098, 104100, 104109, 104119]
+ },
+ "left_out": [103973, 103983, 104081, 104114, 104136, 104155, 104181]
+}
