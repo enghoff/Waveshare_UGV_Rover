@@ -20,7 +20,10 @@ Its test, M5 session 5 on 2026-10-16, failed: the black bean bag, put down
 near where the red one had stood the day before, was filed to the red one's
 record. It also kept the red bean bag in one record through its 3.5 m move,
 which no system had done
-([entry](../progress/2026-10-16-m5-session-5.md)). Version 3 is next, offline.
+([entry](../progress/2026-10-16-m5-session-5.md)). Version 3, developed on all
+six sessions, holds no record of two things on any of them and follows 6 of
+11 moves ([entry](../progress/2026-10-16-version-3-records-that-stop-drifting.md));
+its test is M5 session 6, which needs the rover and the owner.
 Nothing is on the rover. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
@@ -184,10 +187,19 @@ Those conditions are retired.
      record's best-matching sample, and the samples are chosen to be as
      unlike each other as possible, so a record that has once taken a
      second thing keeps its colours.
-   - Next, version 3, offline: a record that does not drift from thing to
-     thing by place, a colour check against what a record mostly looks like,
-     and a scorer that counts a wrong merge across sessions. Then frozen for
-     another staged session.
+   - **Version 3**, developed the same day on all six sessions and frozen at
+     `e5b39fd` ([entry](../progress/2026-10-16-version-3-records-that-stop-drifting.md)):
+     a record unseen for three hours needs a move's likeness to be here as
+     before; an arrival pairs first with a departure of the last half hour;
+     pictures whose colours differ are not linked; merges run in a fixed
+     order. No wrong merge on any session, 6 of 11 distinguishable moves
+     followed by the strict reading; the scorer now counts a wrong merge
+     across sessions.
+   - **Its test is M5 session 6**, planned in
+     `experiments/m5_changes/staged/session6-planned.json`: the two bean bags
+     carried in each to where the other stood at the end of session 5, then
+     moved in the wait, the black one near where the red one has just left.
+     Scored as *What counts* says, versions 1 and 2 beside it.
 7. **On the rover in shadow**: the model kept beside the deployed store from
    the live looks, reports only. The next staged sessions and every ordinary
    drive are its acceptance.
