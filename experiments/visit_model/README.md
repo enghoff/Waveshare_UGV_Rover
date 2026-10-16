@@ -111,3 +111,27 @@ taking an armchair in session 1 and the cabinet in session 3; the front door's
 taking the rug in session 4): a veto changes which record wins, and the next
 best is not always right. Version 3 needs records that stop drifting from
 thing to thing by place, not a stricter veto alone.
+
+## Version 3
+
+Developed on all six sessions (2026-10-16), so none of it is a test:
+
+- **A record unseen for three hours is "here as before" only on a move's
+  likeness (0.75, not 0.55).** Hours later, standing where something stood
+  says little about which thing it is.
+- **An arrival pairs first with a departure seen in the last half hour**, and
+  with older ones only after the visit's absences are in, so its own
+  departure seen in the same visit can win.
+
+`run_v3.sh` runs it; `compare.py` sets filings side by side. With session 5's
+unmoved objects labelled too (`labels/stayed-put.json`, after versions 1 and 2
+had been scored on the session):
+
+| | wrong merges, all sessions | distinguishable moves strict | unmoved in 2 records or fewer, sessions 3-5 | filed, sessions 3-5 |
+|---|---|---|---|---|
+| deployed store | 8 | 0 of 10 | 4 of 22 | 69-74% |
+| version 1 | 4 | 2 of 11 | 20 of 22 | 89-95% |
+| version 2 (`3c2498e`) | 1 | 1 of 11 | 19 of 22 | 90-95% |
+| version 3 | 0 | 7 of 11 | 18 of 22 | 90-93% |
+
+Frozen here for M5 session 6.

@@ -1,5 +1,5 @@
 {
- "note": "Objects that were never staged, labelled by the coding agent on 2026-10-15 from sheets.py's contact sheets, before the new model was run on any of it. Candidates per object: regions in the five sessions whose sight line passes within 0.6 m of its place (the rug 1.3 m, the bed 1.0, the mirror wardrobe 0.7), looking at least 0.45 alike to sixty pictures from records chosen by their photo strips; a region is labelled when the picture clearly shows the object, so edge-on slivers and crops mostly of something else are left out. Left out as objects: a dark painting by the charger, almost always seen edge-on beside two others; the dining chairs and ceiling fans, which are alike. The forest painting's three regions from 11:26-11:30 on session 4 were seen on the rug's sheets. The village painting's labels were checked against full pictures after the first development runs showed two of its regions in one picture: eight were a smaller painting to its right, above the lamp, and sixteen at a picture's edge could be either; all 24 are left out.",
+ "note": "Objects that were never staged, labelled by the coding agent on 2026-10-15 from sheets.py's contact sheets, before the new model was run on any of it. Candidates per object: regions in the five sessions whose sight line passes within 0.6 m of its place (the rug 1.3 m, the bed 1.0, the mirror wardrobe 0.7), looking at least 0.45 alike to sixty pictures from records chosen by their photo strips; a region is labelled when the picture clearly shows the object, so edge-on slivers and crops mostly of something else are left out. Left out as objects: a dark painting by the charger, almost always seen edge-on beside two others; the dining chairs and ceiling fans, which are alike. The forest painting's three regions from 11:26-11:30 on session 4 were seen on the rug's sheets. The village painting's labels were checked against full pictures after the first development runs showed two of its regions in one picture: eight were a smaller painting to its right, above the lamp, and sixteen at a picture's edge could be either; all 24 are left out. Session 5 (2026-10-16) labelled the same way by the coding agent before version 3 was scored on it, after versions 1 and 2 had been: regions mixing a painting with the black bean bag in front of it, a person, a chair, or the red bean bag in front of the door are left out, and slivers too near the picture's edge.",
  "objects": {
   "snowy-tree painting": {
    "shakedown": [
@@ -74,6 +74,33 @@
     105158,
     105165,
     105177
+   ],
+   "session 5": [
+    105463,
+    105474,
+    105593,
+    105604,
+    105618,
+    105625,
+    105657,
+    105666,
+    105892,
+    105908,
+    105925,
+    105933,
+    105941,
+    105969,
+    105976,
+    106247,
+    106258,
+    106268,
+    106274,
+    106281,
+    106295,
+    106302,
+    106310,
+    106320,
+    106336
    ]
   },
   "animals painting": {
@@ -153,6 +180,41 @@
     105150,
     105159,
     105183
+   ],
+   "session 5": [
+    105468,
+    105478,
+    105488,
+    105605,
+    105619,
+    105627,
+    105646,
+    105658,
+    105667,
+    105695,
+    105706,
+    105752,
+    105909,
+    105926,
+    105935,
+    105945,
+    105961,
+    105971,
+    105977,
+    106000,
+    106006,
+    106044,
+    106053,
+    106090,
+    106099,
+    106108,
+    106119,
+    106233,
+    106249,
+    106259,
+    106270,
+    106315,
+    106329
    ]
   },
   "forest painting": {
@@ -198,6 +260,23 @@
     104987,
     105137,
     105171
+   ],
+   "session 5": [
+    105467,
+    105476,
+    105485,
+    105704,
+    105737,
+    105920,
+    106042,
+    106091,
+    106118,
+    106191,
+    106196,
+    106203,
+    106254,
+    106287,
+    106325
    ]
   },
   "village painting": {
@@ -275,6 +354,35 @@
     105016,
     105027,
     105038
+   ],
+   "session 5": [
+    105461,
+    105472,
+    105639,
+    105675,
+    105689,
+    105716,
+    105729,
+    105742,
+    105760,
+    105954,
+    105984,
+    105994,
+    106013,
+    106019,
+    106032,
+    106046,
+    106060,
+    106069,
+    106081,
+    106131,
+    106140,
+    106154,
+    106170,
+    106179,
+    106185,
+    106189,
+    106211
    ]
   },
   "blue painting": {
@@ -347,6 +455,45 @@
     105028,
     105151,
     105160
+   ],
+   "session 5": [
+    105595,
+    105620,
+    105629,
+    105638,
+    105659,
+    105668,
+    105677,
+    105683,
+    105719,
+    105749,
+    105758,
+    105895,
+    105927,
+    105936,
+    105946,
+    105955,
+    105972,
+    105978,
+    105985,
+    105991,
+    106020,
+    106051,
+    106059,
+    106068,
+    106138,
+    106148,
+    106152,
+    106161,
+    106173,
+    106269,
+    106277,
+    106283,
+    106296,
+    106304,
+    106311,
+    106322,
+    106337
    ]
   },
   "front door": {
@@ -388,6 +535,13 @@
     104574,
     104586,
     104602
+   ],
+   "session 5": [
+    105998,
+    106003,
+    106037,
+    106195,
+    106202
    ]
   },
   "rug": {
@@ -501,6 +655,27 @@
     104951,
     104989,
     105009
+   ],
+   "session 5": [
+    105462,
+    105471,
+    105644,
+    105651,
+    105653,
+    105697,
+    105736,
+    105929,
+    105959,
+    105964,
+    105999,
+    106002,
+    106038,
+    106085,
+    106117,
+    106201,
+    106265,
+    106294,
+    106313
    ]
   },
   "bed": {
@@ -557,6 +732,25 @@
     105098,
     105105,
     105117
+   ],
+   "session 5": [
+    105495,
+    105499,
+    105504,
+    105509,
+    105514,
+    105518,
+    105547,
+    105782,
+    105788,
+    105794,
+    105799,
+    105805,
+    105809,
+    105817,
+    105826,
+    105835,
+    105842
    ]
   },
   "gold painting over the bed": {
@@ -610,6 +804,27 @@
     105104,
     105108,
     105119
+   ],
+   "session 5": [
+    105501,
+    105506,
+    105511,
+    105516,
+    105522,
+    105525,
+    105527,
+    105542,
+    105549,
+    105785,
+    105790,
+    105796,
+    105802,
+    105807,
+    105812,
+    105816,
+    105819,
+    105829,
+    105843
    ]
   },
   "portrait": {
@@ -674,6 +889,31 @@
     105114,
     105116,
     105120
+   ],
+   "session 5": [
+    105492,
+    105496,
+    105503,
+    105507,
+    105512,
+    105517,
+    105521,
+    105537,
+    105557,
+    105564,
+    105776,
+    105778,
+    105786,
+    105792,
+    105798,
+    105803,
+    105808,
+    105813,
+    105822,
+    105830,
+    105836,
+    105853,
+    105858
    ]
   },
   "mirror wardrobe": {
@@ -728,6 +968,27 @@
     105090,
     105099,
     105118
+   ],
+   "session 5": [
+    105494,
+    105500,
+    105505,
+    105510,
+    105515,
+    105519,
+    105523,
+    105533,
+    105536,
+    105548,
+    105783,
+    105789,
+    105795,
+    105801,
+    105806,
+    105810,
+    105814,
+    105828,
+    105834
    ]
   }
  }
