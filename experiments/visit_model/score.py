@@ -56,17 +56,17 @@ def score(filing, looks, baseline=False, roles=("development", "test")):
         if s.role not in roles:
             continue
         earlier = {x.name for x in ss[:k + 1]}
-        for obj in s.movers():
-            mt = s.move_time(obj)
+        for obj, mt, next_t in s.events():
             mine = objs.get(obj, {})
             before = Counter(filing.get(r) for r, sess in mine.items()
                              if sess in earlier and usable(r, sess) and t_of[r] < mt
                              and filing.get(r))
+            until = next_t if next_t is not None else float("inf")
             after = Counter(filing.get(r) for r, sess in mine.items()
-                            if sess == s.name and usable(r, sess) and t_of[r] >= mt
+                            if sess == s.name and usable(r, sess) and mt <= t_of[r] < until
                             and filing.get(r))
             unfiled = sum(1 for r, sess in mine.items() if sess == s.name and usable(r, sess)
-                          and t_of[r] >= mt and not filing.get(r))
+                          and mt <= t_of[r] < until and not filing.get(r))
             row = {"session": s.name, "role": s.role, "object": obj,
                    "before": dict(before.most_common(6)), "after": dict(after.most_common(6)),
                    "unfiled_after": unfiled}
@@ -95,16 +95,15 @@ def score(filing, looks, baseline=False, roles=("development", "test")):
                                             "objects": dict(by)})
     # The share of all labelled regions filed at all, per role.
     out["filed"] = {}
-    for role_name in ("development", "test"):
+    for role_name in sorted({s.role for s in ss}):
         names = {s.name for s in ss if s.role == role_name}
         rows = [r for mine in objs.values() for r, sess in mine.items()
                 if sess in names and usable(r, sess)]
         out["filed"][role_name] = round(sum(1 for r in rows if filing.get(r)) / max(1, len(rows)), 3)
-    test = {s.name for s in ss if s.role == "test"}
     for obj in truth.stayed_put():
         per = {}
-        for role_set, label in ((test, "test"), ({s.name for s in ss if s.role == "development"},
-                                                  "development")):
+        for label in sorted({s.role for s in ss}):
+            role_set = {s.name for s in ss if s.role == label}
             c = Counter(filing.get(r) for r, sess in objs.get(obj, {}).items()
                         if sess in role_set and usable(r, sess) and filing.get(r))
             n = sum(1 for r, sess in objs.get(obj, {}).items() if sess in role_set and usable(r, sess))
@@ -142,11 +141,16 @@ def report(out, roles=("development", "test")):
 if __name__ == "__main__":
     args = sys.argv[1:]
     roles = ("development", "test") if "--test" in args else ("development",)
+    # --role NAME scores that role alone (session 5 is its own: "session 5").
+    if "--role" in args:
+        k = args.index("--role")
+        roles = (args[k + 1],)
+        args = args[:k] + args[k + 2:]
     args = [x for x in args if x != "--test"]
     looks = data.load(args[0])
     filing, baseline = filing_of(looks, args[1] if len(args) > 1 else None)
     out = score(filing, looks, baseline=baseline, roles=roles)
     if "test" not in roles:
-        out["stayed_put"] = {k: {"development": v["development"]} for k, v in out["stayed_put"].items()}
+        out["stayed_put"] = {k: {r: v[r] for r in roles if r in v} for k, v in out["stayed_put"].items()}
         out["filed"].pop("test", None)
     report(out, roles)

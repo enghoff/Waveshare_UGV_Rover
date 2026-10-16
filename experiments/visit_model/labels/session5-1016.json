@@ -1,0 +1,10 @@
+{
+ "note": "M5 session 5 (2026-10-16), labelled by the coding agent from sheets.py's candidates (drawn from the local copy of the store and its full-size photographs) before any model was run on the session. Candidates: regions whose sight line passes within 0.6-0.9 m of each thing's place, in the window it stood there (after the first wait until the end of the second for the starting places, after the second for the new ones), looking at least 0.45 alike to seed pictures picked from loop A's and loop B's photographs. Left out: regions mixing the red bean bag and the box in front of it (105606), regions of the rug, doorways, dining chairs, a painting, and two of a person's legs among the black bean bag's candidates, and one of the step ladder with a person standing beside it (106067). The stool has no region at its new place: a search 1.2 m round it at 0.35 likeness found armchairs, the lamp and fans only; it stood backlit behind the ladder at the balcony window. The step ladder stood at the window throughout (loop A 10:59, loop B 11:18-11:19).",
+ "things": {
+  "red bean bag": [105656, 105665, 105691, 105698, 105741, 105750, 105901, 105912, 106230, 106328],
+  "box": [105648, 105661, 105696, 105705, 105907, 105914, 106234],
+  "stool": [105632, 105662, 105669, 105676, 105686, 105718, 105747, 105755],
+  "black bean bag": [105587, 105598, 105608, 105612, 105650, 105681, 105703, 105728, 105740, 105900, 105911, 105917, 105963, 106005, 106029, 106043, 106079, 106192, 106207, 106227, 106319],
+  "step ladder": [105726, 105757, 106058, 106130]
+ }
+}

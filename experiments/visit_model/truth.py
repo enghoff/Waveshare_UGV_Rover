@@ -45,7 +45,15 @@ SESSIONS = [
     ("session 4", os.path.join(TMP, "session4-1015", "session4-1015.json"),
      os.path.join(STAGED, "session4-1015.json"), os.path.join(HERE, "labels", "session4-1015.json"),
      "test"),
+    # Version 2's test (docs/decisions/the-world-model-is-pass-fail-on-honesty-alone.md).
+    ("session 5", os.path.join(TMP, "session5-1016", "session5-1016.json"),
+     os.path.join(MAIN, "experiments", "m5_changes", "staged", "session5-1016.json"),
+     os.path.join(HERE, "labels", "session5-1016.json"), "session 5"),
 ]
+#: Labels for a session made later than its own file, for things a later
+#: session carried in again (session 5's box, stool and step ladder were
+#: session 2's).
+EXTRA_LABELS = {"session 2": [os.path.join(HERE, "labels", "session2-1014-extra.json")]}
 STAYED_PUT = os.path.join(HERE, "labels", "stayed-put.json")
 
 #: Which physical object each session's staged thing is (count_all.OBJECTS, and
@@ -62,6 +70,7 @@ OBJECTS = {
     "plain black armchair (not moved in session 3)": "plain armchair",
     "plain black armchair (no throw)": "plain armchair",
     "red bean bag, carried in from a room the rover never enters": "red bean bag",
+    "box": "box", "stool": "stool", "step ladder": "step ladder",
 }
 
 
@@ -81,6 +90,10 @@ class Session:
         entries = json.load(open(record))["entries"]
         self.start, self.end = entries[0]["at"], entries[-1]["at"]
         self.staged_at = next(e["at"] for e in entries if e["step"] == "wait" and e.get("end"))
+        # Session 5 waited twice: things carried in during the first wait and
+        # moved during the second. "moved_at_step": "wait N" is the end of the
+        # Nth wait.
+        self.wait_ends = [e["at"] for e in entries if e["step"] == "wait" and e.get("end")]
         self.staged = json.load(open(staged))
         day = time.localtime(self.start)
         bad = self.staged.get("bad", []) + EXTRA_BAD.get(name, [])
@@ -93,6 +106,10 @@ class Session:
                 (e["at"] for e in entries if e["step"] == m.get("before") and e.get("begin")),
                 self.staged_at)
         self.labels = json.load(open(labels)) if os.path.exists(labels) else {"things": {}}
+        for extra in EXTRA_LABELS.get(name, []):
+            if os.path.exists(extra):
+                for thing, ids in json.load(open(extra))["things"].items():
+                    self.labels["things"].setdefault(thing, []).extend(ids)
 
     def is_bad(self, t):
         return any(lo <= t <= hi for lo, hi in self.bad)
@@ -108,6 +125,28 @@ class Session:
 
     def move_time(self, obj):
         return self.moved_at.get(obj, self.staged_at)
+
+    def _at_step(self, item):
+        step = item.get("moved_at_step")
+        if step and step.startswith("wait "):
+            return self.wait_ends[int(step.split()[1]) - 1]
+        return self.move_time(OBJECTS[item["what"]])
+
+    def events(self):
+        """(object, when it was staged, when its next staging in the session
+        was or None): one trial each, so a thing carried in and later moved in
+        one session is two trials, the first judged on the pictures between."""
+        items = [i for key in ("added", "moves", "also_moved") for i in self.staged.get(key, [])
+                 if i["what"] in OBJECTS]
+        times = {}
+        for i in items:
+            times.setdefault(OBJECTS[i["what"]], set()).add(self._at_step(i))
+        out = []
+        for obj, ts in times.items():
+            ts = sorted(ts)
+            for k, t in enumerate(ts):
+                out.append((obj, t, ts[k + 1] if k + 1 < len(ts) else None))
+        return out
 
 
 def sessions():

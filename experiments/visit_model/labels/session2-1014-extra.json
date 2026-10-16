@@ -1,0 +1,7 @@
+{
+ "note": "M5 session 2 (2026-10-14): the box and the step ladder that session 5 carried in again, labelled by the coding agent on 2026-10-16 from sheets.py's candidates (seeds from session 5's photographs), before any model was run on session 5. The step ladder is the same aluminium ladder with red feet. Session 2's stool is not labelled: it reads white in session 2's pictures and tan in session 5's, and the photographs do not settle whether it is one stool. The box has one clear picture (103236); 103226 mixes it with a white bottle.",
+ "things": {
+  "box": [103236],
+  "step ladder": [103139, 103189, 103197, 103207, 103227, 103246, 103258, 103268, 103272, 103397]
+ }
+}

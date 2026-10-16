@@ -24,7 +24,7 @@ import time
 
 import numpy as np
 
-LOOSE_COS = 0.45
+LOOSE_COS = float(os.environ.get("LOOSE_COS", 0.45))
 MIN_AHEAD_M, MAX_AHEAD_M = 0.3, 6.0
 MIN_AREA = 0.003
 
