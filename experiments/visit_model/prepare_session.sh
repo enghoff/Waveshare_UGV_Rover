@@ -15,7 +15,7 @@ T="D:/UGV Rover/tmp"
 D="$T/$NAME"
 mkdir -p "$D/frames"
 scp -q "orin:/tmp/$NAME/*" "$D/"
-tar xf "$D/frames.tar" -C "$D/frames"
+tar --force-local -xf "$D/frames.tar" -C "$D/frames"
 RECS=("$T/ww-recordings/shakedown.npz" "$T"/session?-10??/session?-10??.npz "$T"/ww-recordings/m5-*.npz "$T"/ww-recordings/1010/*.npz)
 LOOKS="$T/visit-model/looks-$NAME.npz"
 python data.py "$D/world-after.db" "$LOOKS" "${RECS[@]}"

@@ -145,3 +145,26 @@ on the session):
 Frozen at `e5b39fd` for M5 session 6. After a session: `session_collect.sh`
 on the rover (experiments/m5_changes), `prepare_session.sh NAME` here, labels,
 then `run_versions.sh`.
+
+## Session 6, and a scale fitted over every picture
+
+Version 3's test, M5 session 6 (2026-10-16,
+docs/progress/2026-10-16-m5-session-6.md, on main), with labels for the four
+things and the eleven unmoved objects made before any model ran on it
+(`labels/session6-1016.json`, the `session 6` lists in `labels/stayed-put.json`).
+On the session version 3 made no wrong merge and followed all three moves of
+the wait (`compare.py` row `session 6`: deployed 8 wrong merges, version 1 3,
+version 2 0, version 3 0). It does not pass: in the same run its record of the
+blue painting took two of session 5's pictures of the snowy-tree painting.
+
+The cause is `learn_scale`, which maps the learned likeness onto the image
+vectors' scale by matching quantiles of same-picture pairs over the whole
+looks file, later pictures included. The 44 pictures the rover took on its
+charger after session 5 had been copied off (11:29-11:41) shift a score on
+2026-10-03 from 0.850 to 0.849, and the history diverges from there
+(`looks-s5end.npz`, session 5's pictures only, reproduces the merge; session
+6's recording changes nothing; identical input gives byte-identical filings).
+Version 2 shares it and gained an armchair-and-cabinet merge in session 3 the
+same way. A model whose past filing moves with every new picture cannot be
+checked once: the scale is to be fitted on development pictures and frozen
+beside `metric-1015.npz`.

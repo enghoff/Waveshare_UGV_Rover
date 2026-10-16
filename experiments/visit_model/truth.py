@@ -49,6 +49,10 @@ SESSIONS = [
     ("session 5", os.path.join(TMP, "session5-1016", "session5-1016.json"),
      os.path.join(MAIN, "experiments", "m5_changes", "staged", "session5-1016.json"),
      os.path.join(HERE, "labels", "session5-1016.json"), "session 5"),
+    # Version 3's test (docs/plans/a-world-model-kept-per-visit.md, step 6).
+    ("session 6", os.path.join(TMP, "session6-1016", "session6-1016.json"),
+     os.path.join(MAIN, "experiments", "m5_changes", "staged", "session6-1016.json"),
+     os.path.join(HERE, "labels", "session6-1016.json"), "session 6"),
 ]
 #: Labels for a session made later than its own file, for things a later
 #: session carried in again (session 5's box, stool and step ladder were
@@ -128,6 +132,10 @@ class Session:
 
     def _at_step(self, item):
         step = item.get("moved_at_step")
+        # Session 6's things were set out with the rover switched off, before
+        # the session's record began.
+        if step == "start":
+            return self.start
         if step and step.startswith("wait "):
             return self.wait_ends[int(step.split()[1]) - 1]
         return self.move_time(OBJECTS[item["what"]])

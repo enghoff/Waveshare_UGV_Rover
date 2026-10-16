@@ -1,0 +1,68 @@
+{
+ "note": "M5 session 6 (2026-10-16), labelled by the coding agent from sheets.py's candidates (drawn from the local copy of the store and its full-size photographs) before any model was run on the session. Candidates: regions whose sight line passes within 0.6-1.0 m of each thing's place, in the window it stood there (from the session's start to the end of the wait for the starting places, from then to the end for the new ones; the whole session for the step ladder), looking at least 0.45 alike to seed pictures (session 5's labels and loop A's photo check). Left out: slivers at a picture's edge that could not be told (the black bean bag's 106727, 106821, 106914, a blurred 106961), two black armchair regions among the stool's (106735, 106850), a window among the ladder's (106430), and the stool's three pictures among the ladder's, which are labelled the stool (the ladder stands behind it).",
+ "things": {
+  "black bean bag": [
+   106554,
+   106558,
+   106716,
+   106731,
+   106764,
+   106770,
+   106809,
+   106830,
+   106898,
+   106922,
+   106968,
+   106983,
+   106993,
+   107002,
+   107009,
+   107016,
+   107020,
+   107039
+  ],
+  "red bean bag": [
+   106446,
+   106454,
+   106468,
+   106485,
+   106493,
+   106511,
+   106513,
+   106547,
+   106557,
+   106766,
+   106778,
+   106800,
+   106808,
+   106815,
+   106843,
+   106900,
+   106911,
+   106924,
+   106965,
+   106973,
+   107046
+  ],
+  "stool": [
+   106403,
+   106411,
+   106420,
+   106432,
+   106437,
+   106480,
+   106546,
+   106825,
+   106855,
+   106864,
+   106875,
+   106882,
+   106893,
+   106937
+  ],
+  "step ladder": [
+   106435,
+   106535
+  ]
+ }
+}
