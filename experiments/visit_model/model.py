@@ -115,6 +115,28 @@ MOVE_COS = 0.75         # a cluster and a gone object this alike can be a move
 MOVE_MARGIN = 0.04      # ... when no other gone object is within this
 PLACE_FLOOR_M2 = 0.01
 NEW_MIN_REGIONS = 2     # an object is first recorded from this many pictures of it
+#: Every bar that joins two things raised by this much, so that a likeness just
+#: over a bar starts a record of its own instead of joining (version 4,
+#: 2026-10-16). Version 3's wrong merges came and went with 1% of the pictures
+#: taken away (0-2 over seven sessions); with every bar 0.06 higher there were
+#: none in eleven such runs, at 0.03 three in six. Sparing the move bars
+#: followed more moves but let a painting's record "move" (one in eleven), so
+#: they are raised too.
+JOIN_MARGIN = float(os.environ.get("JOIN_MARGIN", 0.06))
+LINK_COS += JOIN_MARGIN
+RAY_LINK_COS += JOIN_MARGIN
+HERE_COS += JOIN_MARGIN
+SIGHTED_COS += JOIN_MARGIN
+MERGE_COS += JOIN_MARGIN
+CONSOLIDATE_COS += JOIN_MARGIN
+CLOSE_COS += JOIN_MARGIN
+PENDING_COS += JOIN_MARGIN
+COLOUR_MIN += JOIN_MARGIN
+LINK_COLOUR_MIN += JOIN_MARGIN
+if os.environ.get("MARGIN_ON_MOVES", "1") == "1":
+    PATH_COS += JOIN_MARGIN
+    MOVE_LEAD_COS += JOIN_MARGIN
+    MOVE_COS += JOIN_MARGIN
 # --- absence
 GONE_MIN_SCANS = 5
 GONE_SHARE = 0.66
