@@ -103,3 +103,11 @@ Over every session (deployed store by its ordinary matches):
 | deployed store | 1 (paintings) | 3 (bean bags twice, paintings) | 0 | 0 | 0 | 1 (bean bags) |
 | version 1 | 0 | 0 | 1 (armchair, painting) | 1 (paintings) | 0 | 1 (bean bags) |
 | version 2 | 0 | 0 | 0 | 0 | 0 | 1 (bean bags) |
+
+Tried for version 3 (2026-10-16), not adopted: the colour veto against a
+record's median sample rather than its best (`COLOUR_MOSTLY=1`). It removes
+session 5's bean bag merge but makes three elsewhere (a red bean bag record
+taking an armchair in session 1 and the cabinet in session 3; the front door's
+taking the rug in session 4): a veto changes which record wins, and the next
+best is not always right. Version 3 needs records that stop drifting from
+thing to thing by place, not a stricter veto alone.

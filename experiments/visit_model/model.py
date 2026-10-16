@@ -83,6 +83,7 @@ CLOSE_COS = 0.6         # ... or this alike when within one spread of each other
 PENDING_S = 600.0       # a new object can still turn out to be a gone one, moved, this long
 PENDING_COS = 0.75      # ... when it looks this like it, and clearly more than any other
 COLOUR_MIN = 0.35       # two things whose colours match less than this are two things
+COLOUR_MOSTLY = os.environ.get("COLOUR_MOSTLY", "0") == "1"  # tried 2026-10-16, not adopted (README)
 PATH_S = 3600.0         # a record seen gone this recently and a look-alike found standing ...
 PATH_COS = 0.7          # ... this alike, never seen in one visit, are one object at two places
 PATH_STALE_S = 1800.0   # ... when the one found standing had not been seen for this long before
@@ -397,6 +398,12 @@ class Memory:
         region's best match. 1 when there is nothing to compare."""
         if cols is None or not len(cols) or not len(o["col"]):
             return 1.0
+        if COLOUR_MOSTLY:
+            # Against what the record mostly looks like: the median over its
+            # samples. The samples are chosen to differ, so the best of them
+            # is whichever stray picture a record once took (M5 session 5:
+            # two dark samples let the black bean bag into the red one's).
+            return float(np.median(cols @ o["col"].T, axis=1).mean())
         return float((cols @ o["col"].T).max(axis=1).mean())
 
     def gate(self, o, p):
