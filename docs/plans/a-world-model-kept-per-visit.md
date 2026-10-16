@@ -175,10 +175,19 @@ Those conditions are retired.
      mixed record, 3 of 6 moves followed.
    - The two armchairs are left out and counted separately
      ([agreed 2026-10-16](../decisions/the-two-armchairs-cannot-be-told-apart.md)).
-   - Next, version 3, offline: why the colour veto let the black bean bag
-     into the red one's record, a scorer that counts a wrong merge across
-     sessions, and a thing put where a look-alike stood when nothing has
-     shown the look-alike gone. Then frozen for another staged session.
+   - Why the colour veto let the black bean bag in (found the same day with
+     `probe_colour.py`): the record it joined, v251, had been taking whatever
+     stood at the dining table's corridor end since 2026-10-07. Ten of its
+     twelve colour samples came from unlabelled pictures of other things
+     there; the red bean bag joined it in sessions 3 and 4, and two dark
+     samples matched the black bag at 0.87. The veto compares with a
+     record's best-matching sample, and the samples are chosen to be as
+     unlike each other as possible, so a record that has once taken a
+     second thing keeps its colours.
+   - Next, version 3, offline: a record that does not drift from thing to
+     thing by place, a colour check against what a record mostly looks like,
+     and a scorer that counts a wrong merge across sessions. Then frozen for
+     another staged session.
 7. **On the rover in shadow**: the model kept beside the deployed store from
    the live looks, reports only. The next staged sessions and every ordinary
    drive are its acceptance.
