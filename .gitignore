@@ -47,6 +47,11 @@ ros_nav/behaviors/build/
 ros_nav/behaviors/build.log
 ros_nav/behaviors/install/
 
+# Working space for agents and benches: copies of the rover's world store,
+# session photographs, Codex's replies. Documents that cite something in here
+# say it is kept outside the repository, and it is.
+tmp/
+
 # Personal Claude Code overrides; the shared hooks are in .claude/settings.json
 .claude/settings.local.json
 
