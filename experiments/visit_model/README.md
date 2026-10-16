@@ -168,3 +168,35 @@ Version 2 shares it and gained an armchair-and-cabinet merge in session 3 the
 same way. A model whose past filing moves with every new picture cannot be
 checked once: the scale is to be fitted on development pictures and frozen
 beside `metric-1015.npz`.
+
+## Honesty over draws, and version 4
+
+A wrong merge that comes and goes with unrelated pictures says nothing about
+the next session, so honesty is judged over draws: `draws.py` writes looks
+files each without a random 1% of the pictures that hold no labelled region,
+and `run_draws.sh LOOKS TAG COMMIT` runs a frozen version on all pictures and
+five draws. Version 3 made 1 wrong merge on all pictures of the seven sessions
+and 0, 1, 0, 2, 1 on five draws, always from the same three places: the black
+bean bag in the red one's record (session 5), far-off pictures of the
+snowy-tree painting in the blue painting's, one red bean bag picture in the
+rug's.
+
+First the likeness scale was fixed: `learn_scale` is fitted once on the
+pictures before 2026-10-16 and kept as `scale-1015.npz` (`--fit-scale`), so a
+picture added later leaves every earlier decision as it was (identical
+decisions before the first added picture). That alone did not change the
+spread (1, and 0, 1, 0, 0, 2).
+
+**Version 4** (`cabe003`) raises every bar that joins two things by 0.06
+(`JOIN_MARGIN`), so a likeness just over a bar starts a record of its own:
+
+| on all pictures, seven sessions | wrong merges, all + 10 draws | moves strict | unmoved in 2 records or fewer | filed |
+|---|---|---|---|---|
+| deployed store | 16 | 2 of 16 | 11 of 44 | 69-80% |
+| version 3 (`e5b39fd`) | 1; 0-2 a draw | 10 of 18 | 41 of 44 | 86-95% |
+| version 4 (`cabe003`) | 0; 0 in every draw | 6 of 16 | 43 of 44 | 78-90% |
+
+Tried on the way: 0.03 (three wrong merges in six runs) and 0.05 or 0.06 with
+the move bars spared, which followed more moves (10 of 16) but let a
+painting's record "move" onto another painting in one run of eleven and one of
+three. `scale-1015.npz` is part of version 4 and is not to be refitted.
