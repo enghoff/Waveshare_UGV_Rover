@@ -99,6 +99,12 @@ RECENT_GONE_S = float(os.environ.get("RECENT_GONE_S", 1800))
 #: paired with a record of it gone for days while its record of minutes ago
 #: was marked gone later in the same visit).
 DEFER_OLD_MOVES = os.environ.get("DEFER_OLD_MOVES", "1") == "1"
+#: Two pictures whose colours match less than this are not linked into one
+#: cluster: single pictures' colours separate objects weakly (half of all
+#: different-object pairs score over 0.48) but this cuts 3% of same-object
+#: links and 18% of different ones, and links chain. A cluster of two rug
+#: pictures and one of the red bean bag went to the rug's record (session 3).
+LINK_COLOUR_MIN = float(os.environ.get("LINK_COLOUR_MIN", 0.2))
 COLOUR_MOSTLY = os.environ.get("COLOUR_MOSTLY", "0") == "1"  # tried 2026-10-16, not adopted (README)
 PATH_S = 3600.0         # a record seen gone this recently and a look-alike found standing ...
 PATH_COS = 0.7          # ... this alike, never seen in one visit, are one object at two places
@@ -247,6 +253,8 @@ def _links(L, idx):
         js = np.flatnonzero((S[p, p + 1:] >= LINK_COS) & (frames[p + 1:] != frames[p])) + p + 1
         for q in js:
             i, j = idx[p], idx[q]
+            if L.has_colour is not None and L.has_colour[i] and L.has_colour[j] and                     float(L.colour[i] @ L.colour[j]) < LINK_COLOUR_MIN:
+                continue
             if _agree(L, i, j, S[p, q]):
                 out.append((float(S[p, q]), int(i), int(j)))
     return out
@@ -800,7 +808,9 @@ def run(a, recs):
         if recs:
             solid_votes(L, mem, filed, recs)
             absent(L, mem, idx, filed, recs, decisions)
-        consolidate(mem, {mem.resolve(v) for v in filed.values()}, t, decisions)
+        # Sorted: a set of names iterates in an order that changes from run to
+        # run, and the order of merges changed the result (2026-10-16).
+        consolidate(mem, sorted({mem.resolve(v) for v in filed.values()}), t, decisions)
         settle_pending(mem, t, decisions)
         filing.update({int(a["id"][i]): oid for i, oid in filed.items()})
     return {k: mem.resolve(v) for k, v in filing.items()}, mem, decisions

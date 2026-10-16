@@ -14,7 +14,7 @@ import data
 import score
 import truth
 
-ROLES = ("development", "test", "session 5")
+ROLES = tuple(dict.fromkeys(s.role for s in truth.sessions()))
 
 
 def main():
