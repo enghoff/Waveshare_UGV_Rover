@@ -166,10 +166,8 @@ sessions, with labels by someone else.
    - The same five conditions, with one change: a move is kept only by the
      strict reading, where the record holding most of the thing afterwards
      held most of it before. Version 1 is scored beside it.
-   - The two armchairs: no feature the rover has tells them apart (0.57). By
-     R-WS-17's own rule, things this component cannot tell apart are left out
-     and counted separately. Whether that applies to them is the owner's
-     decision.
+   - The two armchairs are left out and counted separately
+     ([agreed 2026-10-16](../decisions/the-two-armchairs-cannot-be-told-apart.md)).
 7. **On the rover in shadow**: the model kept beside the deployed store from
    the live looks, reports only, the next staged sessions as its acceptance.
 8. **In place of the resolver**, once accepted, with the world state's
