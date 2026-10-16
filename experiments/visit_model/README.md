@@ -73,3 +73,14 @@ Over all five sessions, version 2 against version 1: moves kept 7 (2 strict)
 against 9 (3) of 12, mixed records 2 against 3 -- not separable on a benchmark
 whose moves are half the two armchairs. Its test is the staged session the
 plan describes.
+
+Since 2026-10-16 the model is pass/fail on honesty alone
+(docs/decisions/the-world-model-is-pass-fail-on-honesty-alone.md), so
+version 2 was made to decline its one mixed record of two distinguishable
+things (pictures of the blue painting in the snowy-tree painting's record): a
+cluster placed only where its sight lines cross now joins a record only if
+every one of those lines passes the record's place, and only as alike as sight
+lines alone need (0.75, not 0.55). Over all five sessions, with records
+holding both armchairs not counted: no mixed record (was 1), distinguishable
+moves followed by the strict reading 3 of 6 (was 2), pictures filed 87% and
+95%, unmoved things unchanged. Frozen here for session 5.

@@ -316,7 +316,7 @@ def place_of(L, members):
             x, y = np.linalg.solve(A, bvec)
             if all(_on_ray(L, i, x, y, 0.0) for i in m):
                 return {"x": float(x), "y": float(y), "var": 0.15, "extent": RAY_EXTENT_M,
-                        "z": float("nan")}
+                        "z": float("nan"), "rays": True}
     # Lidar ranges alone do not place a cluster: they land 0.66 m from their
     # object at the median (calibrate.py), which put the shakedown's two
     # armchairs, 1.1 m apart, into one object. Such a cluster is filed by its
@@ -467,10 +467,19 @@ def reconcile(L, mem, clusters, t, decisions):
                 o = standing[oi]
                 if d[oi] > mem.gate(o, p) or not _heights_agree(o["z"], p["z"]):
                     continue
+                # A place from sight lines crossing is loose (the gate reaches
+                # 1.3 m); the lines themselves are not. On the shakedown two
+                # looks at the blue painting crossed 1.3 m from the snowy-tree
+                # painting's record and were filed to it.
+                if p.get("rays") and not all(_on_ray(L, i, o["x"], o["y"], o["extent"]) for i in m):
+                    continue
                 cos = mem.likeness(vecs, o)
                 if mem.colour(cols_of(L, m), o) < COLOUR_MIN:
                     continue
-                if cos >= HERE_COS + (LONE_EXTRA_COS if len(m) == 1 else 0.0):
+                # ... and the lines alone need the likeness sight lines alone
+                # need: along a wall they pass every painting on it.
+                need = SIGHTED_COS if p.get("rays") else HERE_COS + (LONE_EXTRA_COS if len(m) == 1 else 0.0)
+                if cos >= need:
                     cost[ci, oi] = -(cos - DISTANCE_COST * d[oi])
                     fits.setdefault(ci, []).append((oi, cos))
         rows, cols = linear_sum_assignment(cost)
