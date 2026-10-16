@@ -10,10 +10,10 @@ LOOKS="$1"
 TAG="$2"
 T="D:/UGV Rover/tmp"
 RECS=("$T/ww-recordings/shakedown.npz" "$T"/session?-10??/session?-10??.npz "$T"/ww-recordings/m5-*.npz "$T"/ww-recordings/1010/*.npz)
-declare -A FROZEN=([v1]=c36aee0 [v2]=3c2498e [v3]=62bf2c0)
+declare -A FROZEN=([v1]=c36aee0 [v2]=3c2498e [v3]=e5b39fd)
 for v in v1 v2 v3; do
   git show "${FROZEN[$v]}:experiments/visit_model/model.py" > "model_frozen_$v.py"
-  python "model_frozen_$v.py" --test "$LOOKS" "$T/visit-model/$TAG-$v.json" "${RECS[@]}" > "$T/visit-model/$TAG-$v.log" 2>&1 &
+  PYTHONHASHSEED=0 python "model_frozen_$v.py" --test "$LOOKS" "$T/visit-model/$TAG-$v.json" "${RECS[@]}" > "$T/visit-model/$TAG-$v.log" 2>&1 &
 done
 wait
 rm -f model_frozen_v1.py model_frozen_v2.py model_frozen_v3.py

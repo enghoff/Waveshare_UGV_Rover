@@ -122,16 +122,26 @@ Developed on all six sessions (2026-10-16), so none of it is a test:
 - **An arrival pairs first with a departure seen in the last half hour**, and
   with older ones only after the visit's absences are in, so its own
   departure seen in the same visit can win.
+- **Two pictures whose colours match under 0.2 are not linked into one
+  cluster** (3% of same-object pairs, 18% of different ones): a cluster of
+  two rug pictures and one of the red bean bag went to the rug's record.
+- **Merges run in a fixed order.** They ran in the order of a set of names,
+  which changes with Python's hash seed, and with two seeds in three an
+  earlier build made that rug merge and with one it did not.
 
-`run_v3.sh` runs it; `compare.py` sets filings side by side. With session 5's
-unmoved objects labelled too (`labels/stayed-put.json`, after versions 1 and 2
-had been scored on the session):
+`run_v3.sh` runs it; `compare.py` sets filings side by side; `run_versions.sh`
+runs the frozen versions with a fixed seed. Versions 1 and 2 vary with the seed
+only in records per unmoved object (by one). With session 5's unmoved objects
+labelled too (`labels/stayed-put.json`, after versions 1 and 2 had been scored
+on the session):
 
 | | wrong merges, all sessions | distinguishable moves strict | unmoved in 2 records or fewer, sessions 3-5 | filed, sessions 3-5 |
 |---|---|---|---|---|
 | deployed store | 8 | 0 of 10 | 4 of 22 | 69-74% |
 | version 1 | 4 | 2 of 11 | 20 of 22 | 89-95% |
-| version 2 (`3c2498e`) | 1 | 1 of 11 | 19 of 22 | 90-95% |
-| version 3 | 0 | 7 of 11 | 18 of 22 | 90-93% |
+| version 2 (`3c2498e`) | 1 | 1 of 11 | 18-19 of 22 | 90-95% |
+| version 3 (`e5b39fd`) | 0 | 6 of 11 | 21 of 22 | 90-93% |
 
-Frozen here for M5 session 6.
+Frozen at `e5b39fd` for M5 session 6. After a session: `session_collect.sh`
+on the rover (experiments/m5_changes), `prepare_session.sh NAME` here, labels,
+then `run_versions.sh`.
