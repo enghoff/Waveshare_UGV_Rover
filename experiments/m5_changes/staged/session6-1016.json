@@ -1,0 +1,20 @@
+{"note": "M5 session 6, 2026-10-16, the test of version 3 of the world model kept per visit, run as planned in session6-planned.json. The owner set the four things out with the rover switched off on its charger (so the session's record begins after they were placed; \"moved_at_step\": \"start\"), switched it on, and unplugged it on the coding agent's word; loop A from the charger 14:23-14:28, the wait at bedroom-2 14:28-14:30 while the owner made the three moves, loop B 14:30-14:35, a 3.5-minute run, home at 14:38 (5 cm from the spot). Places from the change watch's reports, checked on the session's photographs: the black bean bag at (-16.57, -11.73) and the red one at (-17.61, -13.36) in loop A; in loop B the black bean bag's place was seen empty (GONE, 0.8 m, large) and the red bean bag arrived in the gap by wall A (NEW, (-20.19, -12.55), 0.65 m, large); the red bean bag's old place was seen empty in the run; the stool from (-19.48, -16.41) to (-17.85, -16.57) (GONE and NEW, small); the step ladder at the balcony window ((-17.78, -17.24), small) stayed. The black bean bag's new place is from its sixteen labelled pictures of loop B and the run, all placed, median (-17.35, -13.43): 0.3 m from the red bean bag's starting place by the same reading of its nine pictures of loop A ((-17.63, -13.46)), closer than the plan's 0.6 m, so the lidar logged no change there in loop B. Every stop's position check stayed within 5 cm, so no bad-pose window. Nobody was in the living room during either loop.",
+ "staged_in": "wait",
+ "added": [
+  {"what": "black bean bag", "at": [-16.57, -11.73], "moved_at_step": "start"},
+  {"what": "red bean bag", "at": [-17.61, -13.36], "moved_at_step": "start"},
+  {"what": "stool", "at": [-19.48, -16.41], "moved_at_step": "start"},
+  {"what": "step ladder", "at": [-17.78, -17.24], "approximate": true, "moved_at_step": "start"}
+ ],
+ "moves": [
+  {"what": "red bean bag", "from": [-17.61, -13.36], "to": [-20.19, -12.55], "moved_at_step": "wait 1"},
+  {"what": "black bean bag", "from": [-16.57, -11.73], "to": [-17.35, -13.43], "moved_at_step": "wait 1"},
+  {"what": "stool", "from": [-19.48, -16.41], "to": [-17.85, -16.57], "moved_at_step": "wait 1"}
+ ],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": [],
+ "bad": []
+}
