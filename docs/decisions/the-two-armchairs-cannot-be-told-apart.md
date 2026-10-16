@@ -33,6 +33,12 @@ A person tells them apart by the throw. The rover sees it too rarely to rely on.
   - The one move left to count, session 2's cabinet, was split. The criterion
     reports that without a bar.
   - The owner signed M5 off on 2026-10-16.
+  - **Corrected the same day:** that recount compared pictures within each
+    session only. Counted across sessions, `object:914` and `object:930` took
+    the black bean bag in the shakedown and the red bean bag in session 1 as
+    ordinary matches, so criterion 4 fails whatever is decided here
+    ([session 5](../progress/2026-10-16-m5-session-5.md#a-correction-m5s-criterion-4-was-not-met)).
+    Whether the sign-off stands is the owner's call.
 - **Staged sessions** move things that can be told apart. An armchair may still
   be moved, and is reported separately: how many armchair records stand where
   the two armchairs are.

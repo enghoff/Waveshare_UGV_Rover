@@ -12,11 +12,15 @@ Version 2 adds a likeness learned from the rover's own pictures (0.97 against
 joined into paths
 ([entry](../progress/2026-10-15-a-likeness-learned-from-the-rovers-own-pictures.md)).
 Over the twelve staged moves it cannot be told from version 1, because six of
-them are the two armchairs, which nothing tells apart. Its test is a staged
-session of several distinguishable things (step 6), which needs the rover and
-the owner. Since 2026-10-16 the model is pass/fail on honesty alone, and the
-rest is measured against the deployed store without a bar
+them are the two armchairs, which nothing tells apart. Since 2026-10-16 the
+model is pass/fail on honesty alone, and the rest is measured against the
+deployed store without a bar
 ([agreed](../decisions/the-world-model-is-pass-fail-on-honesty-alone.md)).
+Its test, M5 session 5 on 2026-10-16, failed: the black bean bag, put down
+near where the red one had stood the day before, was filed to the red one's
+record. It also kept the red bean bag in one record through its 3.5 m move,
+which no system had done
+([entry](../progress/2026-10-16-m5-session-5.md)). Version 3 is next, offline.
 Nothing is on the rover. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
@@ -154,9 +158,8 @@ Those conditions are retired.
      for free, two regions of one picture and one visit's clusters.
    - Development used all five labelled sessions, since the test had been
      seen.
-6. **Version 2's test**, frozen before it runs, on a staged session built to
-   decide it: several distinguishable things, each seen at its place before
-   the staging. Proposed for session 5:
+6. **Done, failed: version 2's test**, M5 session 5 on 2026-10-16
+   ([entry](../progress/2026-10-16-m5-session-5.md)). As planned before it ran:
    - Before the session the owner sets out in the living room five movable
      things that can be told apart: the red and the black bean bag, the box,
      the stool and the step ladder from session 2. Loop A sees each where it
@@ -172,6 +175,10 @@ Those conditions are retired.
      mixed record, 3 of 6 moves followed.
    - The two armchairs are left out and counted separately
      ([agreed 2026-10-16](../decisions/the-two-armchairs-cannot-be-told-apart.md)).
+   - Next, version 3, offline: why the colour veto let the black bean bag
+     into the red one's record, a scorer that counts a wrong merge across
+     sessions, and a thing put where a look-alike stood when nothing has
+     shown the look-alike gone. Then frozen for another staged session.
 7. **On the rover in shadow**: the model kept beside the deployed store from
    the live looks, reports only. The next staged sessions and every ordinary
    drive are its acceptance.

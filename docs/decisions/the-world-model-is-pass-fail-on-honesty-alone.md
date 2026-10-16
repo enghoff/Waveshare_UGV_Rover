@@ -47,10 +47,15 @@ holds both armchairs, and counting moves of distinguishable things only:
 | version 1 | 2 | 1 | 88-95% |
 | version 2 | 1 | 2 | 87-94% |
 
-Version 2's development used all five sessions, so its row flatters it. Its
+This table counted a record of two things within one session. Counted across
+sessions, as criterion 4 means it, the deployed store holds four: the two
+bean bags in two records, and two paintings in two more (corrected in
+[session 5's entry](../progress/2026-10-16-m5-session-5.md#a-correction-m5s-criterion-4-was-not-met));
+the versions' counts do not change. Version 2's development used all five
+sessions, so its row flatters it. Its
 mixed record holds nine pictures of the snowy-tree painting and two of the
-blue painting, on the shakedown. The deployed store stays honest by filing
-about a quarter fewer pictures. Neither follows moves.
+blue painting, on the shakedown. The deployed store files about a quarter
+fewer pictures and is not the more honest for it. Neither follows moves.
 
 The same day version 2 was made to decline that case and frozen again for
 session 5 (branch `visit-model`, `3c2498e`). A place found only where sight

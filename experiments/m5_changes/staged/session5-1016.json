@@ -1,0 +1,20 @@
+{"note": "M5 session 5, 2026-10-16, run as planned in session5-planned.json with one change of order: the owner switched the rover on, refitted it and unplugged it before anything was set out, so the rover drove to bedroom-2 first (the first wait, 10:53-10:55) while the owner carried the five things in, then drove loop A from the bedroom end, waited at bedroom-2 again (10:59-11:14) while the owner moved three, and drove loop B, a 3.5-minute run and home. Places from the change watch's reports, checked on the session's photographs: the red bean bag and the box were put down together where the plan had them, the box standing just in front of the bean bag (one furniture-sized arrival at (-19.89, -12.66), 0.8 m, both in the pictures), and moved together to beyond the table's other end (one arrival at (-16.51, -11.74), 1.0 m; the box again in front of the bean bag); the stool from beside the black cabinet (small, (-19.4, -16.0)) to the balcony window beside the step ladder (small, (-17.37, -17.81)); the black bean bag stood at (-17.45, -13.34), 0.7 m from its planned place, and stayed; the step ladder stood open at the balcony window between the two armchairs and stayed (loop A shows it edge-on, loop B open; the lidar logged nothing for it). The places of the box and the ladder are approximate. Someone sat in the plain armchair by the window during loop B (11:17-11:19). Every stop's position check stayed within 6 cm and 4.5 degrees, so no bad-pose window. The drive home was blocked twice by the costmap and finished by a turn and a second drive sent from the desk, 5 cm from the spot.",
+ "staged_in": "wait",
+ "added": [
+  {"what": "red bean bag", "at": [-19.95, -12.45], "approximate": true, "moved_at_step": "wait 1"},
+  {"what": "box", "at": [-19.8, -12.9], "approximate": true, "moved_at_step": "wait 1"},
+  {"what": "stool", "at": [-19.4, -16.0], "moved_at_step": "wait 1"},
+  {"what": "black bean bag", "at": [-17.45, -13.34], "moved_at_step": "wait 1"},
+  {"what": "step ladder", "at": [-17.7, -17.7], "approximate": true, "moved_at_step": "wait 1"}
+ ],
+ "moves": [
+  {"what": "red bean bag", "from": [-19.95, -12.45], "to": [-16.45, -11.76], "moved_at_step": "wait 2"},
+  {"what": "box", "from": [-19.8, -12.9], "to": [-16.3, -12.2], "approximate": true, "moved_at_step": "wait 2"},
+  {"what": "stool", "from": [-19.4, -16.0], "to": [-17.37, -17.81], "moved_at_step": "wait 2"}
+ ],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": [],
+ "bad": []}
