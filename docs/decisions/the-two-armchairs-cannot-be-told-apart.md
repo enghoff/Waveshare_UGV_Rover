@@ -32,7 +32,7 @@ A person tells them apart by the throw. The rover sees it too rarely to rely on.
     session, neither session has a record holding two things.
   - The one move left to count, session 2's cabinet, was split. The criterion
     reports that without a bar.
-  - Whether M5 is signed off is the owner's call.
+  - The owner signed M5 off on 2026-10-16.
 - **Staged sessions** move things that can be told apart. An armchair may still
   be moved, and is reported separately: how many armchair records stand where
   the two armchairs are.

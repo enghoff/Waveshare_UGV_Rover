@@ -14,7 +14,10 @@ joined into paths
 Over the twelve staged moves it cannot be told from version 1, because six of
 them are the two armchairs, which nothing tells apart. Its test is a staged
 session of several distinguishable things (step 6), which needs the rover and
-the owner. Nothing is on the rover. It aims at
+the owner. Since 2026-10-16 the model is pass/fail on honesty alone, and the
+rest is measured against the deployed store without a bar
+([agreed](../decisions/the-world-model-is-pass-fail-on-honesty-alone.md)).
+Nothing is on the rover. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
 [R-WS-2](../requirements/world-state.md#r-ws-2) and
@@ -107,30 +110,29 @@ mapper's corrections) for the shakedown, the controls and scene 1 of
 
 ## What counts
 
-Frozen here, before the new model is run on any of it.
+Agreed with the owner on 2026-10-16
+([the decision](../decisions/the-world-model-is-pass-fail-on-honesty-alone.md)).
 
-Development uses the history up to the end of M5 session 2 (2026-10-14 13:00).
-**The test is sessions 3 and 4**, run once, after development is frozen. It
-passes when, on the test sessions and counted across sessions:
+- **Pass or fail: honesty.** No record holds labelled pictures of two things
+  that can be told apart, every filing counted, as criterion 4 counts. The
+  dining chairs and the two black armchairs are left out; for them the answer
+  is "one of the two".
+- **Measured against the deployed store on the same pictures, without a bar:**
+  moves followed by the strict reading (the record holding most of the thing
+  afterwards held most of it before), the records holding each thing that
+  stayed put, and the share of labelled pictures filed.
+- **It takes the resolver's place** once, in shadow on the rover, it has made
+  no wrong merge, follows clearly more moves than the deployed store, and is
+  no worse on the other two. Moves need about three to five staged sessions;
+  honesty is shown slowly, by the shadow run's ordinary drives.
 
-- every record holding labelled pictures of two different objects as ordinary
-  matches fails it, as it does criterion 4;
-- it keeps more staged-move trials than the deployed store, and at least half;
-- the labelled objects that stayed put are each held by no more records than in
-  the deployed store, counting at least one (amended 2026-10-15 before the
-  test was run: the deployed store holds the front door's test pictures in no
-  record, so as first written any model filing them would fail), and by two
-  or fewer for at least three in four of them;
-- it files at least as large a share of all the labelled pictures in the test
-  sessions as the deployed store does, so that leaving pictures unfiled cannot
-  pass the two conditions above (added 2026-10-15, after the deployed store
-  was scored and before the new model was run).
+It also reports: the records placed in the living room, gone objects and when
+the evidence came, and every move it made or held pending.
 
-It also reports, without a bar: the records placed in the living room, gone
-objects and when the evidence came, and every move it made or held pending.
-
-The acceptance after that is on the rover in shadow, on the next staged
-sessions, with labels by someone else.
+Version 1 was tested once, on sessions 3 and 4, against five conditions frozen before
+it ran, and did not pass
+([entry](../progress/2026-10-15-a-world-model-kept-per-visit-tested.md)).
+Those conditions are retired.
 
 ## The order of work
 
@@ -163,13 +165,15 @@ sessions, with labels by someone else.
      where they are. The armchairs and the cabinet are not touched.
    - Labels are made from the session's photographs before the model is run
      on it, and the learned likeness is the one trained before the session.
-   - The same five conditions, with one change: a move is kept only by the
-     strict reading, where the record holding most of the thing afterwards
-     held most of it before. Version 1 is scored beside it.
+   - Scored as *What counts* says, version 1 beside it.
+   - Before it, version 2 is made to decline its one mixed record in
+     development (two pictures of the blue painting in the snowy-tree
+     painting's record, on the shakedown) and frozen again.
    - The two armchairs are left out and counted separately
      ([agreed 2026-10-16](../decisions/the-two-armchairs-cannot-be-told-apart.md)).
 7. **On the rover in shadow**: the model kept beside the deployed store from
-   the live looks, reports only, the next staged sessions as its acceptance.
+   the live looks, reports only. The next staged sessions and every ordinary
+   drive are its acceptance.
 8. **In place of the resolver**, once accepted, with the world state's
    consumers (search, the executive's looks, the console) moved over one at a
    time.
@@ -190,6 +194,7 @@ Later steps are proposals: each starts only on the evidence of the one before.
   when the wheels stop. They may stay "not seen lately" rather than gone.
 - **Two armchairs alike.** A move between them may stay unresolved; that is
   allowed (R-WS-2) and counted as not kept, never as kept.
-- **Few trials.** About a dozen staged moves; the test sessions hold four. The
+- **Few trials.** Twelve staged moves so far, six of them the two armchairs; a
+  session gives about three more. Moves are measured, not barred, and the
   benchmark measures splitting on unmoved objects too so that one session's
   luck does not decide it.
