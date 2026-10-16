@@ -166,9 +166,10 @@ Those conditions are retired.
    - Labels are made from the session's photographs before the model is run
      on it, and the learned likeness is the one trained before the session.
    - Scored as *What counts* says, version 1 beside it.
-   - Before it, version 2 is made to decline its one mixed record in
-     development (two pictures of the blue painting in the snowy-tree
-     painting's record, on the shakedown) and frozen again.
+   - Version 2 was made to decline its one mixed record in development (blue
+     painting pictures in the snowy-tree painting's record, on the shakedown)
+     and frozen again on 2026-10-16 (`3c2498e`): over the five sessions no
+     mixed record, 3 of 6 moves followed.
    - The two armchairs are left out and counted separately
      ([agreed 2026-10-16](../decisions/the-two-armchairs-cannot-be-told-apart.md)).
 7. **On the rover in shadow**: the model kept beside the deployed store from

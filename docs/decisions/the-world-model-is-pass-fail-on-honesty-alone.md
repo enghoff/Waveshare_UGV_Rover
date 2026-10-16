@@ -52,14 +52,22 @@ mixed record holds nine pictures of the snowy-tree painting and two of the
 blue painting, on the shakedown. The deployed store stays honest by filing
 about a quarter fewer pictures. Neither follows moves.
 
+The same day version 2 was made to decline that case and frozen again for
+session 5 (branch `visit-model`, `3c2498e`). A place found only where sight
+lines cross now joins a record only if every line passes the record. It also
+needs the likeness that sight lines alone need, 0.75 rather than 0.55: along
+a wall the lines pass every painting on it. Over the same five sessions it
+holds no mixed record, follows 3 of the 6 moves, and files 87-95% of the
+pictures, with unmoved things unchanged.
+
 ## How many sessions it takes
 
 - **Following moves.** The deployed store follows almost none, so each move
   the model follows and it does not counts. Five such moves is a difference
   chance gives about one time in thirty. A staged session gives three moves in
   the wait, and more if things carried in before it were seen well earlier. At
-  version 2's rate on its own development, one in three, that is three to five
-  sessions; if it follows most, two. If it follows none of the first eight
+  version 2's rate on its own development, a third to a half, that is three to
+  five sessions; if it follows most, two. If it follows none of the first eight
   moves, it is rejected: a model following one in three would do that less
   than one time in twenty.
 - **Honesty.** One wrong merge fails the version as it stands. Clean sessions
