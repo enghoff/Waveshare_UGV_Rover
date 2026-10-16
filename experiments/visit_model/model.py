@@ -83,6 +83,22 @@ CLOSE_COS = 0.6         # ... or this alike when within one spread of each other
 PENDING_S = 600.0       # a new object can still turn out to be a gone one, moved, this long
 PENDING_COS = 0.75      # ... when it looks this like it, and clearly more than any other
 COLOUR_MIN = 0.35       # two things whose colours match less than this are two things
+#: A record unseen this long is "here as before" only on the likeness a move
+#: needs: hours later, standing where it stood says little about identity in a
+#: home that gets rearranged (M5 session 5: the black bean bag, 0.6 m from the
+#: red one's record of the day before, was taken for it).
+STALE_S = float(os.environ.get("STALE_S", 3 * 3600))
+#: A departure seen this recently is matched to an arrival before departures
+#: of days ago: in M5 session 5 the red bean bag's own record, seen gone at its
+#: old place minutes before, tied with two older records of it gone for days,
+#: and the move went unpaired.
+RECENT_GONE_S = float(os.environ.get("RECENT_GONE_S", 1800))
+#: An arrival is paired at once only with a recent departure; with an older
+#: one it waits, pending, until the visit's absences are in, so that its own
+#: departure seen in the same visit can win (M5 session 5: the red bean bag
+#: paired with a record of it gone for days while its record of minutes ago
+#: was marked gone later in the same visit).
+DEFER_OLD_MOVES = os.environ.get("DEFER_OLD_MOVES", "1") == "1"
 COLOUR_MOSTLY = os.environ.get("COLOUR_MOSTLY", "0") == "1"  # tried 2026-10-16, not adopted (README)
 PATH_S = 3600.0         # a record seen gone this recently and a look-alike found standing ...
 PATH_COS = 0.7          # ... this alike, never seen in one visit, are one object at two places
@@ -486,6 +502,8 @@ def reconcile(L, mem, clusters, t, decisions):
                 # ... and the lines alone need the likeness sight lines alone
                 # need: along a wall they pass every painting on it.
                 need = SIGHTED_COS if p.get("rays") else HERE_COS + (LONE_EXTRA_COS if len(m) == 1 else 0.0)
+                if t - o["seen"] > STALE_S:
+                    need = max(need, MOVE_COS)
                 if cos >= need:
                     cost[ci, oi] = -(cos - DISTANCE_COST * d[oi])
                     fits.setdefault(ci, []).append((oi, cos))
@@ -526,9 +544,13 @@ def reconcile(L, mem, clusters, t, decisions):
                        if _heights_agree(o["z"], p["z"]) and mem.colour(cols, o) >= COLOUR_MIN),
                       reverse=True)
         lead = best[0][0] - best[1][0] if len(best) > 1 else 1.0
-        if len(m) >= 2 and best and ((best[0][0] >= MOVE_COS and lead >= MOVE_MARGIN) or
-                                     (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD)):
-            o = gone[best[0][1]]
+        pick = _move_choice(best, gone, t) if len(m) >= 2 else None
+        if pick is None and not DEFER_OLD_MOVES and len(m) >= 2 and best and (
+                (best[0][0] >= MOVE_COS and lead >= MOVE_MARGIN) or
+                (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD)):
+            pick = best[0][1]
+        if pick is not None:
+            o = gone[pick]
             decisions.append({"t": round(t), "moved": o["id"], "from": [round(o["x"], 2), round(o["y"], 2)],
                               "to": [round(p["x"], 2), round(p["y"], 2)], "cos": round(best[0][0], 3),
                               "runner_up": round(best[1][0], 3) if len(best) > 1 else None})
@@ -711,6 +733,28 @@ def consolidate(mem, touched, t, decisions):
             o = keep
 
 
+def _clear_winner(best, strong, margin):
+    """The index of a candidate that wins: alike enough and ahead of the rest."""
+    if not best:
+        return None
+    lead = best[0][0] - best[1][0] if len(best) > 1 else 1.0
+    if (best[0][0] >= strong and lead >= margin) or (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD):
+        return best[0][1]
+    return None
+
+
+def _move_choice(best, gone, t):
+    """Recent departures first, then all of them. best is [(likeness, k)],
+    sorted, k indexing gone."""
+    if RECENT_GONE_S > 0:
+        recent = [b for b in best if gone[b[1]].get("gone_at") is not None
+                  and t - gone[b[1]]["gone_at"] <= RECENT_GONE_S]
+        k = _clear_winner(recent, MOVE_COS, MOVE_MARGIN)
+        if k is not None:
+            return k
+    return None
+
+
 def settle_pending(mem, t, decisions):
     """A new object is pending for PENDING_S: if, with everything seen of it
     so far, it is clearly an object seen gone, it is that object, moved. The
@@ -725,9 +769,12 @@ def settle_pending(mem, t, decisions):
                        if g["since"] < o["since"] and _heights_agree(o["z"], g["z"])
                        and _object_colour(o, g) >= COLOUR_MIN), reverse=True)
         lead = best[0][0] - best[1][0] if len(best) > 1 else 1.0
-        if best and ((best[0][0] >= PENDING_COS and lead >= MOVE_MARGIN) or
-                     (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD)):
-            g = gone[best[0][1]]
+        k = _move_choice(best, gone, t)
+        if k is None and best and ((best[0][0] >= PENDING_COS and lead >= MOVE_MARGIN) or
+                                   (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD)):
+            k = best[0][1]
+        if k is not None:
+            g = gone[k]
             decisions.append({"t": round(t), "moved": g["id"], "from": [round(g["x"], 2), round(g["y"], 2)],
                               "to": [round(o["x"], 2), round(o["y"], 2)], "cos": round(best[0][0], 3),
                               "runner_up": round(best[1][0], 3) if len(best) > 1 else None,
