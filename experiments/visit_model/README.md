@@ -84,3 +84,22 @@ lines alone need (0.75, not 0.55). Over all five sessions, with records
 holding both armchairs not counted: no mixed record (was 1), distinguishable
 moves followed by the strict reading 3 of 6 (was 2), pictures filed 87% and
 95%, unmoved things unchanged. Frozen here for session 5.
+
+## Session 5 and wrong merges across sessions
+
+Version 2 frozen at `3c2498e` failed M5 session 5 (2026-10-16): the black bean
+bag, put down 0.6 m from where the red one stood in session 4, went to record
+v251, which held the red bean bag's pictures and, since 10-07, unlabelled
+pictures of other things at that spot; two of its colour samples were dark
+(`probe_colour.py`). It kept the red bean bag in one record through its move.
+
+`score.py` counted a wrong merge only within a session until then. It now
+counts a record that, during a session, takes a thing other than those it
+held in that session or any earlier one, the two armchairs counting as one.
+Over every session (deployed store by its ordinary matches):
+
+| | shakedown | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| deployed store | 1 (paintings) | 3 (bean bags twice, paintings) | 0 | 0 | 0 | 1 (bean bags) |
+| version 1 | 0 | 0 | 1 (armchair, painting) | 1 (paintings) | 0 | 1 (bean bags) |
+| version 2 | 0 | 0 | 0 | 0 | 0 | 1 (bean bags) |

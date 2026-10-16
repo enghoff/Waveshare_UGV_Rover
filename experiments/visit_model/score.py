@@ -33,6 +33,9 @@ from collections import Counter
 import data
 import truth
 
+#: Things nothing tells apart count as one (docs/decisions/the-two-armchairs-cannot-be-told-apart.md).
+ALIKE = {"plain armchair": "armchair", "throw armchair": "armchair"}
+
 
 def filing_of(looks, path=None):
     if path is None:
@@ -79,20 +82,31 @@ def score(filing, looks, baseline=False, roles=("development", "test")):
                 row["outcome"] = "kept" if top in before else "split"
                 row["strict"] = top == before.most_common(1)[0][0]
             out["trials"].append(row)
-        # Wrong merges after the staging.
-        held = {}
+        # Wrong merges, as criterion 4 means them: a record that, during this
+        # session, takes a region of a thing other than those it already held,
+        # in this session or any earlier one. Counted within a session only
+        # until 2026-10-16, which missed the deployed store taking the black
+        # bean bag in the shakedown and the red one in session 1 in one record.
+        # The two armchairs are one thing here (agreed 2026-10-16).
+        earlier_names = {x.name for x in ss[:k]}
+        before, during = {}, {}
         for obj, mine in objs.items():
+            kind = ALIKE.get(obj, obj)
             for r, sess in mine.items():
-                if sess != s.name or not usable(r, sess) or t_of[r] < s.staged_at:
+                if not usable(r, sess):
                     continue
                 key = filing.get(r)
                 if not key or (baseline and not matched.get(r)):
                     continue
-                held.setdefault(key, Counter())[obj] += 1
-        for key, by in held.items():
-            if len(by) > 1:
+                if sess in earlier_names:
+                    before.setdefault(key, Counter())[kind] += 1
+                elif sess == s.name:
+                    during.setdefault(key, Counter())[kind] += 1
+        for key, by in during.items():
+            had = before.get(key, Counter())
+            if set(by) - set(had) and len(set(by) | set(had)) > 1:
                 out["wrong_merges"].append({"session": s.name, "role": s.role, "key": key,
-                                            "objects": dict(by)})
+                                            "objects": dict(by), "held_before": dict(had)})
     # The share of all labelled regions filed at all, per role.
     out["filed"] = {}
     for role_name in sorted({s.role for s in ss}):
@@ -131,7 +145,8 @@ def report(out, roles=("development", "test")):
             t["session"], t["object"], t["outcome"], t.get("strict"), t["before"], t["after"],
             t["unfiled_after"]))
     for m in out["wrong_merges"]:
-        print("  %-10s wrong merge: %s holds %s" % (m["session"], m["key"], m["objects"]))
+        print("  %-10s wrong merge: %s took %s, holding before %s" % (m["session"], m["key"], m["objects"],
+                                                                   m.get("held_before", {})))
     for obj, per in out["stayed_put"].items():
         print("  stayed put %-22s %s" % (obj, per))
     for role in roles:
