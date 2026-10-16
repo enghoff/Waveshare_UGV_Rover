@@ -38,7 +38,7 @@ A person tells them apart by the throw. The rover sees it too rarely to rely on.
     the black bean bag in the shakedown and the red bean bag in session 1 as
     ordinary matches, so criterion 4 fails whatever is decided here
     ([session 5](../progress/2026-10-16-m5-session-5.md#a-correction-m5s-criterion-4-was-not-met)).
-    Whether the sign-off stands is the owner's call.
+    The owner withdrew the sign-off the same day.
 - **Staged sessions** move things that can be told apart. An armchair may still
   be moved, and is reported separately: how many armchair records stand where
   the two armchairs are.
