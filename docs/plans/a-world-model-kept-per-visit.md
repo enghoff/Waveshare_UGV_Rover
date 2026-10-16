@@ -206,11 +206,16 @@ Those conditions are retired.
      moved in the wait, the black one to 0.3 m from where the red one had just
      left. On the session version 3 made no wrong merge and followed all three
      moves; in the same run it mixed two paintings in session 5.
-   - **Next, before any session is spent**: the scale from the learned
-     likeness to a score fitted once on development pictures and frozen with
-     it, so that a picture added later cannot change an earlier decision; and
-     how far the filing moves when pictures are added or taken away, measured
-     on the seven sessions.
+   - **Measured the same day**
+     ([entry](../progress/2026-10-16-the-world-models-honesty-is-within-noise.md)):
+     with the scale fitted once on pictures before 2026-10-16, a picture added
+     later no longer changes an earlier decision. But with 1% of unrelated
+     pictures taken away, version 3 and that build make zero to two wrong
+     merges over the seven sessions, from the same three places, session 5's
+     bean bag swap among them.
+   - **Next, before any session is spent**: a decision whose likeness falls
+     within a margin of its bar is held open rather than taken, and honesty is
+     judged over such draws, not one run.
 7. **On the rover in shadow**: the model kept beside the deployed store from
    the live looks, reports only. The next staged sessions and every ordinary
    drive are its acceptance.
