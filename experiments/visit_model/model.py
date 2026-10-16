@@ -129,6 +129,15 @@ DEVELOPMENT_END = 1791963000.0
 #: above keeps its rate of false matches.
 USE_LEARNED = True
 _SIM = {"map": None}
+#: The scale from the learned likeness to the image vectors', fitted once on
+#: the pictures taken before SCALE_FITTED_BEFORE (the shakedown to M5 session
+#: 4, the pictures metric-1015.npz was learned from) and kept beside it. Fitted
+#: over whatever looks a run was given, it moved with every picture added, later
+#: ones included: in M5 session 6 the 44 pictures taken after session 5 shifted
+#: a score of 2026-10-03 by 0.001 and two pictures of one painting went to
+#: another's record in session 5.
+SCALE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scale-1015.npz")
+SCALE_FITTED_BEFORE = 1792089000.0  # 2026-10-16 00:00 local
 
 
 def sim(x):
@@ -202,7 +211,8 @@ class Looks:
     def __init__(self, a):
         a = dict(a)
         if USE_LEARNED and "lvec" in a:
-            _SIM["map"] = learn_scale(a, a["lvec"])
+            m = np.load(SCALE_PATH)
+            _SIM["map"] = (m["learned"], m["image"])
             a["vec"] = a["lvec"]
         src = np.array([str(s) for s in a["place_from"]])
         if "wx" in a:
@@ -821,8 +831,20 @@ def _until(a, t):
     return {k: v[keep] for k, v in a.items()}
 
 
+def fit_scale(looks_path):
+    """`python model.py --fit-scale LOOKS.npz`: the scale, from the looks taken
+    before SCALE_FITTED_BEFORE, written to SCALE_PATH."""
+    a = _until(data.load(looks_path), SCALE_FITTED_BEFORE)
+    learned, image = learn_scale(a, a["lvec"])
+    np.savez(SCALE_PATH, learned=learned, image=image, before=SCALE_FITTED_BEFORE, regions=len(a["id"]))
+    print("scale from %d regions, %d points" % (len(a["id"]), len(learned)))
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args[0] == "--fit-scale":
+        fit_scale(args[1])
+        sys.exit()
     test = "--test" in args
     args = [x for x in args if x != "--test"]
     a = data.load(args[0])
