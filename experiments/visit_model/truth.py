@@ -53,6 +53,10 @@ SESSIONS = [
     ("session 6", os.path.join(TMP, "session6-1016", "session6-1016.json"),
      os.path.join(MAIN, "experiments", "m5_changes", "staged", "session6-1016.json"),
      os.path.join(HERE, "labels", "session6-1016.json"), "session 6"),
+    # Version 4's test (docs/plans/a-world-model-kept-per-visit.md, step 6).
+    ("session 7", os.path.join(TMP, "session7-1017", "session7-1017.json"),
+     os.path.join(MAIN, "experiments", "m5_changes", "staged", "session7-1017.json"),
+     os.path.join(HERE, "labels", "session7-1017.json"), "session 7"),
 ]
 #: Labels for a session made later than its own file, for things a later
 #: session carried in again (session 5's box, stool and step ladder were
@@ -93,6 +97,7 @@ class Session:
         self.name, self.role = name, role
         entries = json.load(open(record))["entries"]
         self.start, self.end = entries[0]["at"], entries[-1]["at"]
+        self.record_start = self.start
         self.staged_at = next(e["at"] for e in entries if e["step"] == "wait" and e.get("end"))
         # Session 5 waited twice: things carried in during the first wait and
         # moved during the second. "moved_at_step": "wait N" is the end of the
@@ -100,6 +105,11 @@ class Session:
         self.wait_ends = [e["at"] for e in entries if e["step"] == "wait" and e.get("end")]
         self.staged = json.load(open(staged))
         day = time.localtime(self.start)
+        # Session 7 began, in effect, with a drive someone made through the
+        # staged rooms before its record ("began": the clock time): its
+        # pictures belong to the session.
+        if self.staged.get("began"):
+            self.start = _clock(day, self.staged["began"])
         bad = self.staged.get("bad", []) + EXTRA_BAD.get(name, [])
         self.bad = [tuple(_clock(day, s) for s in w.split("-")) for w in bad]
         # A thing moved during the session rather than in the staging moves at
@@ -136,6 +146,9 @@ class Session:
         # the session's record began.
         if step == "start":
             return self.start
+        # Put down after an earlier drive, before the session's record began.
+        if step == "record":
+            return self.record_start
         if step and step.startswith("wait "):
             return self.wait_ends[int(step.split()[1]) - 1]
         return self.move_time(OBJECTS[item["what"]])
