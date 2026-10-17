@@ -57,6 +57,12 @@ SESSIONS = [
     ("session 7", os.path.join(TMP, "session7-1017", "session7-1017.json"),
      os.path.join(MAIN, "experiments", "m5_changes", "staged", "session7-1017.json"),
      os.path.join(HERE, "labels", "session7-1017.json"), "session 7"),
+    # Ordinary drives, nothing staged: the survey loop three times running
+    # (2026-10-17), for comparing version 4 with the deployed store on
+    # pictures neither was tuned on.
+    ("drives 1", os.path.join(TMP, "drives1-1017", "drives1-1017.json"),
+     os.path.join(MAIN, "experiments", "m5_changes", "staged", "drives1-1017.json"),
+     os.path.join(HERE, "labels", "drives1-1017.json"), "drives"),
 ]
 #: Labels for a session made later than its own file, for things a later
 #: session carried in again (session 5's box, stool and step ladder were
@@ -98,7 +104,8 @@ class Session:
         entries = json.load(open(record))["entries"]
         self.start, self.end = entries[0]["at"], entries[-1]["at"]
         self.record_start = self.start
-        self.staged_at = next(e["at"] for e in entries if e["step"] == "wait" and e.get("end"))
+        # A session of ordinary drives has no wait and nothing staged.
+        self.staged_at = next((e["at"] for e in entries if e["step"] == "wait" and e.get("end")), self.end)
         # Session 5 waited twice: things carried in during the first wait and
         # moved during the second. "moved_at_step": "wait N" is the end of the
         # Nth wait.

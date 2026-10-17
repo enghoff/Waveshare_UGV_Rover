@@ -1,5 +1,5 @@
 {
- "note": "Objects that were never staged, labelled by the coding agent on 2026-10-15 from sheets.py's contact sheets, before the new model was run on any of it. Candidates per object: regions in the five sessions whose sight line passes within 0.6 m of its place (the rug 1.3 m, the bed 1.0, the mirror wardrobe 0.7), looking at least 0.45 alike to sixty pictures from records chosen by their photo strips; a region is labelled when the picture clearly shows the object, so edge-on slivers and crops mostly of something else are left out. Left out as objects: a dark painting by the charger, almost always seen edge-on beside two others; the dining chairs and ceiling fans, which are alike. The forest painting's three regions from 11:26-11:30 on session 4 were seen on the rug's sheets. The village painting's labels were checked against full pictures after the first development runs showed two of its regions in one picture: eight were a smaller painting to its right, above the lamp, and sixteen at a picture's edge could be either; all 24 are left out. Session 5 (2026-10-16) labelled the same way by the coding agent before version 3 was scored on it, after versions 1 and 2 had been: regions mixing a painting with the black bean bag in front of it, a person, a chair, or the red bean bag in front of the door are left out, and slivers too near the picture's edge. Session 6's (2026-10-16) labelled the same way over the whole session, before any model was run on it; left out were regions of the black cabinet under the snowy-tree painting, dining chairs, the black bean bag and the red one beside the rug and the door, blurred frames that could not be told, and the bed's dark end panels, which could be a chest. Session 7's (2026-10-17) labelled the same way from the manual drive at 10:38 to the end, before any model was run on it; left out were the black cabinet under the snowy-tree painting, dining chairs, a ceiling fan and doorways among the rug's, slivers, and blurred frames that could not be told.",
+ "note": "Objects that were never staged, labelled by the coding agent on 2026-10-15 from sheets.py's contact sheets, before the new model was run on any of it. Candidates per object: regions in the five sessions whose sight line passes within 0.6 m of its place (the rug 1.3 m, the bed 1.0, the mirror wardrobe 0.7), looking at least 0.45 alike to sixty pictures from records chosen by their photo strips; a region is labelled when the picture clearly shows the object, so edge-on slivers and crops mostly of something else are left out. Left out as objects: a dark painting by the charger, almost always seen edge-on beside two others; the dining chairs and ceiling fans, which are alike. The forest painting's three regions from 11:26-11:30 on session 4 were seen on the rug's sheets. The village painting's labels were checked against full pictures after the first development runs showed two of its regions in one picture: eight were a smaller painting to its right, above the lamp, and sixteen at a picture's edge could be either; all 24 are left out. Session 5 (2026-10-16) labelled the same way by the coding agent before version 3 was scored on it, after versions 1 and 2 had been: regions mixing a painting with the black bean bag in front of it, a person, a chair, or the red bean bag in front of the door are left out, and slivers too near the picture's edge. Session 6's (2026-10-16) labelled the same way over the whole session, before any model was run on it; left out were regions of the black cabinet under the snowy-tree painting, dining chairs, the black bean bag and the red one beside the rug and the door, blurred frames that could not be told, and the bed's dark end panels, which could be a chest. Session 7's (2026-10-17) labelled the same way from the manual drive at 10:38 to the end, before any model was run on it; left out were the black cabinet under the snowy-tree painting, dining chairs, a ceiling fan and doorways among the rug's, slivers, and blurred frames that could not be told. The ordinary drives of 2026-10-17 (\"drives 1\") labelled the same way before any model was run on them; a child sat on the bed in the first loop, and the bed's regions where the child dominates were left out, as were the bed's dark end panels, chairs and windows among the rug's, and slivers.",
  "objects": {
   "snowy-tree painting": {
    "shakedown": [
@@ -144,6 +144,27 @@
     108408,
     108415,
     108461
+   ],
+   "drives 1": [
+    108592,
+    108603,
+    108639,
+    108640,
+    108648,
+    108847,
+    108858,
+    108870,
+    108880,
+    108886,
+    108908,
+    108921,
+    109110,
+    109121,
+    109163,
+    109283,
+    109292,
+    109302,
+    109317
    ]
   },
   "animals painting": {
@@ -313,6 +334,38 @@
     108411,
     108420,
     108443
+   ],
+   "drives 1": [
+    108517,
+    108534,
+    108544,
+    108547,
+    108572,
+    108586,
+    108593,
+    108641,
+    108654,
+    108857,
+    108873,
+    108882,
+    108891,
+    108906,
+    108923,
+    108927,
+    108949,
+    108986,
+    109024,
+    109037,
+    109053,
+    109058,
+    109082,
+    109105,
+    109111,
+    109152,
+    109166,
+    109294,
+    109304,
+    109324
    ]
   },
   "forest painting": {
@@ -416,6 +469,28 @@
     108405,
     108439,
     108462
+   ],
+   "drives 1": [
+    108515,
+    108523,
+    108543,
+    108575,
+    108628,
+    108635,
+    108855,
+    108863,
+    108867,
+    108877,
+    108984,
+    109023,
+    109051,
+    109083,
+    109093,
+    109139,
+    109148,
+    109287,
+    109298,
+    109321
    ]
   },
   "village painting": {
@@ -584,6 +659,38 @@
     108427,
     108436,
     108449
+   ],
+   "drives 1": [
+    108507,
+    108526,
+    108558,
+    108565,
+    108579,
+    108598,
+    108607,
+    108611,
+    108614,
+    108619,
+    108890,
+    108894,
+    108900,
+    108934,
+    108942,
+    108964,
+    108975,
+    108988,
+    109003,
+    109012,
+    109027,
+    109042,
+    109068,
+    109076,
+    109087,
+    109096,
+    109116,
+    109124,
+    109128,
+    109132
    ]
   },
   "blue painting": {
@@ -769,6 +876,34 @@
     108409,
     108416,
     108459
+   ],
+   "drives 1": [
+    108499,
+    108504,
+    108550,
+    108608,
+    108652,
+    108848,
+    108872,
+    108883,
+    108892,
+    108901,
+    108924,
+    108928,
+    108933,
+    108940,
+    108963,
+    108994,
+    108998,
+    109001,
+    109034,
+    109040,
+    109060,
+    109126,
+    109157,
+    109169,
+    109303,
+    109323
    ]
   },
   "front door": {
@@ -842,6 +977,23 @@
     108219,
     108236,
     108322
+   ],
+   "drives 1": [
+    108513,
+    108532,
+    108539,
+    108546,
+    108552,
+    108571,
+    108947,
+    108954,
+    108981,
+    108995,
+    109020,
+    109049,
+    109057,
+    109064,
+    109081
    ]
   },
   "rug": {
@@ -1016,6 +1168,46 @@
     108186,
     108188,
     108220
+   ],
+   "drives 1": [
+    108512,
+    108520,
+    108538,
+    108551,
+    108562,
+    108570,
+    108574,
+    108584,
+    108590,
+    108613,
+    108627,
+    108630,
+    108843,
+    108850,
+    108864,
+    108866,
+    108876,
+    108904,
+    108909,
+    108948,
+    108952,
+    109015,
+    109021,
+    109048,
+    109063,
+    109071,
+    109080,
+    109085,
+    109091,
+    109102,
+    109107,
+    109130,
+    109140,
+    109142,
+    109167,
+    109279,
+    109285,
+    109295
    ]
   },
   "bed": {
@@ -1114,6 +1306,19 @@
     108018,
     108028,
     108038
+   ],
+   "drives 1": [
+    108709,
+    108776,
+    108787,
+    109210,
+    109215,
+    109216,
+    109220,
+    109223,
+    109234,
+    109238,
+    109251
    ]
   },
   "gold painting over the bed": {
@@ -1217,6 +1422,24 @@
     108021,
     108034,
     108040
+   ],
+   "drives 1": [
+    108704,
+    108712,
+    108714,
+    108729,
+    108763,
+    108781,
+    108790,
+    109214,
+    109222,
+    109225,
+    109236,
+    109241,
+    109244,
+    109246,
+    109256,
+    109258
    ]
   },
   "portrait": {
@@ -1335,6 +1558,32 @@
     108029,
     108048,
     108054
+   ],
+   "drives 1": [
+    108687,
+    108689,
+    108694,
+    108700,
+    108707,
+    108719,
+    108731,
+    108736,
+    108747,
+    108749,
+    108762,
+    108765,
+    108770,
+    108777,
+    108807,
+    108812,
+    109207,
+    109211,
+    109217,
+    109230,
+    109237,
+    109242,
+    109252,
+    109254
    ]
   },
   "mirror wardrobe": {
@@ -1435,6 +1684,24 @@
     108027,
     108039,
     108055
+   ],
+   "drives 1": [
+    108703,
+    108710,
+    108718,
+    108728,
+    108746,
+    108750,
+    108767,
+    108775,
+    108788,
+    108810,
+    109213,
+    109221,
+    109229,
+    109235,
+    109240,
+    109250
    ]
   }
  }

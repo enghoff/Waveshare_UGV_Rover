@@ -13,7 +13,7 @@ TAG="$2"
 COMMIT="$3"
 T="D:/UGV Rover/tmp"
 V="$T/visit-model"
-RECS=("$T/ww-recordings/shakedown.npz" "$T"/session?-10??/session?-10??.npz "$T"/ww-recordings/m5-*.npz "$T"/ww-recordings/1010/*.npz)
+RECS=("$T/ww-recordings/shakedown.npz" "$T"/session?-10??/session?-10??.npz "$T"/drives?-10??/drives?-10??.npz "$T"/ww-recordings/m5-*.npz "$T"/ww-recordings/1010/*.npz)
 python draws.py "$LOOKS" "$V/$TAG" 5
 git show "$COMMIT:experiments/visit_model/model.py" > "model_frozen_$TAG.py"
 PYTHONHASHSEED=0 python "model_frozen_$TAG.py" --test "$LOOKS" "$V/$TAG-full.json" "${RECS[@]}" > "$V/$TAG-full.log" 2>&1 &

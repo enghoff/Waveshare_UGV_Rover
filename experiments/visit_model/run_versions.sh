@@ -10,7 +10,7 @@ set -e
 LOOKS="$1"
 TAG="$2"
 T="D:/UGV Rover/tmp"
-RECS=("$T/ww-recordings/shakedown.npz" "$T"/session?-10??/session?-10??.npz "$T"/ww-recordings/m5-*.npz "$T"/ww-recordings/1010/*.npz)
+RECS=("$T/ww-recordings/shakedown.npz" "$T"/session?-10??/session?-10??.npz "$T"/drives?-10??/drives?-10??.npz "$T"/ww-recordings/m5-*.npz "$T"/ww-recordings/1010/*.npz)
 declare -A FROZEN=([v1]=c36aee0 [v2]=3c2498e [v3]=e5b39fd [v4]=cabe003)
 for v in v1 v2 v3 v4; do
   git show "${FROZEN[$v]}:experiments/visit_model/model.py" > "model_frozen_$v.py"
