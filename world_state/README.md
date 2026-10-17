@@ -10,6 +10,19 @@ perception finds regions with YOLOE and stores DINOv2 and SigLIP2 vectors.
 Identity comes primarily from measured geometry; text is used only to search
 stored images.
 
+## The world model kept per visit
+
+Beside the store's own filing runs version 4 of the world model kept per visit
+([`visit_model/`](visit_model/README.md)): one record per object, matched once
+per visit, marked gone when the lidar sees through its place. The owner chose
+it over the store's grouping on 2026-10-17, on pictures neither was tuned on
+([the comparison](../docs/progress/2026-10-17-version-4-against-the-deployed-store-on-unseen-pictures.md)).
+Its job reads the store and never writes to it; it writes its records to
+`visit_model/things.json` beside the store, and `visit_things.py` serves them to
+`search.ThingIndex` in the store's place. The voice tools rank its records first
+(`rover_daemon/rover_recall.py`); the console, the executive and the resolver
+still use the store's entities.
+
 ## Grouping preview
 
 `world_state_groups {}` is a diagnostic control call on TCP 8769. It recomputes

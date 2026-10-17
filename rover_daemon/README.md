@@ -207,6 +207,25 @@ looks, not of the console's newest 2,000 looks: on 2026-10-13 those reached a
 third of the things the rover knew, and the floor lamp and the sneakers could not
 be found.
 
+**Since 2026-10-17 the things are the world model's records**, not the store's
+entities: version 4 of the world model kept per visit, which the owner chose over
+the store's grouping, kept up to date by its own job
+([`../world_state/visit_model/`](../world_state/visit_model/README.md)) and read
+through `world_state/visit_things.py`. The store's entities answer when the
+records cannot -- none written, older than a quarter of an hour, or on another
+map -- and which of the two answered goes to the daemon's log as a `[recall]`
+line, never to the model. Two things follow from the model:
+
+- **A thing seen gone says so.** The model marks a record gone when the lidar
+  has seen through its place; `find_thing` then adds `no_longer_there`, so the
+  rover says where a thing was last seen rather than that it is there.
+- **Of near-ties, the present and recent one answers.** The model keeps a
+  record of each place a thing stood and several of one thing it could not join,
+  which a phrase scores within about 0.01 of each other; among matches that
+  close to the best, one still in place comes before one seen gone, then the one
+  whose newest look is newest. A record's last sighting is its newest look, not
+  the record's own time, which a merge leaves behind.
+
 When the rover cannot say how far away a thing is, or cannot measure a route to
 it, the answer says which of the reasons it is -- no position being published,
 the map still loading, or a restored map the rover has not yet confirmed its

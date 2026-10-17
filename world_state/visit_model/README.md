@@ -58,6 +58,23 @@ version 4 and are not refitted here.
 
 ## What reads it
 
-Nothing yet. The voice tool `find_thing` is to rank the model's records first,
-with the store's own things as the answer when the records are missing, older
-than fifteen minutes or on another map (the plan's step 8).
+The voice tools `find_thing` and `go_to_thing` (since 2026-10-17,
+`rover_daemon/rover_recall.py` through `world_state/visit_things.py`), with the
+store's own things answering when the records are missing, older than fifteen
+minutes or on another map. The console, the executive and the resolver still
+read the store's entities (the plan's step 8, in order).
+
+## What to know when changing it
+
+- **Run the job on the system Python.** Navigation's environment is
+  RoboStack's conda Python, with its own numpy and no PIL; version 4 was
+  verified on the system one (numpy 1.26.4, scipy 1.11.4). Only `scan_log.py`
+  needs ROS, and it joins navigation from `~/ugv/ros_nav`, under bash, because
+  `dds.sh` finds its settings beside itself.
+- **A record's `seen_at` is not its last sighting**: `model.Memory.merge` keeps
+  the survivor's time. `visit_things.py` reports a record's newest look instead.
+- **Things above the lidar's plane are rarely marked gone**, and thin ones (the
+  step ladder) seldom give the lidar enough hits: their records stay present
+  after they are taken away.
+- **Changing `deploy/manifest.json` redeploys every component**, navigation
+  included; restarting navigation leaves its position unconfirmed until a refit.

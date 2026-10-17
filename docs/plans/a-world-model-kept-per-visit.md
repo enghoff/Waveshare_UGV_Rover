@@ -38,7 +38,10 @@ pictures or in five draws, and 4 of 7 trials followed
 ordinary drives it beats the deployed store on every measure, and the owner
 asked for the choice to be made that way
 ([entry](../progress/2026-10-17-version-4-against-the-deployed-store-on-unseen-pictures.md)).
-Next is running it on the rover from the live looks. Nothing is on the rover. It aims at
+It runs on the rover beside the store and the voice tools answer from it,
+with the store as their fallback
+([entry](../progress/2026-10-17-the-world-model-answers-find-thing.md)); the
+console and the executive are next. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
 [R-WS-2](../requirements/world-state.md#r-ws-2) and
