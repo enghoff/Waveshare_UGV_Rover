@@ -1,0 +1,21 @@
+{"note": "M5 session 7, 2026-10-17, the test of version 4 of the world model kept per visit, run as planned in session7-planned.json except for its beginning. The owner set out the black bean bag, the stool and the step ladder; before the red bean bag was put down, the rover drove a manual session through the living room to the bedroom and back (10:38-10:43; its position was lost in the living room 10:40-10:42 and it parked on the charger on a weak fit), and was then rebooted. Its pictures belong to this session (\"began\"), the three things it found standing count as put down before it (\"moved_at_step\": \"start\"), and the red bean bag as put down before the session's record (\"record\"). After the reboot navigation would not settle (70% of the scan on a wall, a 20-degree turn brought 80%); the owner refitted the rover in the bedroom, and the session ran from there unplugged: loop A from the bedroom end 11:39-11:43, the wait at bedroom-2 11:44-11:45 while the owner made the three moves, loop B 11:45-11:50, a 3.5-minute run, home at 11:53 (8 cm from the spot). Every stop's position check stayed within 6 cm. Places in loop A from the change watch where it logged them (the red bean bag at (-17.18, -13.58), large; the stool at (-17.83, -16.72)); the others, and every place after the moves, from the medians of the session's labelled photographs: the black bean bag at (-20.15, -13.02) before and (-17.41, -13.53) after, 0.25 m from the red one's starting place by the same reading ((-17.16, -13.58)); the red bean bag after at (-16.32, -11.78); the stool after at (-19.5, -16.11); the step ladder at (-17.57, -17.3). The change watch's final count failed on a corrupt line in the change log.",
+ "began": "10:38:00",
+ "staged_in": "wait",
+ "added": [
+  {"what": "black bean bag", "at": [-20.15, -13.02], "moved_at_step": "start"},
+  {"what": "stool", "at": [-17.83, -16.72], "moved_at_step": "start"},
+  {"what": "step ladder", "at": [-17.57, -17.3], "moved_at_step": "start"},
+  {"what": "red bean bag", "at": [-17.18, -13.58], "moved_at_step": "record"}
+ ],
+ "moves": [
+  {"what": "red bean bag", "from": [-17.18, -13.58], "to": [-16.32, -11.78], "moved_at_step": "wait 1"},
+  {"what": "black bean bag", "from": [-20.15, -13.02], "to": [-17.41, -13.53], "moved_at_step": "wait 1"},
+  {"what": "stool", "from": [-17.83, -16.72], "to": [-19.5, -16.11], "moved_at_step": "wait 1"}
+ ],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": [],
+ "bad": ["10:40:00-10:43:30"]
+}

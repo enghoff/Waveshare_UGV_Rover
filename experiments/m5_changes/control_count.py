@@ -55,7 +55,12 @@ def logged_between(map_id, start, end):
     try:
         with open(os.path.join(CHANGES, map_id + ".log.jsonl")) as f:
             for line in f:
-                row = json.loads(line)
+                # A power cut mid-write leaves a line of zero bytes (M5
+                # session 7's count failed on one): it holds no row.
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
                 if start <= row["logged_at"] <= end:
                     rows.append(row)
     except FileNotFoundError:

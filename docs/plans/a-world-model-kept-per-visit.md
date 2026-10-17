@@ -31,8 +31,11 @@ included, and 44 pictures development never had tipped a decision
 ([entry](../progress/2026-10-16-m5-session-6.md)). Version 4 raises every bar
 that joins two things by 0.06 and fixes the scale: no wrong merge on all
 pictures or in ten draws without 1% of them, but fewer moves followed
-([entry](../progress/2026-10-16-version-4-a-margin-on-every-bar.md)); its test,
-M5 session 7, needs the rover and the owner. Nothing is on the rover. It aims at
+([entry](../progress/2026-10-16-version-4-a-margin-on-every-bar.md)). Its test,
+M5 session 7 on 2026-10-17, passed: no wrong merge in any session, on all
+pictures or in five draws, and 4 of 7 trials followed
+([entry](../progress/2026-10-17-m5-session-7.md)). Next is step 7, the shadow
+run on the rover. Nothing is on the rover. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
 [R-WS-2](../requirements/world-state.md#r-ws-2) and
@@ -222,7 +225,8 @@ Those conditions are retired.
      every bar that joins two things 0.06 higher, and the likeness scale
      fitted once. No wrong merge on all pictures or in ten draws; 6 of 16
      moves strict, against version 3's 10 of 18.
-   - **Its test is M5 session 7**, planned in
+   - **Its test, M5 session 7, passed**
+     ([entry](../progress/2026-10-17-m5-session-7.md)), planned in
      `experiments/m5_changes/staged/session7-planned.json`: session 6's swap
      the other way round, the black bean bag moved in the wait to where the
      red one has just left. Honesty is judged on the run with every picture
