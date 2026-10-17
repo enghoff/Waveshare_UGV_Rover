@@ -34,8 +34,11 @@ pictures or in ten draws without 1% of them, but fewer moves followed
 ([entry](../progress/2026-10-16-version-4-a-margin-on-every-bar.md)). Its test,
 M5 session 7 on 2026-10-17, passed: no wrong merge in any session, on all
 pictures or in five draws, and 4 of 7 trials followed
-([entry](../progress/2026-10-17-m5-session-7.md)). Next is step 7, the shadow
-run on the rover. Nothing is on the rover. It aims at
+([entry](../progress/2026-10-17-m5-session-7.md)). On session 7 and three
+ordinary drives it beats the deployed store on every measure, and the owner
+asked for the choice to be made that way
+([entry](../progress/2026-10-17-version-4-against-the-deployed-store-on-unseen-pictures.md)).
+Next is running it on the rover from the live looks. Nothing is on the rover. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
 [R-WS-2](../requirements/world-state.md#r-ws-2) and

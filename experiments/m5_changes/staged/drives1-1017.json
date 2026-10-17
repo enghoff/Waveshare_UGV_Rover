@@ -1,0 +1,11 @@
+{"note": "Ordinary drives, 2026-10-17 12:33-12:47: nothing staged for them. The survey loop three times running (loop A from the charger, living room first; loop B back from the bedroom; loop C as A), then home, run by the coding agent with the owner's word that the rover was untethered and its own. The four things staged for M5 session 7 had been cleared from the living room before the drives (none is in any of their photographs; the plain armchair was back by the window), so nothing staged is in them and nothing moved during them. A child sat on the bed during the first loop. 24 stops, every position check within 6.3 cm and 1.5 degrees. For the comparison of version 4 with the deployed store on pictures neither was tuned on.",
+ "staged_in": "none",
+ "added": [],
+ "moves": [],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living", "bedroom"],
+ "reset_rooms": [],
+ "also_moved": [],
+ "bad": []
+}
