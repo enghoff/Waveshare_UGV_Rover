@@ -200,3 +200,20 @@ Tried on the way: 0.03 (three wrong merges in six runs) and 0.05 or 0.06 with
 the move bars spared, which followed more moves (10 of 16) but let a
 painting's record "move" onto another painting in one run of eleven and one of
 three. `scale-1015.npz` is part of version 4 and is not to be refitted.
+
+## Session 7: version 4's test, passed
+
+M5 session 7 (2026-10-17, docs/progress/2026-10-17-m5-session-7.md on main):
+session 6's swap the other way round, the black bean bag set down 0.25 m from
+where the red one had just stood. A manual drive went through the staged rooms
+before the session's record; its pictures belong to the session (`"began"` in
+the staged file, `"moved_at_step": "record"` for the red bean bag put down after
+it), and its three minutes without a sound pose are a bad-pose window. Labels
+were committed before any model ran (`d385954`).
+
+`run_draws.sh looks-session7-1017.npz s7v4 cabe003`: no wrong merge in any
+session on all pictures or in five draws. On session 7, version 4 kept 4 of 7
+trials strictly and 11 of 11 unmoved objects in two records or fewer, filing
+79% of labelled pictures; over the seven sessions, wrong merges deployed 20,
+versions 1-4 10, 2, 2, 0 (`run_versions.sh`, tag `s7`). Next is the plan's step
+7: version 4 in shadow on the rover.
