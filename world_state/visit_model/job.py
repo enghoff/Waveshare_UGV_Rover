@@ -175,6 +175,7 @@ def once(e, state, use_lidar, log):
     records = things(e)
     write_json(os.path.join(state, "things.json"), {
         "model": "visit_model version 4 (cabe003)", "written_at": time.time(),
+        "map_session": data.MAP_SESSION,
         "filed_until": e.taken_until, "last_observation": e.last_id,
         "waiting": 0 if e.pending is None else int(len(e.pending["id"])),
         "lidar": arrays is not None, "things": records})

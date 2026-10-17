@@ -548,6 +548,31 @@ class RoverWorld:
         """Every thing ranked against a phrase's vector; see `search.rank_things`."""
         return world_state.search.rank_things(vector, self._world_things())
 
+    def _world_visit(self):
+        """The world model's records and their average-look index.
+
+        The records are version 4 of the world model kept per visit, which
+        `world_state/visit_model/job.py` keeps up to date beside the store and
+        `world_state/visit_things.py` reads (docs/plans/
+        a-world-model-kept-per-visit.md, step 8). Kept with the store the looks'
+        vectors are read from, as `_world_things` is. `fresh()` on the first says
+        whether they may answer now; when they may not, the store's own things
+        do, as they did before the model ran.
+        """
+        from world_state import visit_things                # noqa: PLC0415
+        store = self._world_store()
+        cached = getattr(self, "_world_visit_cache", None)
+        if cached is None or cached[0].store is not store:
+            records = visit_things.VisitStore(store)
+            cached = (records, world_state.search.ThingIndex(records))
+            self._world_visit_cache = cached
+        return cached
+
+    def _world_rank_visit(self, vector: bytes) -> dict[str, Any]:
+        """The world model's records ranked against a phrase's vector, as
+        `_world_rank_things` ranks the store's things."""
+        return world_state.search.rank_things(vector, self._world_visit()[1])
+
     def _world_embed(self, text: str) -> tuple[bytes, str]:
         """A phrase as a vector in the stored looks' space, or an error in words.
 
@@ -1178,6 +1203,16 @@ class RoverWorld:
         entity_id = str(arguments.get("id") or "")
         store = self._world_store()
         entity = store.entity(entity_id)
+        held = None
+        if entity is None:
+            # A record of the world model's (`_world_visit`), as `find_thing`
+            # names one when the records may answer: its place, and its own
+            # looks for the directions it was seen from.
+            records, _index = self._world_visit()
+            if not records.fresh():
+                entity = records.entity(entity_id)
+                if entity is not None:
+                    held = records.records[entity_id]["observations"]
         if entity is None:
             return {"ok": False, "error": f"no such entity: {entity_id}"}
         place = entity.get("placement")
@@ -1208,7 +1243,7 @@ class RoverWorld:
                              "it could stand on from the middle of a wall"}
         found = world_state.approach.viewpoint(
             place, world_state.approach.Grid(*grid), (pose["x_m"], pose["y_m"]),
-            self._world_sight_lines(entity_id, place, session))
+            self._world_sight_lines(entity_id, place, session, held))
         if not found.get("ok"):
             return {"ok": False, "error": found.pop("why"), "id": entity_id,
                     "placement": place, "pose": pose, **found}
@@ -1217,7 +1252,8 @@ class RoverWorld:
                 "turn_deg": round((turn + 180.0) % 360.0 - 180.0, 1), **found}
 
     def _world_sight_lines(self, entity_id: str, place: dict[str, Any],
-                           session: int) -> list[dict[str, Any]]:
+                           session: int, held: list[int] | None = None
+                           ) -> list[dict[str, Any]]:
         """The looks a thing was seen in, as the rays `approach` reads directions
         from.
 
@@ -1233,8 +1269,13 @@ class RoverWorld:
         looks the resolver would no longer attach, and that decision is the
         resolver's own rather than a second opinion formed here.
         """
-        observations = self._world_store().observations(entity_id,
-                                                        limit=SIGHT_LIMIT)
+        if held is not None:
+            # A world-model record's looks, by identifier: its newest.
+            observations = self._world_store().observations(
+                ids=sorted(held)[-SIGHT_LIMIT:], limit=SIGHT_LIMIT)
+        else:
+            observations = self._world_store().observations(entity_id,
+                                                            limit=SIGHT_LIMIT)
         drawn = world_view.rays(observations, self.camera_fov_deg,
                                 limit=SIGHT_LIMIT, placement=place)
         return [one for one in drawn if one.get("map_session") == session]

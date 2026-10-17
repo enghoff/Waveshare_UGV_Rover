@@ -22,8 +22,6 @@ from typing import Any
 THINGS_FILE = os.path.join("visit_model", "things.json")
 #: Older than this, the job has stopped, and the store's own things answer.
 MAX_AGE_S = 900.0
-#: The model's records are in this map session's coordinates (data.MAP_SESSION).
-MAP_SESSION = 67
 
 
 class VisitStore:
@@ -62,7 +60,9 @@ class VisitStore:
         age = time.time() - float(self.payload.get("written_at") or 0.0)
         if age > MAX_AGE_S:
             return "the world model's records are %d minutes old" % round(age / 60.0)
-        if self.store.map_session() != MAP_SESSION:
+        # The records are in the coordinates of the map session the job reads
+        # (visit_model/data.py's MAP_SESSION), which it writes beside them.
+        if self.store.map_session() != self.payload.get("map_session"):
             return "the world model is on another map"
         return ""
 
@@ -128,7 +128,7 @@ class VisitStore:
             "observation_count": len(r["observations"]),
             "created_at": first,
             "last_seen_at": r.get("seen_at"),
-            "placement_map_session": MAP_SESSION,
+            "placement_map_session": self.payload.get("map_session"),
             "placement": {
                 "x_m": r["x_m"], "y_m": r["y_m"],
                 "uncertainty_m": r.get("spread_m"),

@@ -497,6 +497,86 @@ def test_which_way_something_is_in_words() -> None:
     check("dead astern", rover_recall.which_way(175.0), "straight behind you")
 
 
+# --- the world model's records ------------------------------------------------
+
+def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
+                   gone_at=None, session=None):
+    """The world model's job's output (world_state/visit_model/job.py), written
+    where world_state/visit_things.py reads it: one record holding the given
+    looks, standing at `at`."""
+    import time
+
+    store = rover._world_store()
+    folder = os.path.join(store.dir, "visit_model")
+    os.makedirs(folder, exist_ok=True)
+    now = time.time()
+    record = {"id": "v7", "x_m": at[0], "y_m": at[1], "spread_m": 0.15, "extent_m": 0.6,
+              "height_m": None, "state": state, "seen_at": now - 60.0, "since": now - 600.0,
+              "gone_at": gone_at, "visits": 3, "path": [[at[0], at[1], round(now - 600.0)]],
+              "observations": list(observation_ids)}
+    payload = {"model": "test", "written_at": now - age_s,
+               "map_session": store.map_session() if session is None else session,
+               "things": [record]}
+    with open(os.path.join(folder, "things.json"), "w") as f:
+        json.dump(payload, f)
+
+
+def test_the_world_models_records_answer_first() -> None:
+    """**What the owner chose on 2026-10-17**: `find_thing` ranks the world
+    model's records (version 4, kept by world_state/visit_model/job.py) rather
+    than the store's things, and answers from the store only when the records
+    cannot -- none written, a quarter of an hour old, or on another map. The
+    record here holds the store's one look of the bed and has a position, while
+    the store's thing for that look has none, so which of the two answered is
+    plain from the answer."""
+    try:
+        import numpy  # noqa: F401
+        import rover_daemon  # noqa: F401
+    except ImportError as error:
+        SKIP.append(f"the world model's records answering first ({error})")
+        return
+
+    import time
+
+    rover, done = _in_a_world()
+    try:
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        look = rover._world_store().observations(limit=1)[0]["id"]
+        _model_records(rover, [look], at=(3.0, 3.0))
+        found = rover.call("find_thing", {"description": "a bed"})
+        check("the world model's record is the thing found",
+              (found["found"], found["placed"]), (True, True))
+        check("...answered from its position, in metres and words",
+              (found["distance_m"], found["direction"]), (2.0, "to your right"))
+        check("...with how often it was seen", found["seen_times"], 1)
+        check("...and nothing of the model's vocabulary in it", _leaks(found), [])
+        check("...nor its record's name", "v7" in json.dumps(found), False)
+
+        going = rover.call("go_to_thing", {"description": "a bed"})
+        check("going to it sets off", going["ok"], True)
+        sent = rover.nav.sent[-1]
+        check("...for somewhere the record's position can be seen from",
+              math.hypot(sent["x_m"] - 3.0, sent["y_m"] - 3.0) < 3.0, True)
+        rover.nav.stop()
+
+        _model_records(rover, [look], at=(3.0, 3.0), state="gone", gone_at=time.time() - 120.0)
+        gone = rover.call("find_thing", {"description": "a bed"})
+        check("a record seen gone says the thing is no longer where it was",
+              "no longer there" in gone.get("no_longer_there", ""), True)
+
+        _model_records(rover, [look], at=(3.0, 3.0), age_s=3600.0)
+        stale = rover.call("find_thing", {"description": "a bed"})
+        check("records an hour old leave the answer to the store, whose thing has no position",
+              (stale["found"], stale["placed"]), (True, False))
+
+        _model_records(rover, [look], at=(3.0, 3.0), session=-1)
+        elsewhere = rover.call("find_thing", {"description": "a bed"})
+        check("records on another map leave the answer to the store too",
+              elsewhere["placed"], False)
+    finally:
+        done(rover)
+
+
 # --- helpers ----------------------------------------------------------------
 
 def _placed_id(rover) -> str:
@@ -527,5 +607,6 @@ TESTS = (
     test_going_to_a_thing_sets_off_and_answers_at_once,
     test_a_thing_with_nowhere_to_see_it_from_is_refused_in_words,
     test_a_found_thing_carries_what_was_measured_about_it,
+    test_the_world_models_records_answer_first,
     test_which_way_something_is_in_words,
 )

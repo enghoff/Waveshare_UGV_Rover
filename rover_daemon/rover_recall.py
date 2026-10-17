@@ -129,19 +129,39 @@ class RoverRecall:
         vector, error = self._world_embed(description)
         if error:
             return {"ok": False, "error": error}
-        answer = self._world_rank_things(vector)
+        # **The world model's records first** (version 4, chosen by the owner
+        # on 2026-10-17 over the store's own grouping: docs/progress/
+        # 2026-10-17-version-4-against-the-deployed-store-on-unseen-pictures.md),
+        # ranked the same way, by the average of every look a record holds. The
+        # store's things answer when the records cannot: none written, older than
+        # a quarter of an hour, or on another map.
+        records, _index = self._world_visit()
+        unusable = records.fresh()
+        if unusable:
+            answer = self._world_rank_things(vector)
+            lookup = self._world_store().entity
+        else:
+            answer = self._world_rank_visit(vector)
+            lookup = records.entity
         if not answer.get("ok"):
             return answer
-        store = self._world_store()
         for match in answer.get("matches") or []:
             if float(match["score"]) < answer["floor"]:
                 break
-            entity = store.entity(match["entity_id"])
+            entity = lookup(match["entity_id"])
             if entity is None:                      # cleared while we ranked it
                 continue
+            # Which memory answered, in the daemon's log and not in the answer:
+            # the model reads the answer out, and the person asking has no use
+            # for the name of the record behind it.
+            print("[recall] %r: %s %s at %.2f%s" % (
+                description, "world model" if not unusable else "store",
+                match["entity_id"], float(match["score"]),
+                "" if not unusable else " (%s)" % unusable), flush=True)
             return {"ok": True, "found": True, "entity": entity,
                     "id": match["entity_id"], "score": match["score"],
-                    "last_seen_at": entity.get("last_seen_at")}
+                    "last_seen_at": entity.get("last_seen_at"),
+                    "source": "world model" if not unusable else "store"}
         # In words, without the score: the model reads this out, and "the best
         # match scores 0.080 against the 0.100 a real match takes" is the
         # console's sentence, not something to say to a person in the room.
@@ -284,6 +304,15 @@ class RoverRecall:
                   "seen_times": entity.get("observation_count") or 0,
                   "last_seen": how_long_ago(recalled.get("last_seen_at")),
                   "first_seen": how_long_ago(entity.get("created_at"))}
+        # The world model knows what the store never could: that the place a
+        # thing was last seen at has since been seen empty. Said, because "it is
+        # by the window" about a thing that has been carried off is the answer
+        # the rover can now avoid giving.
+        if entity.get("gone_at"):
+            answer["no_longer_there"] = (
+                "when the rover looked at where it was last seen, %s, it was no "
+                "longer there; the place below is where it was last seen, not "
+                "where it is" % how_long_ago(entity["gone_at"]))
         place = self._placed_now(entity)
         if place is None:
             return {**answer, "placed": False,
