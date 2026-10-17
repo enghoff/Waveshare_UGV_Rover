@@ -37,8 +37,12 @@ class VisitStore:
     def load(self) -> bool:
         """Read the records again if the job has written them since; whether
         there are any."""
+        # The job writes a new file and renames it over the old one, so the
+        # inode changes with every write; a modification time alone can repeat
+        # within one clock tick (the rover's selftest wrote three in one).
         try:
-            stamp = os.path.getmtime(self.path)
+            st = os.stat(self.path)
+            stamp = (st.st_ino, st.st_mtime_ns, st.st_size)
         except OSError:
             self._stamp, self.payload, self.records, self.owner = None, {}, {}, {}
             return False
