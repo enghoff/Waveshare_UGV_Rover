@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Keep the world model's job up, and bring it back after a reboot: two
 # processes, each restarted if it stops.
 #
@@ -27,8 +27,12 @@ RETRY=30
 mkdir -p "$STATE"
 
 logger_loop() {
-    . "$HOME/ugv/ros_nav/env.sh" > /dev/null 2>&1
-    [ -f "$HOME/ugv/ros_nav/dds.sh" ] && . "$HOME/ugv/ros_nav/dds.sh" > /dev/null 2>&1
+    # From navigation's own directory, as everything that joins it does
+    # (dds.sh names its settings relative to it): sourced from anywhere else
+    # the logger starts, hears nothing and writes nothing.
+    cd "$HOME/ugv/ros_nav" && . ./env.sh > /dev/null 2>&1
+    . ./dds.sh > /dev/null 2>&1
+    cd "$DIR"
     while true; do
         echo "--- starting scan_log.py at $(date -Is) ---" >> "$LOG"
         nice -n 15 python3 "$DIR/scan_log.py" >> "$LOG" 2>&1
