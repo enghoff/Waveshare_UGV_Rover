@@ -2,6 +2,9 @@
 
 Status: agreed by the owner on 2026-10-08 ("yes"), for supervised runs, M3
 sessions and the first M4 trials. `executive.NAME_THE_TARGET` is the switch.
+Switched off on 2026-10-17: a run's things are now the world model's records,
+which the store's aimed filing does not know
+([entry](../progress/2026-10-17-autonomy-plans-around-the-world-models-records.md)).
 
 This is the case [the 2026-10-01 decision](identity-is-judged-action-by-action.md)
 asks for before an action relies on identity. The action is the geometry goal's

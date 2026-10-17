@@ -42,8 +42,11 @@ It runs on the rover beside the store and the voice tools answer from it,
 with the store as their fallback
 ([entry](../progress/2026-10-17-the-world-model-answers-find-thing.md)), and
 so does the console's world popup, with what the model has seen gone behind a
-box ([entry](../progress/2026-10-17-the-console-shows-the-world-models-records.md));
-the executive is next. It aims at
+box ([entry](../progress/2026-10-17-the-console-shows-the-world-models-records.md)).
+An autonomous run plans around its records too, with no fallback, since its
+steps carry the records' names
+([entry](../progress/2026-10-17-autonomy-plans-around-the-world-models-records.md));
+no run has driven on them yet. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
 [R-WS-2](../requirements/world-state.md#r-ws-2) and
@@ -245,7 +248,8 @@ Those conditions are retired.
    ordinary drives) rather than on a fixed number of clean drives
    ([entry](../progress/2026-10-17-version-4-against-the-deployed-store-on-unseen-pictures.md)).
 8. **In place of the resolver**, in stages, each proved before the next; the
-   deployed store keeps filing as it does and stays every consumer's fallback:
+   deployed store keeps filing as it does and stays the voice tools' and the
+   console's fallback:
    - *The model as a component* (`world_model/`): version 4's code and its
      frozen files (`metric-1015.npz`, `scale-1015.npz`, `walls.npz`), run
      incrementally: its memory saved after each run, and only visits closed
@@ -261,7 +265,11 @@ Those conditions are retired.
      model's records rather than the store's entities, with the store's
      answer when the records are missing or stale. Proof: spoken phrases
      through the rover.
-   - *Then the console and the executive*, one at a time.
+   - *Then the console and the executive*, one at a time; both moved on
+     2026-10-17, the executive without a fallback. Still ahead: a supervised
+     run driven on the records, and the model following a change of map
+     session (it is pinned to session 67, and on another its records stop
+     answering everywhere).
 
 **Paused meanwhile**: tuning the resolver and the record-moving step, and staged
 sessions for them. The shadow runner keeps acting on moved events as deployed;
