@@ -229,8 +229,13 @@ function wPlace(entity) {
       // the position was ever tested. Ten looks from one doorway and two from
       // opposite sides of the room are not the same evidence, and the count of
       // observations beside this cannot tell them apart.
-      + (place.viewpoints ? ` · agreed from ${place.viewpoints} place`
-                            + (place.viewpoints === 1 ? "" : "s")
+      // A world-model record counts the visits it was seen on instead, which
+      // is a different number: one visit can be looks from many places.
+      + (place.viewpoints ? (entity.kind === "record"
+                               ? ` · seen on ${place.viewpoints} visit`
+                                 + (place.viewpoints === 1 ? "" : "s")
+                               : ` · agreed from ${place.viewpoints} place`
+                                 + (place.viewpoints === 1 ? "" : "s"))
                           : "")
       + (place.refined_from ? `, fitted over ${place.refined_from} looks` : "");
   return line;
