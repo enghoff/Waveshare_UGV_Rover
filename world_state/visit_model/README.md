@@ -8,16 +8,21 @@ it always has; nothing here writes to it.
 
 ## What runs
 
-`job.py`, started at boot by `run_job.sh` from the `jetson` crontab
-(`install_job.sh` puts the line down) and reloaded by `restart_job.sh` after a
-deploy. Niced, inside navigation's ROS environment because it listens to the
-lidar. Every minute it:
+Two processes, kept up by `run_job.sh`, which the `jetson` crontab starts at
+boot (`install_job.sh` puts the line down) and `restart_job.sh` reloads after
+every world_state deploy, both niced:
+
+- `scan_log.py`, inside navigation's ROS environment (RoboStack's conda
+  Python), listens to the lidar and navigation's pose and writes what arrived
+  every 30 s to `~/.ugv/world/visit_model/lidar/`, kept 40 minutes;
+- `job.py`, on the system Python, where version 4 was verified -- the conda
+  environment has its own numpy and no PIL. Every minute it:
 
 1. reads the regions the store has added, once they are a minute old
    (`engine.prepare`: the loader, wall places, colour and the learned likeness,
    exactly as the desk pipeline builds them);
 2. files every visit that has closed (`engine.Engine.step`, `model.run`'s loop a
-   batch at a time), with the last half hour of lidar for absence;
+   batch at a time), with the last half hour of the logger's lidar for absence;
 3. writes, in `~/.ugv/world/visit_model/`:
    - `things.json`, the records: place, spread, state (present or gone), when
      seen, and the store's observation ids of each, for the daemon

@@ -2,9 +2,11 @@
 
     python3 job.py [--state DIR] [--every S] [--once]
 
-Run by run_job.sh inside the navigation environment (it subscribes to the
-lidar). Every `--every` seconds it reads the regions the store has added
-(read-only), lets the engine file every visit that has closed, and writes:
+Run by run_job.sh on the system Python, where version 4 was verified; the
+lidar comes from scan_log.py, which listens inside navigation's environment
+and writes it to `lidar/`. Every `--every` seconds it reads the regions the
+store has added (read-only), lets the engine file every visit that has
+closed, and writes:
 
 - `things.json`: the model's records -- place, state, when seen, and the
   store's observation ids of every region filed to each -- for the daemon to
@@ -30,7 +32,6 @@ import math
 import os
 import sqlite3
 import sys
-import threading
 import time
 
 import numpy as np
@@ -55,66 +56,38 @@ SCAN_MARGIN_S = 10.0
 SCANS_KEPT_S = 14 * 86400.0
 
 
-class Buffer:
-    """The lidar's scans and the two transforms, kept as bag_extract.py keeps
-    them (experiments/what_where/shadow.py's, on branch what-where)."""
-
-    def __init__(self):
-        import rclpy
-        from rclpy.qos import qos_profile_sensor_data
-        from sensor_msgs.msg import LaserScan
-        from tf2_msgs.msg import TFMessage
-        self.lock = threading.Lock()
-        self.scans, self.meta, self.odom, self.map = [], [], [], []
-        rclpy.init()
-        self.node = rclpy.create_node("visit_model_job")
-        self.node.create_subscription(LaserScan, "/scan", self._scan, qos_profile_sensor_data)
-        self.node.create_subscription(TFMessage, "/tf", self._tf, 100)
-        self.thread = threading.Thread(target=rclpy.spin, args=(self.node,), daemon=True)
-        self.thread.start()
-
-    @staticmethod
-    def _stamp(h):
-        return h.stamp.sec + h.stamp.nanosec * 1e-9
-
-    @staticmethod
-    def _yaw(q):
-        return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
-
-    def _scan(self, msg):
-        with self.lock:
-            self.scans.append(np.asarray(msg.ranges, dtype=np.float32))
-            self.meta.append((self._stamp(msg.header), time.time(), msg.angle_min,
-                              msg.angle_increment, msg.time_increment, msg.scan_time))
-
-    def _tf(self, msg):
-        with self.lock:
-            for t in msg.transforms:
-                row = (self._stamp(t.header), time.time(), t.transform.translation.x,
-                       t.transform.translation.y, self._yaw(t.transform.rotation))
-                if t.header.frame_id == "odom" and t.child_frame_id == "base_link":
-                    self.odom.append(row)
-                elif t.header.frame_id == "map" and t.child_frame_id == "odom":
-                    self.map.append(row)
-
-    def arrays(self):
-        """What the buffer holds, older than BUFFER_S dropped; None until it
-        holds scans and both transforms."""
-        with self.lock:
-            now = time.time()
-            k = [i for i, m in enumerate(self.meta) if now - m[1] <= BUFFER_S]
-            self.scans = [self.scans[i] for i in k]
-            self.meta = [self.meta[i] for i in k]
-            self.odom = [r for r in self.odom if now - r[1] <= BUFFER_S]
-            self.map = [r for r in self.map if now - r[1] <= BUFFER_S]
-            if len(self.scans) < 10 or len(self.odom) < 10 or len(self.map) < 1:
-                return None
-            width = max(len(s) for s in self.scans)
-            ranges = np.full((len(self.scans), width), np.nan, dtype=np.float32)
-            for i, s in enumerate(self.scans):
-                ranges[i, :len(s)] = s
-            return {"ranges": ranges, "scan_meta": np.array(self.meta),
-                    "odom_tf": np.array(self.odom), "map_tf": np.array(self.map)}
+def lidar(directory):
+    """The last BUFFER_S of lidar and pose that scan_log.py has written, as one
+    recording's arrays, or None while there is none."""
+    try:
+        names = sorted(n for n in os.listdir(directory) if n.endswith(".npz") and not n.startswith("."))
+    except OSError:
+        return None
+    now = time.time()
+    parts = []
+    for name in names:
+        try:
+            last = float(name[:-4].split("-")[1])
+        except (IndexError, ValueError):
+            continue
+        if now - last > BUFFER_S:
+            continue
+        try:
+            with np.load(os.path.join(directory, name)) as d:
+                parts.append({k: d[k] for k in ("ranges", "scan_meta", "odom_tf", "map_tf")})
+        except (OSError, ValueError, KeyError):
+            continue
+    if not parts:
+        return None
+    width = max(p["ranges"].shape[1] for p in parts)
+    ranges = np.concatenate([np.pad(p["ranges"], ((0, 0), (0, width - p["ranges"].shape[1])),
+                                    constant_values=np.nan) for p in parts])
+    out = {"ranges": ranges, "scan_meta": np.concatenate([p["scan_meta"] for p in parts]),
+           "odom_tf": np.concatenate([p["odom_tf"] for p in parts]),
+           "map_tf": np.concatenate([p["map_tf"] for p in parts])}
+    if len(out["scan_meta"]) < 10 or len(out["odom_tf"]) < 10 or len(out["map_tf"]) < 1:
+        return None
+    return out
 
 
 def _slice(arrays, t0, t1):
@@ -166,13 +139,13 @@ def write_json(path, payload):
     os.replace(tmp, path)
 
 
-def once(e, state, buf, log):
+def once(e, state, use_lidar, log):
     now = time.time()
     session = map_session(DB)
     if session != data.MAP_SESSION:
         log("the store is on map session %s, the model on %s: nothing read" % (session, data.MAP_SESSION))
         return 0
-    arrays = buf.arrays() if buf is not None else None
+    arrays = lidar(os.path.join(state, "lidar")) if use_lidar else None
     recs = [recorded.Recording(arrays=arrays)] if arrays is not None else []
     a = engine.prepare(DB, recs, after_id=e.last_id)
     if len(a["id"]):
@@ -265,12 +238,9 @@ def main():
         e = bootstrap(args.state, log)
         e.save(path)
     log("started: %d regions filed so far, last observation %d" % (len(e.filing), e.last_id))
-    buf = None if args.no_lidar else Buffer()
-    if buf is not None:
-        time.sleep(min(args.every, 30.0))  # some lidar before the first batch
     while True:
         try:
-            once(e, args.state, buf, log)
+            once(e, args.state, not args.no_lidar, log)
             prune(args.state)
         except Exception as exc:  # noqa: BLE001 - a bad batch must not stop the job
             log("batch failed: %r" % (exc,))
