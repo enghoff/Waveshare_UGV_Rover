@@ -73,6 +73,13 @@ ros_nav/fixtures/** -text
 # will not load.
 world_state/** text eol=lf
 
+# The world model's frozen arrays (world_state/visit_model/*.npz: its learned
+# likeness, the likeness's scale, the building's walls) are zip files, and the
+# rule above rewrote line endings inside metric-1015.npz when it was first
+# staged on 2026-10-17 -- the same trap as ros_nav/fixtures/, caught before
+# the commit by comparing the staged blob with the file.
+world_state/**/*.npz -text
+
 # .githooks/pre-commit is run by git through its bundled sh, so it falls into the
 # same trap as every rover script above: a CRLF checkout leaves a carriage return
 # on the end of the interpreter name and of the path it hands to python. The

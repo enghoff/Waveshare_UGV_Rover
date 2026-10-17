@@ -235,12 +235,28 @@ Those conditions are retired.
      red one has just left. Honesty is judged on the run with every picture
      and on five draws (`run_draws.sh`), a wrong merge in any of them, in any
      session, failing it; the rest measured as *What counts* says.
-7. **On the rover in shadow**: the model kept beside the deployed store from
-   the live looks, reports only. The next staged sessions and every ordinary
-   drive are its acceptance.
-8. **In place of the resolver**, once accepted, with the world state's
-   consumers (search, the executive's looks, the console) moved over one at a
-   time.
+7. **Chosen over the deployed store**, by the owner on 2026-10-17, on which
+   performs better on pictures neither was tuned on (session 7 and three
+   ordinary drives) rather than on a fixed number of clean drives
+   ([entry](../progress/2026-10-17-version-4-against-the-deployed-store-on-unseen-pictures.md)).
+8. **In place of the resolver**, in stages, each proved before the next; the
+   deployed store keeps filing as it does and stays every consumer's fallback:
+   - *The model as a component* (`world_model/`): version 4's code and its
+     frozen files (`metric-1015.npz`, `scale-1015.npz`, `walls.npz`), run
+     incrementally: its memory saved after each run, and only visits closed
+     since then taken in. Proof: run in pieces it files every region exactly
+     as one run over the whole history does.
+   - *The lidar it needs*: navigation's scans and poses kept while the rover
+     drives, in the recordings' format, since the change watch keeps only
+     per-cell tallies and the model's absence and lidar places read scans.
+   - *A job on the rover* that keeps the records up to date from the store's
+     new looks and writes them where the daemon reads them, as
+     `groups_job.py` does for groups; started from the whole history.
+   - *`find_thing` first*: things ranked by their average look over the
+     model's records rather than the store's entities, with the store's
+     answer when the records are missing or stale. Proof: spoken phrases
+     through the rover.
+   - *Then the console and the executive*, one at a time.
 
 **Paused meanwhile**: tuning the resolver and the record-moving step, and staged
 sessions for them. The shadow runner keeps acting on moved events as deployed;
