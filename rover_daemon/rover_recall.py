@@ -100,6 +100,32 @@ def how_long_ago(when: float | None) -> str:
     return "%d hours ago" % round(gap / 3600.0)
 
 
+#: Matches this close to the best are told apart by what is known about the
+#: records rather than by the phrase: a phrase scores the records of one object
+#: within about 0.01 of each other (2026-10-17, on the rover: the snowy painting's
+#: records at 0.102, 0.100 and 0.096, the bed's at 0.116 to 0.110).
+NEAR_TIE = 0.01
+
+
+def _present_and_recent_first(matches, floor, lookup):
+    """The world model's matches with the near-ties to the best reordered: a
+    thing still where it was before one seen gone, and the one seen most
+    recently first. The model keeps a record of each place a thing stood and
+    several of one thing it could not join, and "where is the bed" means where
+    it is now."""
+    if not matches:
+        return matches
+    best = float(matches[0]["score"])
+    near = [m for m in matches if float(m["score"]) >= max(floor, best - NEAR_TIE)]
+    rest = [m for m in matches if m not in near]
+
+    def key(match):
+        entity = lookup(match["entity_id"]) or {}
+        return (1 if entity.get("gone_at") else 0, -float(entity.get("last_seen_at") or 0.0))
+
+    return sorted(near, key=key) + rest
+
+
 class RoverRecall:
     """The two world-state tools a model is shown. Mixed into Rover."""
 
@@ -145,7 +171,10 @@ class RoverRecall:
             lookup = records.entity
         if not answer.get("ok"):
             return answer
-        for match in answer.get("matches") or []:
+        matches = answer.get("matches") or []
+        if not unusable:
+            matches = _present_and_recent_first(matches, answer["floor"], lookup)
+        for match in matches:
             if float(match["score"]) < answer["floor"]:
                 break
             entity = lookup(match["entity_id"])

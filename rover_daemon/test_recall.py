@@ -577,6 +577,59 @@ def test_the_world_models_records_answer_first() -> None:
         done(rover)
 
 
+def test_of_two_records_alike_the_present_and_recent_one_answers() -> None:
+    """The model keeps a record of each place a thing stood, and several of one
+    thing it could not join, which a phrase scores within about 0.01 of each
+    other. "Where is the bed" means where it is now: among near-ties a record
+    still where it was beats one seen gone, then the one seen most recently --
+    by its newest look, not the record's own time, which a merge leaves old."""
+    try:
+        import numpy  # noqa: F401
+        import rover_daemon  # noqa: F401
+    except ImportError as error:
+        SKIP.append(f"the present and recent record answering ({error})")
+        return
+
+    import time
+
+    rover, done = _in_a_world()
+    try:
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        time.sleep(0.05)
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        older, newer = sorted(o["id"] for o in rover._world_store().observations(limit=2))
+        store = rover._world_store()
+        folder = os.path.join(store.dir, "visit_model")
+        os.makedirs(folder, exist_ok=True)
+
+        def write(newer_state, newer_gone):
+            now = time.time()
+            base = {"spread_m": 0.15, "extent_m": 0.6, "height_m": None, "since": now - 600.0,
+                    "visits": 2, "seen_at": now - 86400.0 * 7}
+            things = [dict(base, id="v7", x_m=3.0, y_m=3.0, state="present", gone_at=None,
+                           path=[[3.0, 3.0, 0]], observations=[older]),
+                      dict(base, id="v8", x_m=1.0, y_m=5.0, state=newer_state, gone_at=newer_gone,
+                           path=[[1.0, 5.0, 0]], observations=[newer])]
+            with open(os.path.join(folder, "things.json.tmp"), "w") as f:
+                json.dump({"model": "test", "written_at": now, "map_session": store.map_session(),
+                           "things": things}, f)
+            os.replace(os.path.join(folder, "things.json.tmp"), os.path.join(folder, "things.json"))
+
+        write("present", None)
+        recent = rover.call("find_thing", {"description": "a bed"})
+        check("of two records alike, the one seen more recently answers",
+              (recent["distance_m"], recent["direction"]), (2.0, "straight ahead"))
+        check("...and when it was seen is its newest look's time, not the record's own",
+              recent["last_seen"], "just now")
+
+        write("gone", time.time())
+        present = rover.call("find_thing", {"description": "a bed"})
+        check("one seen gone gives way to one still where it was",
+              (present["distance_m"], present["direction"]), (2.0, "to your right"))
+    finally:
+        done(rover)
+
+
 # --- helpers ----------------------------------------------------------------
 
 def _placed_id(rover) -> str:
@@ -608,5 +661,6 @@ TESTS = (
     test_a_thing_with_nowhere_to_see_it_from_is_refused_in_words,
     test_a_found_thing_carries_what_was_measured_about_it,
     test_the_world_models_records_answer_first,
+    test_of_two_records_alike_the_present_and_recent_one_answers,
     test_which_way_something_is_in_words,
 )

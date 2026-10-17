@@ -32,7 +32,8 @@ class VisitStore:
         self.payload: dict[str, Any] = {}
         self.records: dict[str, dict[str, Any]] = {}
         self.owner: dict[int, str] = {}
-        self._looks: dict[int, tuple[str, int | None]] = {}
+        self._looks: dict[int, tuple[str | None, int]] = {}
+        self._taken: dict[int, float] = {}
 
     def load(self) -> bool:
         """Read the records again if the job has written them since; whether
@@ -75,18 +76,35 @@ class VisitStore:
 
     def _backends(self) -> dict[int, tuple[str, int]]:
         """(backend, id) of every held observation that has a searchable vector,
-        read once each: an observation's vector is never rewritten."""
+        read once each, with when it was taken: an observation's vector and time
+        are never rewritten."""
         missing = [i for i in self.owner if i not in self._looks]
         for k in range(0, len(missing), 900):
             part = missing[k:k + 900]
             with self.store._lock:
                 rows = self.store.db.execute(
-                    "SELECT id, vectors_from FROM observations WHERE siglip_blob IS NOT NULL"
-                    f" AND id IN ({','.join('?' * len(part))})", part).fetchall()
-            found = {int(r[0]): (r[1] or "") for r in rows}
+                    "SELECT id, vectors_from, siglip_blob IS NOT NULL, observed_at FROM observations"
+                    f" WHERE id IN ({','.join('?' * len(part))})", part).fetchall()
+            found = {int(r[0]): ((r[1] or "") if r[2] else None, float(r[3] or 0.0)) for r in rows}
             for i in part:
-                self._looks[i] = (found.get(i), i) if i in found else (None, i)
+                backend, taken = found.get(i, (None, 0.0))
+                self._looks[i] = (backend, i)
+                self._taken[i] = taken
         return {i: v for i, v in self._looks.items() if i in self.owner and v[0] is not None}
+
+    def newest_look(self, record_id: str) -> float | None:
+        """When the newest look a record holds was taken.
+
+        **Not the record's own `seen_at`**: when the model folds one record into
+        another it keeps the survivor's time (model.Memory.merge), so a painting
+        whose looks run to this morning could say it was last seen a week ago
+        (2026-10-17, on the rover)."""
+        r = self.records.get(record_id)
+        if r is None:
+            return None
+        self._backends()
+        times = [self._taken.get(int(i), 0.0) for i in r["observations"]]
+        return max(times) if times else None
 
     def thing_prints(self) -> dict[tuple[str, str], tuple[int, int, int]]:
         """As `Store.thing_prints`: per record and backend, how many looks with
@@ -131,7 +149,7 @@ class VisitStore:
             "id": record_id,
             "observation_count": len(r["observations"]),
             "created_at": first,
-            "last_seen_at": r.get("seen_at"),
+            "last_seen_at": self.newest_look(record_id) or r.get("seen_at"),
             "placement_map_session": self.payload.get("map_session"),
             "placement": {
                 "x_m": r["x_m"], "y_m": r["y_m"],
