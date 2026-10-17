@@ -34,6 +34,7 @@ class VisitStore:
         self.owner: dict[int, str] = {}
         self._looks: dict[int, tuple[str | None, int]] = {}
         self._taken: dict[int, float] = {}
+        self._newest: dict[str, float] | None = None
 
     def load(self) -> bool:
         """Read the records again if the job has written them since; whether
@@ -56,6 +57,7 @@ class VisitStore:
             self._stamp, self.payload = stamp, payload
             self.records = {r["id"]: r for r in payload.get("things") or []}
             self.owner = {int(i): r["id"] for r in self.records.values() for i in r["observations"]}
+            self._newest = None
         return bool(self.records)
 
     def fresh(self) -> str:
@@ -99,12 +101,18 @@ class VisitStore:
         another it keeps the survivor's time (model.Memory.merge), so a painting
         whose looks run to this morning could say it was last seen a week ago
         (2026-10-17, on the rover)."""
-        r = self.records.get(record_id)
-        if r is None:
-            return None
-        self._backends()
-        times = [self._taken.get(int(i), 0.0) for i in r["observations"]]
-        return max(times) if times else None
+        if self._newest is None:
+            # Once per version of the records: asked for every record in a
+            # list, this was the whole of a 13 s answer when each asking read
+            # every look again (2026-10-17).
+            self._backends()
+            newest: dict[str, float] = {}
+            for i, rid in self.owner.items():
+                t = self._taken.get(i, 0.0)
+                if t > newest.get(rid, 0.0):
+                    newest[rid] = t
+            self._newest = newest
+        return self._newest.get(record_id)
 
     def thing_prints(self) -> dict[tuple[str, str], tuple[int, int, int]]:
         """As `Store.thing_prints`: per record and backend, how many looks with
