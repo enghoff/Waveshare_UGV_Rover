@@ -500,7 +500,7 @@ def test_which_way_something_is_in_words() -> None:
 # --- the world model's records ------------------------------------------------
 
 def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
-                   gone_at=None, session=None):
+                   gone_at=None, session=None, height_m=None):
     """The world model's job's output (world_state/visit_model/job.py), written
     where world_state/visit_things.py reads it: one record holding the given
     looks, standing at `at`."""
@@ -511,10 +511,11 @@ def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
     os.makedirs(folder, exist_ok=True)
     now = time.time()
     record = {"id": "v7", "x_m": at[0], "y_m": at[1], "spread_m": 0.15, "extent_m": 0.6,
-              "height_m": None, "state": state, "seen_at": now - 60.0, "since": now - 600.0,
+              "height_m": height_m, "state": state, "seen_at": now - 60.0, "since": now - 600.0,
               "gone_at": gone_at, "visits": 3, "path": [[at[0], at[1], round(now - 600.0)]],
               "observations": list(observation_ids)}
-    payload = {"model": "test", "written_at": now - age_s,
+    payload = {"model": "test", "written_at": now - age_s, "generation": "0123456789abcdef",
+               "filed_until": now - age_s - 90.0,
                "map_session": store.map_session() if session is None else session,
                "things": [record]}
     with open(os.path.join(folder, "things.json"), "w") as f:
@@ -635,8 +636,7 @@ def test_the_console_reads_the_world_models_records() -> None:
     the world model's records in the store entities' shape, each with `gone`;
     one of them by name, with its looks; and a search's looks named by the
     record that holds them. Records that may not answer leave all three to the
-    store, and the executive -- which asks without `source` -- reads the store
-    either way."""
+    store, and a caller that names no source reads the store either way."""
     try:
         import numpy  # noqa: F401
         import rover_daemon  # noqa: F401
@@ -658,7 +658,7 @@ def test_the_console_reads_the_world_models_records() -> None:
               [("v7", True, 3.0)])
         check("...with the rays of its own looks", len(listed["entities"][0]["rays"]), 1)
         check("...and a count of the records still present", listed["summary"]["entities"], 0)
-        check("the executive's list is still the store's",
+        check("a list asked for without a source is still the store's",
               rover.call("world_state_entities", {}).get("source"), "store")
 
         one = rover.call("world_state_entity", {"id": "v7"})
@@ -672,6 +672,47 @@ def test_the_console_reads_the_world_models_records() -> None:
         _model_records(rover, [look], at=(3.0, 3.0), age_s=3600.0)
         stale = rover.call("world_state_entities", {"source": "model"})
         check("records an hour old leave the console to the store", stale.get("source"), "store")
+    finally:
+        done(rover)
+
+
+def test_autonomy_reads_the_world_models_records_or_none() -> None:
+    """Autonomy asks for the model's records with no fallback and no sight
+    lines: a run carries the records' names from one step to the next, so the
+    store's things, named differently, would be strangers to it. It gets each
+    record's place with its height, what names the records, and up to when
+    the model has filed; and records that may not answer are an error saying
+    why, not the store's list."""
+    try:
+        import numpy  # noqa: F401
+        import rover_daemon  # noqa: F401
+    except ImportError as error:
+        SKIP.append(f"autonomy reading the world model's records ({error})")
+        return
+
+    asked = {"source": "model", "fallback": False, "rays": False}
+    rover, done = _in_a_world()
+    try:
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        look = rover._world_store().observations(limit=1)[0]["id"]
+        _model_records(rover, [look], at=(3.0, 3.0), height_m=0.3)
+        listed = rover.call("world_state_entities", asked)
+        check("autonomy's things are the model's records",
+              (listed.get("source"), [one["id"] for one in listed["entities"]]), ("model", ["v7"]))
+        entity = listed["entities"][0]
+        check("...placed, with the height its tilt is worked out from",
+              (entity["placement"]["x_m"], entity["placement"]["height_m"], entity["gone"]),
+              (3.0, 0.3, False))
+        check("...without sight lines or the newest looks",
+              ("rays" in entity, "recent" in listed), (False, False))
+        check("...named under the records' generation, with how far the model has filed",
+              (listed["generation"], listed["filed_until"] is not None), ("0123456789abcdef", True))
+
+        _model_records(rover, [look], at=(3.0, 3.0), age_s=3600.0)
+        stale = rover.call("world_state_entities", asked)
+        check("records an hour old are an error, not the store's list",
+              (stale["ok"], stale.get("source"), "60 minutes old" in stale.get("error", "")),
+              (False, "model", True))
     finally:
         done(rover)
 
@@ -709,5 +750,6 @@ TESTS = (
     test_the_world_models_records_answer_first,
     test_of_two_records_alike_the_present_and_recent_one_answers,
     test_the_console_reads_the_world_models_records,
+    test_autonomy_reads_the_world_models_records_or_none,
     test_which_way_something_is_in_words,
 )

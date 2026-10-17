@@ -52,7 +52,17 @@ WORLD_STALE_S = 600.0
 ENTITY_FIELDS = ("id", "kind", "label", "observation_count", "created_at",
                  "last_seen_at", "placement", "placement_uncertainty_m",
                  "placement_map_session", "last_map_session", "ranging",
-                 "exemplar_count", "same_object_suspects", "group_mates")
+                 "exemplar_count", "same_object_suspects", "group_mates", "gone")
+
+#: How the things are asked for: the world model's records (version 4, kept per
+#: visit; docs/plans/a-world-model-kept-per-visit.md), without the sight lines
+#: only the console draws, and **with no fallback to the store's things**. A run
+#: carries the records' names from one step to the next -- what it aimed at,
+#: what it has put aside -- and the store names the same things differently, so
+#: a reading that switched would make strangers of what the run just did. When
+#: the records cannot answer, the reading holds no things and says why; a run
+#: still explores and looks at changes (agreed with the owner, 2026-10-17).
+THINGS_FROM = {"source": "model", "fallback": False, "rays": False}
 
 
 def claimed_m(entity: dict[str, Any]) -> float | None:
@@ -106,7 +116,18 @@ class Situation:
 
     @property
     def entities(self) -> list[dict[str, Any]]:
-        return list(self.body.get("entities") or [])
+        """The things a decision may plan around: every record but those the
+        world model has seen gone, which stand nowhere now. The reading keeps
+        those too, so the record shows what was left out."""
+        return [one for one in self.body.get("entities") or [] if not one.get("gone")]
+
+    @property
+    def things(self) -> dict[str, Any]:
+        """Where the things came from: `source`, the `generation` their names
+        are minted under and `filed_until`, the time up to which the world
+        model has filed looks -- one taken since is in no record yet -- or
+        `error` when the records could not answer."""
+        return dict(self.body.get("things") or {})
 
     @property
     def inspections(self) -> list[dict[str, Any]]:
@@ -352,10 +373,24 @@ class Situation:
         body["world_generation"] = summary.get("world_generation") or refs.UNKNOWN
         body["map_session"] = summary.get("map_session")
 
-        listing = _try(client, "world_state_entities")
-        body["entities"] = [
-            {field: one.get(field) for field in ENTITY_FIELDS if field in one}
-            for one in (listing.get("entities") or [])]
+        listing = _try(client, "world_state_entities", THINGS_FROM)
+        if listing.get("ok") and listing.get("source") == "model":
+            body["things"] = {key: listing.get(key) for key in
+                              ("source", "generation", "filed_until", "written_at")}
+            body["entities"] = [
+                {field: one.get(field) for field in ENTITY_FIELDS if field in one}
+                for one in (listing.get("entities") or [])]
+            # The records' names are minted under the model's generation, not
+            # the store's, and a reference to one must say so (refs.py).
+            if listing.get("generation"):
+                body["world_generation"] = listing["generation"]
+        else:
+            # Not the records -- they could not answer, or a daemon too old to
+            # have them answered with the store's things -- so no things at all.
+            body["things"] = {"source": listing.get("source"),
+                              "error": listing.get("error")
+                              or "the world model's records did not answer"}
+            body["entities"] = []
 
         nav = _try(client, "nav_status")
         body["nav"] = ({key: nav.get(key) for key in

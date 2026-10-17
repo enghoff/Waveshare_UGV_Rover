@@ -177,8 +177,11 @@ RUN_GATES = frozenset({"stopped", "autonomy not enabled",
 #: Whether a geometry goal's look names the thing it is aimed at, so that the
 #: world state files the region at the aim to it (world_state/aimed.py). An
 #: action that relies on identity, agreed by the owner for supervised runs on
-#: 2026-10-08: docs/decisions/aimed-looks-file-to-their-target.md.
-NAME_THE_TARGET = True
+#: 2026-10-08: docs/decisions/aimed-looks-file-to-their-target.md. **Off since
+#: 2026-10-17**: a run's things are the world model's records
+#: (`situation.THINGS_FROM`), which the store's aimed filing does not know, and
+#: the model files the look itself when its visit closes.
+NAME_THE_TARGET = False
 
 #: The role an M4 trial's re-look steps carry in the record: a turn on the spot
 #: to face the thing and one aimed look at it, from where the rover stood when it
@@ -755,9 +758,19 @@ class Executive:
                 # What changed is the re-look's and the chosen look's together;
                 # M4's scoring separates them against the snapshot.
                 measured["with_relook"] = True
-            if was is not None and now is not None:
+            # **The world model files a look minutes after it is taken**: when
+            # its visit closes (30 s without a look, or 150 s on) and a minute
+            # more, so straight afterwards the placement is the one from before
+            # the look and says nothing of it. Said so, rather than "no better".
+            filed = _filed(after)
+            if not filed:
+                measured["filed"] = False
+            if was is not None and now is not None and filed:
                 measured["placement_improved_m"] = round(was - now, 3)
-            what = _said_geometry(candidate["target"], was, now)
+            what = (_said_geometry(candidate["target"], was, now) if filed else
+                    f"looked at {candidate['target']}; the world model files the "
+                    f"look within a few minutes, so what it did for the placement "
+                    f"shows later")
             # Put aside if it got nowhere, written where the next deliberation
             # reads its cooling from. See `cooling.after_attempt`.
             cooled = decide_mod._loads(self.store.marked(decide_mod.COOLED_MARK)) or []
@@ -767,15 +780,19 @@ class Executive:
             # where it claims, and such a record is set aside for longer
             # (`cooling.EMPTY_COOLDOWN_S`); one taken from where the camera
             # could not see the place says nothing of the kind.
+            # Only a look that named its target is filed by aim; the world
+            # model's records are not (`NAME_THE_TARGET`), and a record the
+            # model finds missing it marks gone itself.
             filing = (looked or {}).get("aimed_filing") or {}
-            seen_empty = (bool(looked) and not filing.get("filed")
+            seen_empty = (NAME_THE_TARGET and bool(looked) and not filing.get("filed")
                           and "points at it" in str(filing.get("why") or "")
                           and candidate["constraints"].get("in_depth_view") is True)
             if seen_empty:
                 measured["seen_empty"] = True
             now_cooled = cooling.after_attempt(cooled, candidate["target"],
                                                before.as_dict(), after.as_dict(),
-                                               now=after.at, seen_empty=seen_empty)
+                                               now=after.at, seen_empty=seen_empty,
+                                               filed=filed)
             if now_cooled != cooled:
                 self.store.mark(decide_mod.COOLED_MARK, decide_mod._dumps(now_cooled))
                 measured["put_aside"] = True
@@ -1180,6 +1197,16 @@ def _change_near(here: situation_mod.Situation,
         if gap <= gap_best:
             best, gap_best = one, gap
     return best
+
+
+def _filed(here: situation_mod.Situation) -> bool:
+    """Whether the world model had filed every look taken before `here` was
+    read: a reading of the store's things, or of none, has nothing pending."""
+    things = here.things
+    if things.get("source") != "model":
+        return True
+    until = things.get("filed_until")
+    return until is not None and float(until) >= here.at
 
 
 def _uncertainty(here: situation_mod.Situation, target: str) -> float | None:

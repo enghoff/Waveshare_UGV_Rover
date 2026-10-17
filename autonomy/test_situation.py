@@ -136,8 +136,42 @@ def test_a_situation_holds_no_handle_on_anything() -> None:
           situation_mod.Situation.from_json(text).where, here.where)
 
 
+def test_the_things_are_the_world_models_records_and_none_when_they_cannot_answer() -> None:
+    """Since 2026-10-17 a reading's things are the world model's records,
+    asked for with no fallback (`situation.THINGS_FROM`): a run carries their
+    names from one step to the next, and the store names the same things
+    differently. A record the model has seen gone stays in the reading but is
+    planned around by nothing; records that cannot answer leave no things, and
+    the reading says why."""
+    import goals
+
+    worth = dict(a_thing("v1", 1.6, 1.0, uncertainty_m=0.6, major_deg=90.0))
+    gone = dict(a_thing("v2", 1.0, 1.4, uncertainty_m=0.6, major_deg=90.0), gone=True)
+    rover = FakeRover(room=ROOM, entities=[worth, gone])
+    rover.generation = "0123456789abcdef"
+    here = situation_mod.Situation.read(rover, at=1757320800.0)
+    check("the things are the world model's", here.things.get("source"), "model")
+    check("...named under its generation", here.world_generation, "0123456789abcdef")
+    check("...with when it last filed", here.things.get("filed_until") is not None, True)
+    check("the gone record is in the reading", len(here.body["entities"]), 2)
+    check("...and planned around by nothing",
+          [one["id"] for one in here.entities], ["v1"])
+    check("...so only the other is a goal",
+          sorted({one.target for one in goals.generate(here)
+                  if one.type == "improve_geometry"}), ["v1"])
+
+    rover.records_down = "the world model's records are 20 minutes old"
+    down = situation_mod.Situation.read(rover, at=1757320800.0)
+    check("records that cannot answer leave no things, not the store's",
+          (down.entities, down.body["entities"]), ([], []))
+    check("...and the reading says why", down.things.get("error"), rover.records_down)
+    check("...so there is no goal at a thing",
+          [one for one in goals.generate(down) if one.type == "improve_geometry"], [])
+
+
 TESTS = (
     test_the_situation_is_read_through_the_door_that_only_opens_outwards,
+    test_the_things_are_the_world_models_records_and_none_when_they_cannot_answer,
     test_an_unknown_cell_does_not_read_as_a_wall,
     test_a_rover_with_no_map_says_so_rather_than_reporting_an_empty_house,
     test_the_things_that_would_stop_a_decision_are_named,

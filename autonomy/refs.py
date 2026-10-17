@@ -69,8 +69,10 @@ UNKNOWN = "unknown"
 GENERATION = re.compile(r"^[0-9a-f]{16}$")
 
 #: A local identifier is `kind:number`, which is what `WorldStore.allocate`
-#: returns. The one character it must not contain is the separator.
-LOCAL = re.compile(r"^[A-Za-z][A-Za-z0-9_]*:[0-9]+$")
+#: returns, or the world model's `v12` (world_state/visit_model/, a run's things
+#: since 2026-10-17), whose generation is the model's own rather than the
+#: store's. The one character it must not contain is the separator.
+LOCAL = re.compile(r"^(?:[A-Za-z][A-Za-z0-9_]*:[0-9]+|v[0-9]+)$")
 
 _HEX = re.compile(r"^[0-9a-f]{64}$")
 

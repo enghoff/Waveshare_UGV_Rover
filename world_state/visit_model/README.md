@@ -24,9 +24,10 @@ every world_state deploy, both niced:
 2. files every visit that has closed (`engine.Engine.step`, `model.run`'s loop a
    batch at a time), with the last half hour of the logger's lidar for absence;
 3. writes, in `~/.ugv/world/visit_model/`:
-   - `things.json`, the records: place, spread, state (present or gone), when
-     seen, and the store's observation ids of each, for the daemon
-     (`world_state/visit_things.py`);
+   - `things.json`, the records: place, spread, height, state (present or
+     gone), when seen, and the store's observation ids of each, for the daemon
+     (`world_state/visit_things.py`), with `filed_until`, up to when looks are
+     filed, and `generation`, what the records' names `v12` are minted under;
    - `engine.pkl`, the engine, so a restart carries on where it stopped;
    - `decisions.jsonl`, what each visit decided;
    - `scans/`, the lidar and pose over each batch, in the drive recordings'
@@ -35,7 +36,9 @@ every world_state deploy, both niced:
 
 With no `engine.pkl` it first files the whole history (about two and a half
 minutes), with the drive recordings in `~/.ugv/world/visit_model/recordings/`
-read in name order, as the desk's `run_versions.sh` lists them.
+read in name order, as the desk's `run_versions.sh` lists them, then its own
+`scans/` in time order, under a new `generation`. One it cannot read is kept
+as `engine.pkl.bad` and the history is filed the same way.
 
 ## What is frozen
 
@@ -58,11 +61,17 @@ version 4 and are not refitted here.
 
 ## What reads it
 
-The voice tools `find_thing` and `go_to_thing` (since 2026-10-17,
-`rover_daemon/rover_recall.py` through `world_state/visit_things.py`), with the
-store's own things answering when the records are missing, older than fifteen
-minutes or on another map. The console, the executive and the resolver still
-read the store's entities (the plan's step 8, in order).
+All since 2026-10-17, through `world_state/visit_things.py`:
+
+- the voice tools `find_thing` and `go_to_thing`
+  (`rover_daemon/rover_recall.py`) and the console's world popup, with the
+  store's own things answering when the records are missing, older than fifteen
+  minutes or on another map;
+- an autonomous run (`autonomy/situation.py`), with **no** fallback: it carries
+  the records' names from step to step, and the store names things
+  differently. With no records it plans around no things, and says why.
+
+The resolver still files to the store's entities.
 
 ## What to know when changing it
 
@@ -78,3 +87,10 @@ read the store's entities (the plan's step 8, in order).
   after they are taken away.
 - **Changing `deploy/manifest.json` redeploys every component**, navigation
   included; restarting navigation leaves its position unconfirmed until a refit.
+- **Everything it writes is on disk before it is renamed into place.** On
+  2026-10-17 a power cut left an empty lidar file under a real name, and every
+  batch failed on it for the half hour it stayed in the job's buffer, while the
+  records went stale and every reader fell back to the store. An unreadable
+  lidar file is now skipped as well.
+- **The model is pinned to one map session** (`data.MAP_SESSION`, 67). On
+  another, the job reads nothing and its records stop answering.

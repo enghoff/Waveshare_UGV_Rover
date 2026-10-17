@@ -182,21 +182,55 @@ def test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it():
           drive["params"].get("heading_deg") is not None, True)
     check("...and the look is aimed at the thing",
           look["params"].get("aim_at"), {"x_m": 1.2, "y_m": -0.4})
-    check("...and names it, so its region is filed to it (agreed 2026-10-08)",
-          str(look["params"].get("target") or "").startswith("object:"), True)
+    check("...and names nothing: the store does not know the model's records",
+          "target" in look["params"], False)
     session.close()
     import executive as executive_mod
-    executive_mod.NAME_THE_TARGET = False
+    executive_mod.NAME_THE_TARGET = True
     try:
         session = Session()
         _arriving(session)
         got = session.executive.once()
         _drive, look = session.calls(got["episode"])
-        check("...and names nothing with the case switched off",
-              "target" in look["params"], False)
+        check("...and names it with the case switched on, so the store files its "
+              "region to it (agreed 2026-10-08)",
+              str(look["params"].get("target") or "").startswith("object:"), True)
         session.close()
     finally:
-        executive_mod.NAME_THE_TARGET = True
+        executive_mod.NAME_THE_TARGET = False
+
+
+def test_a_look_the_world_model_has_not_filed_is_said_so_and_put_aside():
+    """The world model files a look when its visit closes, minutes after it
+    is taken, so the placement read straight afterwards is the one from before
+    it. The attempt says so rather than "no better", and the thing is put aside
+    all the same, or the next deliberation would send the rover straight back;
+    once filed, the improvement is measured as before."""
+    def attempt_with(filed_ahead_s):
+        rover = test_fakes.ActingRover(room=ROOM, entities=[a_thing()])
+        rover.filed_ahead_s = filed_ahead_s
+        session = Session(rover)
+        _arriving(session)
+        got = session.executive.once()
+        attempt = [one["body"] for one in session.events(got["episode"])
+                   if one["kind"] == "measured" and one["body"].get("what") == "the attempt"]
+        cooled = decide_mod._loads(session.store.marked(decide_mod.COOLED_MARK)) or []
+        said = str(session.store.outcome(got["episode"]))
+        session.close()
+        return {**attempt[-1], "said": said}, cooled
+
+    pending, cooled = attempt_with(0.0)
+    check("an unfiled look is said to be unfiled", pending.get("filed"), False)
+    check("...with no improvement claimed either way",
+          "placement_improved_m" in pending, False)
+    check("...in words a person reads",
+          "files the look within a few minutes" in pending["said"], True)
+    check("...and the thing is put aside until the filed look shows",
+          [("not filed the look yet" in one["why"]) for one in cooled
+           if one["target"] == "object:19"], [True])
+    filed, _cooled = attempt_with(3600.0)
+    check("a filed look is measured as before",
+          ("filed" in filed, "placement_improved_m" in filed), (False, True))
 
 
 def test_a_geometry_look_tilts_level_only_when_the_thing_needs_it():
@@ -286,9 +320,9 @@ def test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands():
               (turn["x_m"], turn["y_m"]), (round(here["x_m"], 3), round(here["y_m"], 3)))
         facing = math.degrees(math.atan2(-0.4 - here["y_m"], 1.2 - here["x_m"]))
         check("...facing the thing", abs(turn["heading_deg"] - facing) < 0.1, True)
-        check("...and its look is aimed at the thing and names it",
+        check("...and its look is aimed at the thing, naming nothing (NAME_THE_TARGET)",
               (relook.get("aim_at"), relook.get("target")),
-              ({"x_m": 1.2, "y_m": -0.4}, "object:19"))
+              ({"x_m": 1.2, "y_m": -0.4}, None))
         measured = [one["body"] for one in session.events(episode)
                     if one["kind"] == "measured" and one["body"].get("with_relook")]
         check("...and the measurement says it holds both looks' change",
@@ -412,24 +446,36 @@ def test_a_relook_turns_the_gimbal_when_it_can():
 
 def test_a_look_that_could_see_the_place_and_found_nothing_sets_it_aside_longer():
     """A record whose aimed look, taken with its place in the depth camera's
-    view, filed nothing is probably not where it claims (2026-10-08)."""
-    thing = a_thing()
-    thing["placement"]["height_m"] = 0.3
-    rover = test_fakes.ActingRover(room=ROOM, entities=[thing])
-    rover.inspection = {**dict(rover.inspection), "aimed_filing": {
-        "filed": None, "why": "no region of the look points at it"}}
-    session = Session(rover)
-    _arriving(session)
-    got = session.executive.once()
-    attempt = [one["body"] for one in session.events(got["episode"])
-               if one["kind"] == "measured" and one["body"].get("what") == "the attempt"]
-    check("the attempt says the place was seen empty",
-          attempt[-1].get("seen_empty"), True)
-    cooled = decide_mod._loads(session.store.marked(decide_mod.COOLED_MARK))
-    entry = [one for one in cooled if one["target"] == "object:19"][0]
-    check("...and the record is aside for two hours",
-          entry["until"] - entry["since"], cooling.EMPTY_COOLDOWN_S)
-    session.close()
+    view, filed nothing is probably not where it claims (2026-10-08). Only a
+    look that named its target is filed by aim (`NAME_THE_TARGET`, off since
+    the run's things are the world model's records)."""
+    import executive as executive_mod
+
+    def attempt_at(named):
+        thing = a_thing()
+        thing["placement"]["height_m"] = 0.3
+        rover = test_fakes.ActingRover(room=ROOM, entities=[thing])
+        rover.inspection = {**dict(rover.inspection), "aimed_filing": {
+            "filed": None, "why": "no region of the look points at it"}}
+        executive_mod.NAME_THE_TARGET = named
+        try:
+            session = Session(rover)
+            _arriving(session)
+            got = session.executive.once()
+        finally:
+            executive_mod.NAME_THE_TARGET = False
+        attempt = [one["body"] for one in session.events(got["episode"])
+                   if one["kind"] == "measured" and one["body"].get("what") == "the attempt"]
+        cooled = decide_mod._loads(session.store.marked(decide_mod.COOLED_MARK))
+        entry = [one for one in cooled if one["target"] == "object:19"][0]
+        session.close()
+        return attempt[-1].get("seen_empty"), entry["until"] - entry["since"]
+
+    seen_empty, aside = attempt_at(True)
+    check("a named look says the place was seen empty", seen_empty, True)
+    check("...and the record is aside for two hours", aside, cooling.EMPTY_COOLDOWN_S)
+    check("a look that named nothing is aside for the ordinary while",
+          attempt_at(False), (None, cooling.COOLDOWN_S))
 
 
 def test_a_geometry_look_records_and_leaves_settling_to_the_rover():
@@ -1011,6 +1057,7 @@ def test_a_goal_that_got_nowhere_is_not_chosen_again():
 
 
 TESTS = (test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands,
+         test_a_look_the_world_model_has_not_filed_is_said_so_and_put_aside,
          test_a_change_is_looked_at_once_and_then_worth_nothing,
          test_a_look_at_a_change_that_fails_is_an_attempt_for_less,
          test_an_m4_trial_looks_only_at_its_targets,

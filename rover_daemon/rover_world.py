@@ -1128,21 +1128,29 @@ class RoverWorld:
     def _tool_world_state_entities(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Every entity, with the rays its recent observations support.
 
-        With `source: "model"` -- the console asks this way -- the world model's
-        records instead (`_world_visit`), in the same shape and with `gone` on
-        each, whenever they may answer; the store's entities when they may not.
-        `source` in the reply says which. The executive asks without it and
-        reads the store's entities, until it is moved over in its turn
-        (docs/plans/a-world-model-kept-per-visit.md, step 8).
+        With `source: "model"` -- the console and autonomy ask this way -- the
+        world model's records instead (`_world_visit`), in the same shape and
+        with `gone` on each, whenever they may answer; the store's entities
+        when they may not, unless `fallback` is false, when the answer is that
+        they cannot and why. `source` in the reply says which. `rays: false`
+        leaves out the sight lines and the newest looks, which only the
+        console draws.
         """
         why = self._world_ready()
         if why:
             return {"ok": False, "error": why}
         store = self._world_store()
-        if (arguments or {}).get("source") == "model":
+        arguments = arguments or {}
+        if arguments.get("source") == "model":
             records, _index = self._world_visit()
-            if not records.fresh():
-                return self._world_model_entities(store, records)
+            why = records.fresh()
+            if not why:
+                return self._world_model_entities(store, records,
+                                                  rays=arguments.get("rays", True) is not False)
+            if arguments.get("fallback", True) is False:
+                # Autonomy's: a run carries the records' names from one step to
+                # the next, and the store's would be strangers to it.
+                return {"ok": False, "error": why, "source": "model"}
         entities = store.entities()
         # Whether each thing has ever had its distance measured, and where it
         # has not, whether looking again could ever change that. One query for
@@ -1183,17 +1191,26 @@ class RoverWorld:
                             limit: int) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         """One of the world model's records shaped as a store entity, and its
         newest `limit` looks."""
-        entity = records.entity(record_id)
         held = sorted(records.records[record_id]["observations"])
         observations = store.observations(ids=held[-limit:], limit=limit)
+        return self._world_model_thing(records, record_id), observations
+
+    @staticmethod
+    def _world_model_thing(records, record_id: str) -> dict[str, Any]:
+        """One of the world model's records shaped as a store entity."""
+        entity = records.entity(record_id)
         entity.update(kind="record", gone=bool(entity.get("gone_at")), ranging=None,
                       same_object_suspects=[], group_mates=[])
-        return entity, observations
+        return entity
 
-    def _world_model_entities(self, store, records) -> dict[str, Any]:
-        """`world_state_entities`, from the world model's records."""
+    def _world_model_entities(self, store, records, *, rays: bool = True) -> dict[str, Any]:
+        """`world_state_entities`, from the world model's records; with
+        `rays` false, without their sight lines or the newest looks."""
         entities = []
         for record_id in records.records:
+            if not rays:
+                entities.append(self._world_model_thing(records, record_id))
+                continue
             entity, observations = self._world_model_record(store, records, record_id,
                                                             RAY_LIMIT)
             entity["rays"] = world_view.rays(observations, self.camera_fov_deg,
@@ -1202,8 +1219,16 @@ class RoverWorld:
             entities.append(entity)
         summary = dict(store.summary(),
                        entities=sum(1 for one in entities if not one["gone"]))
-        return {"ok": True, "entities": entities, "source": "model",
-                "recent": store.observations(limit=DETAIL_LIMIT), "summary": summary}
+        payload = records.payload
+        answer = {"ok": True, "entities": entities, "source": "model", "summary": summary,
+                  # What names the records, and up to when the model has filed
+                  # looks: one taken since is in no record yet.
+                  "generation": records.names(),
+                  "filed_until": payload.get("filed_until"),
+                  "written_at": payload.get("written_at")}
+        if rays:
+            answer["recent"] = store.observations(limit=DETAIL_LIMIT)
+        return answer
 
     def _tool_world_state_entity(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """One entity, its whole recent history, and the raw answer behind each.

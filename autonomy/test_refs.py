@@ -25,6 +25,8 @@ def test_a_name_carries_the_store_that_minted_it() -> None:
           refs.Ref("ws", A, "object:8"))
     check("an episode reference is shaped the same way",
           refs.episode(A, 12), f"au/{A}/episode:12")
+    check("a world model record is named the same way, under the model's generation",
+          refs.parse(refs.world(B, "v12")), refs.Ref("ws", B, "v12"))
 
 
 def test_the_same_local_name_in_two_stores_is_two_names() -> None:

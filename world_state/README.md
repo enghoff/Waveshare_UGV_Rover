@@ -20,8 +20,10 @@ it over the store's grouping on 2026-10-17, on pictures neither was tuned on
 Its job reads the store and never writes to it; it writes its records to
 `visit_model/things.json` beside the store, and `visit_things.py` serves them to
 `search.ThingIndex` in the store's place. The voice tools rank its records first
-(`rover_daemon/rover_recall.py`); the console, the executive and the resolver
-still use the store's entities.
+(`rover_daemon/rover_recall.py`) and the console's world popup lists them, both
+answering from the store's entities when the records cannot; an autonomous run
+plans around them with no such fallback (`autonomy/situation.py`). The resolver
+still files to the store's entities.
 
 ## Grouping preview
 
@@ -34,8 +36,10 @@ been filed to the other). There is no apply operation. A later preview can
 withdraw an earlier group.
 
 The resolver, the console and the voice tools do not read groups. An autonomous
-run does, for one thing only: after a goal at a record it sets the record's
-group-mates aside with it, as it does a look's same-object suspects. The daemon
+run did until 2026-10-17, for one thing only: after a goal at a record it set the
+record's group-mates aside with it, as it did a look's same-object suspects; its
+things are now the world model's records, which have neither, and groups are
+worked out only when the store's entities are listed. The daemon
 keeps the latest groups in `groups.json` beside the store, written by
 `groups_job.py` in a low-priority process of its own (co-fit is Python loops,
 and in the daemon's process it would hold the interpreter from the threads that
@@ -524,7 +528,10 @@ The daemon exposes control calls on TCP 8769 for the console and diagnostics:
 
 - `world_state_summary`
 - `world_state_search`
-- `world_state_entities`
+- `world_state_entities`: the store's entities, or with `source: "model"` the
+  world model's records when they may answer (`fallback: false` makes their
+  not answering an error rather than the store's list; `rays: false` leaves out
+  the sight lines and newest looks only the console draws)
 - `world_state_entity`
 - `world_state_observations`
 - `world_state_frame`

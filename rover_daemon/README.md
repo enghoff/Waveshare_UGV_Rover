@@ -208,7 +208,8 @@ third of the things the rover knew, and the floor lamp and the sneakers could no
 be found.
 
 **Since 2026-10-17 the things are the world model's records**, not the store's
-entities: version 4 of the world model kept per visit, which the owner chose over
+entities (as they are for the console's world popup and, with no fallback, an
+autonomous run): version 4 of the world model kept per visit, which the owner chose over
 the store's grouping, kept up to date by its own job
 ([`../world_state/visit_model/`](../world_state/visit_model/README.md)) and read
 through `world_state/visit_things.py`. The store's entities answer when the

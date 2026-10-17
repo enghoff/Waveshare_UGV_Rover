@@ -181,6 +181,11 @@ class FakeRover(client.ReadOnly):
         self.said = _commentary(said or [{"seq": 0, "phase": "idle"}])
         self.frames = dict(frames or {})
         self.entities = list(entities or [])
+        #: Why the world model's records cannot answer, when a test says so.
+        self.records_down: str | None = None
+        #: How far past the minute it lags the world model has filed; a test
+        #: that wants a look already filed by the time it is read moves it on.
+        self.filed_ahead_s = 0.0
         self.asked: list[str] = []
         self.down = False
         #: How the world state's last look went, when a test wants it to have
@@ -213,8 +218,17 @@ class FakeRover(client.ReadOnly):
                             "last_at": self.clock()})
         return {"ok": True, "summary": summary, "backend": "fake"}
 
-    def _world_state_entities(self, _arguments):
-        return {"ok": True, "entities": self.entities}
+    def _world_state_entities(self, arguments):
+        # Asked as autonomy asks (situation.THINGS_FROM), the world model's
+        # records, filed up to a minute ago; or, when a test says they cannot
+        # answer, the daemon's error. Asked without a source, the store's.
+        if (arguments or {}).get("source") != "model":
+            return {"ok": True, "entities": self.entities, "source": "store"}
+        if self.records_down:
+            return {"ok": False, "error": self.records_down, "source": "model"}
+        return {"ok": True, "entities": self.entities, "source": "model",
+                "generation": self.generation,
+                "filed_until": self.clock() - 60.0 + self.filed_ahead_s}
 
     def _world_state_entity(self, arguments):
         # The daemon names the thing `id`; older checks here said `entity_id`.

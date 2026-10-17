@@ -111,7 +111,8 @@ def update(previous: dict[str, Any] | None, current: dict[str, Any],
 
 def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
                   before: dict[str, Any] | None, after: dict[str, Any], *,
-                  now: float, seen_empty: bool = False) -> list[dict[str, Any]]:
+                  now: float, seen_empty: bool = False,
+                  filed: bool = True) -> list[dict[str, Any]]:
     """The cooling list once a goal at `target` has been carried out.
 
     **A goal that went where it was sent, looked, and left the thing no better
@@ -128,6 +129,10 @@ def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
     with the same measure `update` lapses an entry by. `seen_empty` is a look
     that could see the thing's place and found nothing to file to it, which
     sets the thing aside for `EMPTY_COOLDOWN_S` rather than `COOLDOWN_S`.
+    `filed` false is a look the world model has not filed yet, so `after` cannot
+    show what it did: the thing is put aside all the same, or the next
+    deliberation would send the rover straight back, and `update` brings it
+    back when the filed look turns out to have improved it.
     """
     now = float(now)
     was = _by_id(before).get(target)
@@ -171,6 +176,9 @@ def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
                  f"place found nothing to file to it, so it is probably not where "
                  f"it is placed; put aside for {int(aside / 3600)} hours or until "
                  f"something changes") if seen_empty else
+                (f"{target} was looked at and the world model has not filed the "
+                 f"look yet; put aside for {int(aside / 60)} minutes or until "
+                 f"the filed look improves its placement") if not filed else
                 (f"a goal at {target} left it placed to "
                  f"{_metres(here['uncertainty_m'])} -- no better than before, so "
                  f"it is put aside for {int(aside / 60)} minutes or until "

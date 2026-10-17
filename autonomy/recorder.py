@@ -537,7 +537,8 @@ class Recorder:
         if self._entities_digest and now - self._entities_at < SNAPSHOT_EVERY_S:
             return self._entities_digest
         try:
-            listing = self.client.call("world_state_entities")
+            listing = self.client.call("world_state_entities",
+                                       situation_mod.THINGS_FROM)
         except client_mod.Unreachable:
             return self._entities_digest
         self._entities_at = now
@@ -545,6 +546,11 @@ class Recorder:
             "summary": {k: v for k, v in live.items()
                         if k not in ("move", "pose")},
             "entities": listing.get("entities") or [],
+            # Whose things these are -- the world model's records, or why there
+            # are none (`situation.THINGS_FROM`).
+            "things": {key: listing.get(key) for key in
+                       ("source", "generation", "filed_until", "error")
+                       if listing.get(key) is not None},
         })
         return self._entities_digest
 

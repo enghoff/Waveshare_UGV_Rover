@@ -187,6 +187,21 @@ off on a 38 m way round
 frontier the body cannot reach is still offered and refused as unreachable, so
 the record says so, and it does not take one of the eight places.
 
+**The things it plans around are the world model's records**, since 2026-10-17:
+version 4 of the world model kept per visit
+([`world_state/visit_model/`](../world_state/visit_model/README.md)), named `v12`
+under the model's own generation, read without their sight lines
+(`situation.THINGS_FROM`). A record the model has seen gone stays in the reading
+and is planned around by nothing. **There is no fallback to the store's
+entities**, unlike the voice tools and the console: a run carries the records'
+names from step to step, and the store names the same things differently, so a
+reading that switched would make strangers of the goal it just chose and what it
+put aside. When the records cannot answer -- the job stopped, or on another map
+-- the reading holds no things and says why, and a run still explores and looks
+at changes. The model files a look when its visit closes, a few minutes after
+it is taken, so an attempt's placement is measured only once filed; until then
+the attempt says so, rather than "no better".
+
 `improve_geometry` is somewhere to stand that would make a thing's position come
 out better. **A bearing pins a thing across the line of sight and says nothing
 along it**, so two looks from nearly the same place leave the same long thin
@@ -286,13 +301,14 @@ the executive the moment one geometry goal leaves its thing no better: a look
 from where the rover already looked is the same picture, which is not recorded,
 so counting looks alone let one goal be chosen twenty-two times in a row. The
 entry lapses either after fifteen minutes or the moment the placement really
-improves; a thing whose aimed look could see its place and filed nothing to it
-is put aside for two hours instead, since it is probably not where it is placed.
-Records the world state suspects are the same object as the target
-(`same_object_suspects`, from a look aimed at it, and `group_mates`, from the
-latest grouping) are put aside with it after
-any geometry attempt, helped or not, so a run does not go back to the object by
-way of another record of it. How well a thing is placed is read as what its
+improves, which for a look the model has not filed yet is when it files it.
+Two store-only rules lie idle while the things are the model's records: a
+thing whose aimed look could see its place and filed nothing to it was put
+aside for two hours, and records the store suspected were the same object
+(`same_object_suspects`, `group_mates`) were put aside with it. Both need a
+look that names its target to the store (`executive.NAME_THE_TARGET`, off since
+2026-10-17); the model instead marks a missing thing gone, and keeps one
+record per object. How well a thing is placed is read as what its
 placement claims (`situation.claimed_m`, `stated_uncertainty_m`), not the
 tolerance the resolver matches with, for the goal's prediction, its
 measurement and its cooling alike (2026-10-08).

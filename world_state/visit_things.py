@@ -76,6 +76,12 @@ class VisitStore:
     def generation(self) -> str:
         return "visit:%s" % self.store.generation()
 
+    def names(self) -> str | None:
+        """What the records' identifiers are minted under: the job names its
+        engine afresh whenever it files the whole history again, after which
+        `v12` is another record."""
+        return self.payload.get("generation") or None
+
     def _backends(self) -> dict[int, tuple[str, int]]:
         """(backend, id) of every held observation that has a searchable vector,
         read once each, with when it was taken: an observation's vector and time
@@ -170,6 +176,8 @@ class VisitStore:
                 "viewpoints": r.get("visits"),
                 # The store keeps a half-width; the model a width.
                 "extent_m": None if r.get("extent_m") is None else r["extent_m"] / 2.0,
+                # Above the camera, as the store's (model.Looks.z, locate.py).
+                "height_m": r.get("height_m"),
             },
             "gone_at": r.get("gone_at") if r.get("state") == "gone" else None,
             "moved_from": [p[:2] for p in r.get("path", [])[:-1]][-1:] or None,
