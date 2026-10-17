@@ -778,7 +778,8 @@ class SessionWorld:
             moved = self.world_put(
                 entities=body.get("entities") or [],
                 summary=body.get("summary") or {},
-                recent=body.get("recent") or [])
+                recent=body.get("recent") or [],
+                source=body.get("source") or "store")
             self.world_counts()
         elif name == "world_state_entity":
             moved = self.world_put(
@@ -831,8 +832,18 @@ class SessionWorld:
         return moved
 
     def world_counts(self) -> None:
+        """The header's counts. While the list is the world model's records, the
+        things counted are those of its records still in place -- not the
+        store's entities, which the watch's summary reports every couple of
+        seconds and which the header would otherwise flip back to."""
         summary = self.world_payload.get("summary") or {}
-        self.world["entities"] = summary.get("entities", 0)
+        if self.world_payload.get("source") == "model":
+            self.world["entities"] = sum(1 for one in self.world_payload.get("entities") or []
+                                         if not one.get("gone"))
+            self.world["kind"] = "record"
+        else:
+            self.world["entities"] = summary.get("entities", 0)
+            self.world["kind"] = "entity"
         self.world["observations"] = summary.get("observations", 0)
 
     def world_frame(self, frame_id: str) -> bytes | None:

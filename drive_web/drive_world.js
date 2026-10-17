@@ -141,7 +141,8 @@ function drawWorld(w) {
   // of having asked for it.
   if (!w.open && worldZoom !== null) { worldZoom = null; drawWorldZoom(); }
   $("worldCounts").textContent =
-      `${w.entities} entit${w.entities === 1 ? "y" : "ies"}, `
+      (w.kind === "record" ? `${w.entities} record${w.entities === 1 ? "" : "s"}, `
+                           : `${w.entities} entit${w.entities === 1 ? "y" : "ies"}, `)
       + `${w.observations} observation${w.observations === 1 ? "" : "s"}`
       + (w.backend ? ` -- ${w.backend}` : "");
   $("worldNote").textContent = w.note || "";
@@ -407,10 +408,14 @@ function wThin(things) {
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
     return 0;
   });
-  const kept = [], keep = new Set();
+  // Things the world model has seen gone are thinned among themselves only:
+  // shown at all, a faded mark is there to sit beside whatever stands near its
+  // old place now, and a live thing within a metre must not hide it.
+  const keptLive = [], keptGone = [], keep = new Set();
   const reach = WTHIN_M * WTHIN_M;
   for (const [, one] of ranked) {
     const {x_m: x, y_m: y} = one.placement;
+    const kept = one.gone ? keptGone : keptLive;
     if (kept.some((k) => (k.x_m - x) ** 2 + (k.y_m - y) ** 2 < reach)) continue;
     kept.push(one.placement);
     keep.add(one);

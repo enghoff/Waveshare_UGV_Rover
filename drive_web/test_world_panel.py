@@ -1061,7 +1061,33 @@ def test_the_picture_has_to_hold_the_map_as_well_as_the_things() -> None:
           session.world_map_extent(), close)
 
 
+def test_the_header_counts_the_world_models_records() -> None:
+    """While the popup's list is the world model's records, the header counts
+    those still in place and calls them records; the store's summary, which the
+    watch asks for every couple of seconds, must not flip it back to the store's
+    entities."""
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"the header counting records ({type(exc).__name__})")
+        return
+    session = drive_web.Session(None, 3.0, 480)
+    session.world_handle("world_state_entities", {
+        "ok": True, "source": "model", "recent": [],
+        "entities": [{"id": "v1", "gone": False}, {"id": "v2", "gone": True},
+                     {"id": "v3", "gone": False}],
+        "summary": {"entities": 2, "observations": 9, "map_session": 1}}, 0.1)
+    world = session.world_state()
+    check("the header counts the records still in place",
+          (world["entities"], world["kind"]), (2, "record"))
+    session.world_handle("world_state_summary", {
+        "ok": True, "summary": {"entities": 741, "observations": 10, "map_session": 1}}, 0.1)
+    check("...and the store's summary does not flip it back",
+          (session.world_state()["entities"], session.world_state()["observations"]), (2, 10))
+
+
 TESTS = (
+    test_the_header_counts_the_world_models_records,
     test_the_world_state_popup,
     test_going_to_look_at_a_thing,
     test_finding_a_thing_from_the_console,
