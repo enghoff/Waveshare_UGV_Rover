@@ -244,6 +244,8 @@
      is the failure this popup is watching for. */
   .wrow .wdup, .wdup, .wdrift { color: var(--warn); }
   .wrow .wold { color: var(--dim); }
+  .wrow.wgone { opacity: .45; }
+  #wGoneLabel { flex: 0 0 auto; white-space: nowrap; }
   .wmeta { color: var(--dim); font-size: 12px; }
   .wshot { position: relative; display: inline-block; max-width: 100%; }
   .wshot img { display: block; width: 100%; border-radius: 6px; }
@@ -364,6 +366,7 @@
      hand between them is about to pick. */
   #wRays { cursor: crosshair; }
   #wRays .wdot circle { transition: stroke-width .08s linear; }
+  #wRays .wdot.wgone { opacity: .35; }
   #wRays .wdot.wnear circle { stroke: #fff;
     stroke-width: calc(var(--wpen) * 2); }
   #wDetail .wscroll .wobs:hover { background: var(--sunken); }

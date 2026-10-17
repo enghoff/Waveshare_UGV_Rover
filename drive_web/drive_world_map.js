@@ -228,7 +228,8 @@ function drawWorldMap() {
     const place = entity.placement;
     const [x, y] = wPointToPx(place.x_m, place.y_m, view);
     const on = entity.id === selected;
-    const mark = wSvg("g", {class: "wdot" + (on ? " won" : "")});
+    const mark = wSvg("g", {class: "wdot" + (on ? " won" : "")
+                                 + (entity.gone ? " wgone" : "")});
     mark.setAttribute("data-entity", entity.id);
 
     // How sure the crossing was, for the chosen thing alone. It is the one claim
@@ -278,6 +279,11 @@ function drawWorldMap() {
   // and it is not good enough, these have none at all. Silence here is what
   // would make a bar look like a store that had lost half its contents.
   if (held > 0) bits.push(`${held} held back`);
+  // A fourth: what the world model has seen gone, left off unless asked for.
+  if (!worldShowGone) {
+    const gone = (world.entities || []).filter((one) => one.gone && wOnMap(one)).length;
+    if (gone > 0) bits.push(`${gone} gone`);
+  }
   // And what the thinning is keeping off it, which is a third absence: these are
   // placed well enough and have a better placed thing beside them.
   const crowded = wNarrowed().filter(wOnMap).length - placed.length;

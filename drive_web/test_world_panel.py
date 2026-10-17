@@ -179,6 +179,8 @@ def test_the_world_state_popup() -> None:
     check("...and nothing is asked of the rover but the redraw",
           [name for name, _ in session.world_link.calls],
           ["world_state_entities", "world_state_summary"])
+    check("...whose things are the world model's records where the rover has them",
+          session.world_link.calls[0][1], {"source": "model"})
 
     # A clear the rover refused, which is the outcome that used to be reported as
     # a success. The rover waits for a look in flight and gives up after twenty
@@ -247,6 +249,8 @@ def test_finding_a_thing_from_the_console() -> None:
     session.world_act({"what": "search", "query": "  a spray bottle  "})
     check("the phrase is sent, trimmed", sent[-1][0], "world_state_search")
     check("...as the rover's own argument", sent[-1][1]["query"], "a spray bottle")
+    check("...against the world model's records where the rover has them",
+          sent[-1][1].get("source"), "model")
     check("...and the box says it is working",
           session.world_state()["searching"], True)
     # The pane counts the wait off, so the seconds are the rover's own rather

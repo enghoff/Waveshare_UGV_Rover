@@ -630,6 +630,52 @@ def test_of_two_records_alike_the_present_and_recent_one_answers() -> None:
         done(rover)
 
 
+def test_the_console_reads_the_world_models_records() -> None:
+    """The console's popup asks for its things with `source: "model"` and gets
+    the world model's records in the store entities' shape, each with `gone`;
+    one of them by name, with its looks; and a search's looks named by the
+    record that holds them. Records that may not answer leave all three to the
+    store, and the executive -- which asks without `source` -- reads the store
+    either way."""
+    try:
+        import numpy  # noqa: F401
+        import rover_daemon  # noqa: F401
+    except ImportError as error:
+        SKIP.append(f"the console reading the world model's records ({error})")
+        return
+
+    import time
+
+    rover, done = _in_a_world()
+    try:
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        look = rover._world_store().observations(limit=1)[0]["id"]
+        _model_records(rover, [look], at=(3.0, 3.0), state="gone", gone_at=time.time() - 60.0)
+        listed = rover.call("world_state_entities", {"source": "model"})
+        check("the console's things are the model's records", listed.get("source"), "model")
+        check("...one record, gone, at its last place",
+              [(one["id"], one["gone"], one["placement"]["x_m"]) for one in listed["entities"]],
+              [("v7", True, 3.0)])
+        check("...with the rays of its own looks", len(listed["entities"][0]["rays"]), 1)
+        check("...and a count of the records still present", listed["summary"]["entities"], 0)
+        check("the executive's list is still the store's",
+              rover.call("world_state_entities", {}).get("source"), "store")
+
+        one = rover.call("world_state_entity", {"id": "v7"})
+        check("a record is read by its name, with its looks",
+              (one["ok"], one["entity"]["kind"], len(one["observations"])), (True, "record", 1))
+
+        found = rover.call("world_state_search", {"query": "a bed", "source": "model"})
+        check("a search's look is named by the record that holds it",
+              [m["entity_id"] for m in found["matches"]], ["v7"])
+
+        _model_records(rover, [look], at=(3.0, 3.0), age_s=3600.0)
+        stale = rover.call("world_state_entities", {"source": "model"})
+        check("records an hour old leave the console to the store", stale.get("source"), "store")
+    finally:
+        done(rover)
+
+
 # --- helpers ----------------------------------------------------------------
 
 def _placed_id(rover) -> str:
@@ -662,5 +708,6 @@ TESTS = (
     test_a_found_thing_carries_what_was_measured_about_it,
     test_the_world_models_records_answer_first,
     test_of_two_records_alike_the_present_and_recent_one_answers,
+    test_the_console_reads_the_world_models_records,
     test_which_way_something_is_in_words,
 )

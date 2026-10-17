@@ -90,6 +90,15 @@ WORLD_MAP_GAP_S = 10.0
 WORLD_MAP_MARGIN_M = 0.75
 
 
+#: Where the popup's things come from: the world model's records, which the owner
+#: chose over the store's own grouping on 2026-10-17, whenever the rover's records
+#: may answer, and the store's entities when they may not -- the daemon decides
+#: and says which in `source` (rover_daemon/rover_world.py,
+#: world_state_entities). A record the model has seen gone carries `gone`, and
+#: the page leaves those out unless asked (README, "the world popup").
+THINGS_FROM = {"source": "model"}
+
+
 def _metres(value: Any, fallback: float | None = None) -> float | None:
     """A coordinate out of the rover's JSON, or the fallback.
 
@@ -212,7 +221,7 @@ class SessionWorld:
         the rover has no world state, and that is handled where it belongs --
         the asking slows down after a refusal rather than stopping.
         """
-        self.world_call("world_state_entities")
+        self.world_call("world_state_entities", THINGS_FROM)
         self.world_call("world_state_summary")
         if self.world_selected:
             self.world_call("world_state_entity", {"id": self.world_selected})
@@ -411,7 +420,7 @@ class SessionWorld:
         # the answer by itself and hide every other candidate, which matters
         # more now that this list is the filtered view rather than a ranking
         # read on its own. The rover's own ceiling is 50.
-        self.world_call("world_state_search", {"query": query, "limit": 24})
+        self.world_call("world_state_search", {"query": query, "limit": 24, **THINGS_FROM})
 
     def world_found(self, body: dict[str, Any]) -> None:
         """The best-scoring thing the search turned up, chosen without a click.
@@ -761,7 +770,7 @@ class SessionWorld:
             # state, which is compared and sent on its own.
             if moved and watching and self.world["open"]:
                 moved = False
-                self.world_call("world_state_entities")
+                self.world_call("world_state_entities", THINGS_FROM)
                 if self.world_selected:
                     self.world_call("world_state_entity",
                                     {"id": self.world_selected})

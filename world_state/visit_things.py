@@ -154,6 +154,11 @@ class VisitStore:
             "placement": {
                 "x_m": r["x_m"], "y_m": r["y_m"],
                 "uncertainty_m": r.get("spread_m"),
+                # As the console draws a store placement's ring: the model keeps
+                # one spread, so a circle.
+                "error_major_m": r.get("spread_m"),
+                "error_minor_m": r.get("spread_m"),
+                "stated_uncertainty_m": r.get("spread_m"),
                 "viewpoints": r.get("visits"),
                 # The store keeps a half-width; the model a width.
                 "extent_m": None if r.get("extent_m") is None else r["extent_m"] / 2.0,

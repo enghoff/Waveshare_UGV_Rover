@@ -260,6 +260,10 @@
         <option value="agreed">best within 1 m · 3 places</option>
         <option value="settled">best within 1 m · 4 places, 0.3 m</option>
       </select>
+      <!-- The world model's records it has seen gone: left out unless this is
+           ticked, then drawn faded. Off on every load (autocomplete), because
+           where things are now is what the popup is for. -->
+      <label id="wGoneLabel"><input id="wGone" type="checkbox" autocomplete="off"> gone</label>
       <p id="wSearchNote"></p>
     </div>
     <div id="worldBody">
