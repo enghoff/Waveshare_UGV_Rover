@@ -625,6 +625,35 @@ def test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands() -> No
           unsure["in_depth_view"], None)
 
 
+def test_a_world_model_record_gains_from_a_look_the_depth_camera_ranges() -> None:
+    """Since 2026-10-17 a run's things are the world model's records, which
+    keep one spread and no axis to cross, and combine a filed look's depth
+    place with it by inverse variance. Judged as the store's bearings were,
+    no look ever helped one: on the rover all 495 came out with nothing to
+    gain, and the search for one worth a trip took 26 s."""
+    def record(spread, height=0.3):
+        return {"x_m": 2.0, "y_m": 0.0, "uncertainty_m": spread, "error_major_m": spread,
+                "error_minor_m": spread, "stated_uncertainty_m": spread, "height_m": height}
+    entity = {"id": "v12", "kind": "record"}
+    got = goals._from_viewpoint(record(0.5), entity, 0.5, 0.0)
+    check("a record placed to 0.5 m from sight lines alone comes to about 0.22 m",
+          (got["before_m"], round(got["after_m"], 2), got["in_depth_view"]), (0.5, 0.22, True))
+    check("a record at the model's floor has nothing to gain",
+          goals._from_viewpoint(record(0.1), entity, 0.5, 0.0)["gain_m"], 0.0)
+    check("...nor one beyond the depth camera's band",
+          goals._from_viewpoint(record(0.5), entity, -1.5, 0.0)["gain_m"], 0.0)
+    check("...nor one above its view",
+          goals._from_viewpoint(record(0.5, height=1.6), entity, 1.0, 0.0)["gain_m"], 0.0)
+    check("a record of no known height is not judged for the view, and still gains",
+          (goals._from_viewpoint(record(0.5, height=None), entity, 0.5, 0.0)["tilt_unknown"],
+           goals._from_viewpoint(record(0.5, height=None), entity, 0.5, 0.0)["gain_m"] > 0.2),
+          (True, True))
+    here = _situation(entities=[{**a_thing("v12", 1.6, 1.0, uncertainty_m=0.5),
+                                 "kind": "record", "ranging": None}])
+    check("so a goal at it is offered", bool([one for one in goals.generate(here)
+                                             if one.target == "v12"]), True)
+
+
 def test_the_same_situation_produces_the_same_list_twice() -> None:
     here = _situation(entities=[a_thing("object:8", 1.6, 1.0,
                                         uncertainty_m=0.6),
@@ -684,6 +713,7 @@ def test_a_change_is_looked_at_level_and_aimed_at_where_it_is() -> None:
 
 
 TESTS = (test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands,
+    test_a_world_model_record_gains_from_a_look_the_depth_camera_ranges,
     test_a_change_is_named_after_the_record_nearest_it,
     test_a_change_is_looked_at_level_and_aimed_at_where_it_is,
          

@@ -167,6 +167,14 @@ UNKNOWN_PLACEMENT_M = 1.0
 #: better than that.
 PLACEMENT_FLOOR_M = 0.10
 
+#: How well one look from inside the depth band places one of the world model's
+#: records: the spread the model gives the depth place of an outlined region
+#: within 2.5 m (`world_state/visit_model/model.py`, `Looks.sigma`). The model
+#: keeps one spread per record and combines a filed visit's place with it by
+#: inverse variance, so this is what a look buys it -- and not the crossing of
+#: bearings below, which the store's placements are and the model's are not.
+RECORD_LOOK_SIGMA_M = 0.25
+
 #: How uncertain a thing's height may be before the tilt needed to look at it
 #: cannot be predicted. Above it the candidate is marked `tilt_unknown` and the
 #: scorer discounts it, because the validated envelope covers tilt zero and
@@ -521,8 +529,9 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
             why=got["why"],
             expects=(f"a look from ({view_x:.2f}, {view_y:.2f}) facing "
                      f"{heading:.0f} degrees, {got['range_m']:.1f} m from the "
-                     f"thing, crossing the present uncertainty at "
-                     f"{got['crossing_deg']:.0f} degrees"),
+                     f"thing" + ("" if entity.get("kind") == "record" else
+                                 f", crossing the present uncertainty at "
+                                 f"{got['crossing_deg']:.0f} degrees")),
             action=[{"call": "drive_to", "params": {"x_m": round(view_x, 3),
                                                     "y_m": round(view_y, 3),
                                                     "heading_deg": round(heading, 1)}},
@@ -695,8 +704,24 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
     before = situation_mod.claimed_m({"placement": placement})
     before = UNKNOWN_PLACEMENT_M if before is None else float(before)
 
+    # **One of the world model's records** keeps one spread and no axis, and
+    # gains only from a depth place: `RECORD_LOOK_SIGMA_M`. Its height is a
+    # median of its looks, with no spread of its own, so the tilt is known
+    # whenever the height is.
+    record = entity.get("kind") == "record"
+    height_sigma = placement.get("height_sigma_m")
+    tilt_unknown = (placement.get("height_m") is None if record else
+                    height_sigma is None or float(height_sigma) > HEIGHT_SIGMA_LIMIT_M)
+    tilt, elevation = _tilt_for(placement, range_m)
+    # Whether the depth camera can see the thing from here, at a tilt a look is
+    # calibrated at: None where the thing's height is not known well enough to
+    # say, which `tilt_unknown` already discounts.
+    in_depth_view = None if tilt_unknown or elevation is None else tilt is not None
+
     major_deg = placement.get("error_major_deg")
-    if major_deg is None:
+    if record:
+        crossing_deg, cos_phi = 0.0, 0.0
+    elif major_deg is None:
         # No axis reported means no direction to cross, so the crossing angle
         # cannot be claimed. Treated as the worst case rather than the average
         # one: a candidate whose benefit cannot be predicted should not outrank
@@ -717,6 +742,10 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
     if cos_phi > 0.0:
         after = 1.0 / math.sqrt(1.0 / (before * before)
                                 + (cos_phi * cos_phi) / (across_m * across_m))
+    if (record and BAND_NEAR_M <= range_m <= BAND_FAR_M
+            and in_depth_view is not False):
+        after = 1.0 / math.sqrt(1.0 / (before * before)
+                                + 1.0 / (RECORD_LOOK_SIGMA_M * RECORD_LOOK_SIGMA_M))
 
     ranging = entity.get("ranging") or {}
     first_range = bool(ranging.get("never_ranged"))
@@ -734,15 +763,6 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
     # taken of. Applied last, so it caps both roads to an answer.
     after = max(after, PLACEMENT_FLOOR_M)
 
-    height_sigma = placement.get("height_sigma_m")
-    tilt_unknown = (height_sigma is None
-                    or float(height_sigma) > HEIGHT_SIGMA_LIMIT_M)
-    tilt, elevation = _tilt_for(placement, range_m)
-    # Whether the depth camera can see the thing from here, at a tilt a look is
-    # calibrated at: None where the thing's height is not known well enough to
-    # say, which `tilt_unknown` already discounts.
-    in_depth_view = None if tilt_unknown or elevation is None else tilt is not None
-
     return {"gain_m": max(0.0, round(before - after, 4)),
             "before_m": round(before, 4), "after_m": round(after, 4),
             "range_m": round(range_m, 3),
@@ -757,7 +777,7 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
             "look_tilt_deg": tilt,
             "in_depth_view": in_depth_view,
             "why": _why(entity, before, after, range_m, crossing_deg,
-                        first_range)}
+                        first_range, record)}
 
 
 def _tilt_for(placement: dict[str, Any], range_m: float
@@ -776,11 +796,15 @@ def _tilt_for(placement: dict[str, Any], range_m: float
 
 
 def _why(entity: dict[str, Any], before: float, after: float, range_m: float,
-         crossing_deg: float, first_range: bool) -> str:
+         crossing_deg: float, first_range: bool, record: bool = False) -> str:
     """One sentence a person could be told, with the numbers in it."""
     name = str(entity.get("id") or "a thing")
     looks = entity.get("observation_count")
     seen = f", seen {looks} times" if looks else ""
+    if record:
+        return (f"{name} is placed to {before:.2f} m{seen}; a look from "
+                f"{range_m:.1f} m that the depth camera ranges would bring that "
+                f"to about {after:.2f} m")
     if first_range:
         return (f"{name} has never had its distance measured{seen}; from "
                 f"{range_m:.1f} m the depth camera could, which would place it "
