@@ -11,7 +11,9 @@ closed, and writes:
 - `things.json`: the model's records -- place, state, when seen, and the
   store's observation ids of every region filed to each -- for the daemon to
   read in place of the store's entities (`find_thing` first);
-- `engine.pkl`: the engine itself, so a restart carries on where it stopped;
+- `engine.pkl`: the engine itself, so a restart carries on where it stopped
+  (and one that cannot be read is kept aside and the history filed afresh,
+  under a new `generation`, which names the records);
 - `decisions.jsonl`: what each visit decided, appended;
 - `scans/`: the lidar and navigation's pose over each batch of visits it
   filed, in the drive recordings' format (bag_extract.py), so ordinary drives
@@ -75,7 +77,10 @@ def lidar(directory):
         try:
             with np.load(os.path.join(directory, name)) as d:
                 parts.append({k: d[k] for k in ("ranges", "scan_meta", "odom_tf", "map_tf")})
-        except (OSError, ValueError, KeyError):
+        except Exception:  # noqa: BLE001 - one bad file must not stop every batch
+            # A file a power cut left empty raises EOFError, which no narrower
+            # list here caught: on 2026-10-17 one stopped every batch for the
+            # half hour it stayed inside BUFFER_S.
             continue
     if not parts:
         return None
@@ -136,6 +141,8 @@ def write_json(path, payload):
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(payload, f)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, path)
 
 
@@ -175,7 +182,7 @@ def once(e, state, use_lidar, log):
     records = things(e)
     write_json(os.path.join(state, "things.json"), {
         "model": "visit_model version 4 (cabe003)", "written_at": time.time(),
-        "map_session": data.MAP_SESSION,
+        "generation": e.generation, "map_session": data.MAP_SESSION,
         "filed_until": e.taken_until, "last_observation": e.last_id,
         "waiting": 0 if e.pending is None else int(len(e.pending["id"])),
         "lidar": arrays is not None, "things": records})
@@ -188,13 +195,16 @@ def once(e, state, use_lidar, log):
 
 def bootstrap(state, log):
     """An engine that has filed the whole history, with the drive recordings
-    kept in `recordings/`."""
+    kept in `recordings/` and then the lidar this job kept in `scans/`."""
     import glob
     paths = sorted(glob.glob(os.path.join(state, "recordings", "*.npz")))
+    paths += sorted(glob.glob(os.path.join(state, "scans", "*.npz")),
+                    key=lambda p: float(os.path.basename(p)[:-4]))
     recs = [recorded.Recording(p) for p in paths]
     log("filing the history with %d recordings" % len(recs))
     t0 = time.time()
     e = engine.Engine()
+    e.generation = mint()
     a = engine.prepare(DB, recs, after_id=0)
     young = a["t"] > time.time() - READ_DELAY_S
     if young.any():
@@ -207,6 +217,34 @@ def bootstrap(state, log):
         for d in decisions:
             f.write(json.dumps(d) + "\n")
     log("history filed: %d regions in %.0f s, %d records" % (n, time.time() - t0, len(e.mem.objects)))
+    return e
+
+
+def mint():
+    """A name for one engine's records, new whenever the history is filed
+    afresh: a record's identifier means that record only under it. Sixteen hex
+    characters, as the store's generation and autonomy's references are
+    (autonomy/refs.py)."""
+    return os.urandom(8).hex()
+
+
+def load(path, state, log):
+    """The saved engine, or one filed afresh when there is none or it cannot
+    be read; a bad one is kept aside, not overwritten."""
+    if os.path.exists(path):
+        try:
+            e = engine.Engine.load(path)
+        except Exception as exc:  # noqa: BLE001 - any unreadable save
+            os.replace(path, path + ".bad")
+            log("the saved engine could not be read (%r): kept as %s.bad" % (exc, os.path.basename(path)))
+        else:
+            if not getattr(e, "generation", None):
+                # Saved before engines were named.
+                e.generation = mint()
+                e.save(path)
+            return e
+    e = bootstrap(state, log)
+    e.save(path)
     return e
 
 
@@ -232,13 +270,9 @@ def main():
     def log(msg):
         print("%s %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg), flush=True)
 
-    path = os.path.join(args.state, "engine.pkl")
-    if os.path.exists(path):
-        e = engine.Engine.load(path)
-    else:
-        e = bootstrap(args.state, log)
-        e.save(path)
-    log("started: %d regions filed so far, last observation %d" % (len(e.filing), e.last_id))
+    e = load(os.path.join(args.state, "engine.pkl"), args.state, log)
+    log("started: %d regions filed so far, last observation %d; records named %s" % (
+        len(e.filing), e.last_id, e.generation))
     while True:
         try:
             once(e, args.state, not args.no_lidar, log)

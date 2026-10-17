@@ -92,6 +92,10 @@ def main():
             tmp = os.path.join(args.dir, "." + name)
             with open(tmp, "wb") as f:
                 np.savez(f, **part)
+                # On disk before it is named: a power cut on 2026-10-17 left
+                # an empty file under a real name.
+                f.flush()
+                os.fsync(f.fileno())
             os.replace(tmp, os.path.join(args.dir, name))
         for name in os.listdir(args.dir):
             p = os.path.join(args.dir, name)

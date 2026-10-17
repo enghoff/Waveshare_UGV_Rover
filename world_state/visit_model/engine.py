@@ -69,6 +69,8 @@ class Engine:
         self.pending = None
         self.last_id = 0
         self.taken_until = None
+        #: What names these records (job.mint); None until the job names it.
+        self.generation = None
 
     def add(self, a):
         """Regions read from the store, waiting for their visit to close."""
@@ -128,6 +130,10 @@ class Engine:
         tmp = path + ".tmp"
         with open(tmp, "wb") as f:
             pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+            # On disk before it replaces the last one, so that a power cut
+            # leaves one or the other whole rather than an empty file.
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, path)
 
     @staticmethod
