@@ -40,8 +40,10 @@ asked for the choice to be made that way
 ([entry](../progress/2026-10-17-version-4-against-the-deployed-store-on-unseen-pictures.md)).
 It runs on the rover beside the store and the voice tools answer from it,
 with the store as their fallback
-([entry](../progress/2026-10-17-the-world-model-answers-find-thing.md)); the
-console and the executive are next. It aims at
+([entry](../progress/2026-10-17-the-world-model-answers-find-thing.md)), and
+so does the console's world popup, with what the model has seen gone behind a
+box ([entry](../progress/2026-10-17-the-console-shows-the-world-models-records.md));
+the executive is next. It aims at
 [R-WS-17](../requirements/world-state.md#r-ws-17) and
 [R-WS-18](../requirements/world-state.md#r-ws-18), and keeps
 [R-WS-2](../requirements/world-state.md#r-ws-2) and
