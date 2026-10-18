@@ -13,7 +13,7 @@ now been driven, which replaced a count of twenty on 2026-10-07
 of them and the re-drives on 2026-10-10 ([sessions 14 to 19](../progress/2026-10-10-m3-sessions-14-to-19.md)).
 The run owed on the fix for the fault session 17 found ([session 20](../progress/2026-10-10-m3-session-20.md)) found nothing new, so all twelve criteria read as met, and the owner signed M3 off on 2026-10-10. M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Thirteen development attempts out of reach then found the chosen viewpoint improving its thing five times against the re-look's once ([2026-10-09](../progress/2026-10-09-m4-out-of-reach.md)). M5 was measured on 2026-10-14 ([the result](../progress/2026-10-14-m5-measured.md)): 9 of 16 staged changes found, none of 20 room-controls with a false alarm that held up, the rover looking at changes first and leaving them once looked at; it fails criterion 4, a record holding both armchairs. The cause, pictures filed by bearing alone with the depth camera asleep, is answered by a lidar range for each such region, deployed the same day; replayed, no record holds both armchairs ([2026-10-14](../progress/2026-10-14-identity-with-lidar-ranges.md)), and in M5 session 3 on 2026-10-15 two of three moved things kept their
 records with no record taking two things; the step that moves a record with its
-thing changed nothing there ([2026-10-15](../progress/2026-10-15-m5-session-3.md)). On 2026-10-16 the two black armchairs were counted as things nothing the rover has can tell apart ([agreed](../decisions/the-two-armchairs-cannot-be-told-apart.md)); with them set aside no record in the counted sessions held two things, so every M5 criterion read as met, and the owner signed M5 off the same day. That recount compared pictures within each session only: counted across sessions, two records took the black bean bag in the shakedown and the red bean bag in session 1 as ordinary matches, so criterion 4 fails after all ([2026-10-16](../progress/2026-10-16-m5-session-5.md#a-correction-m5s-criterion-4-was-not-met)), and the owner withdrew the sign-off the same day. On 2026-10-18 session 8 judged it again on the world model kept per visit, and every criterion reads as met ([session 8](../progress/2026-10-18-m5-session-8.md)); M5 is not passed until the owner signs it off. The multi-day benchmark has not run. Later phases remain proposed. This is the
+thing changed nothing there ([2026-10-15](../progress/2026-10-15-m5-session-3.md)). On 2026-10-16 the two black armchairs were counted as things nothing the rover has can tell apart ([agreed](../decisions/the-two-armchairs-cannot-be-told-apart.md)); with them set aside no record in the counted sessions held two things, so every M5 criterion read as met, and the owner signed M5 off the same day. That recount compared pictures within each session only: counted across sessions, two records took the black bean bag in the shakedown and the red bean bag in session 1 as ordinary matches, so criterion 4 fails after all ([2026-10-16](../progress/2026-10-16-m5-session-5.md#a-correction-m5s-criterion-4-was-not-met)), and the owner withdrew the sign-off the same day. On 2026-10-18 session 8 judged it again on the world model kept per visit, every criterion read as met ([session 8](../progress/2026-10-18-m5-session-8.md)), and the owner signed M5 off. The multi-day benchmark has not run. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -1036,8 +1036,9 @@ checked against.
 
 ### Milestone M5: the rover notices useful changes without filling the world with duplicates
 
-**Not passed.** The owner signed it off on 2026-10-16 on a miscount and withdrew
-the sign-off the same day. The acceptance set was
+**Passed on 2026-10-18, signed off by the owner** on
+[session 8](../progress/2026-10-18-m5-session-8.md). An earlier sign-off, on
+2026-10-16, rested on a miscount and was withdrawn the same day. The acceptance set was
 [measured on 2026-10-14](../progress/2026-10-14-m5-measured.md), and criterion 4
 was recounted once the two black armchairs were left out of identity counts like
 the dining chairs ([agreed](../decisions/the-two-armchairs-cannot-be-told-apart.md)).
@@ -1055,7 +1056,7 @@ had not seen, filed live on the rover, no record took a second thing, in the
 session or across all eight; the autonomous run looked at the four changes the
 watch reported before any record and at none twice
 ([session 8](../progress/2026-10-18-m5-session-8.md)). Every criterion below
-now reads as met, and **M5 waits on the owner's sign-off.**
+read as met, and the owner signed M5 off that day.
 
 Pass when all are true:
 
@@ -1641,7 +1642,7 @@ the problem.
 | M2 (passed 2026-09-08) | curiosity shadow mode | fixed scenarios + a no-action rover shadow run |
 | M3 (passed 2026-10-10) | bounded autonomous loop | a supervised session in each listed condition, then the current code over the conditions its changes touched; measured stops, permission expiry and failure tests |
 | M4 (passed 2026-10-10) | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it; the rover's own gain checked against the tape |
-| M5 (not passed: every criterion reads as met on session 8 of 2026-10-18; awaiting the owner's sign-off) | temporal curiosity | false alarms on replayed unchanged revisits within a budget set from the flat's change rate, then scripted changed/unchanged scenes |
+| M5 (passed 2026-10-18) | temporal curiosity | false alarms on replayed unchanged revisits within a budget set from the flat's change rate, then scripted changed/unchanged scenes |
 | M1-M5 usefulness | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted; budget stated in charges and owner hours |
 | M6 (on evidence) | restricted skill substrate | malicious/invalid rejection + reference skill equal to the executive in replay and stopping on the rover |
 | M7 (on evidence) | autonomous skill acquisition | proposed -> replayed -> at least as good as the executive on the rover, paired -> reused skill |
@@ -1652,30 +1653,31 @@ the problem.
 
 ## What comes next
 
-M1 and M2 were the first slice and passed on 2026-09-08. In order from here:
+M1 and M2 passed on 2026-09-08, M3 and M4 on 2026-10-10
+([session 20](../progress/2026-10-10-m3-session-20.md),
+[M4's acceptance](../progress/2026-10-10-m4-acceptance.md)) and M5 on 2026-10-18
+([session 8](../progress/2026-10-18-m5-session-8.md)), each signed off by the
+owner. In order from here:
 
-1. **M3 passed** on 2026-10-10, signed off by the owner: every condition
-   driven, and the charger room, another room and the whole flat again on the
-   current code, the last run finding nothing new
-   ([session 20](../progress/2026-10-10-m3-session-20.md)).
-2. **Run M4's attempts.** The trial run, its re-look and the scoring exist;
-   what is left is labelling the six old targets' records, development attempts
-   on them to size the set, a new taped set, and then the acceptance attempts
-   (*What is ahead before the acceptance attempts*, under Phase 4).
+1. **M10's outcome model for the goal types that exist.** Its condition is
+   met: in M4's acceptance every one of the ten chosen looks that changed a
+   claim moved it the way the tape did. It is offline work on recorded runs.
+   Since 2026-10-17 a run's goals are the world model's records and the
+   changes the watch reports, so which recorded runs it can learn from is its
+   first question.
+2. **The multi-day usefulness benchmark.** Its budget in charges and owner
+   hours is to be stated and agreed before it is planned (*Multi-day
+   usefulness benchmark*, above).
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
-   R-WS-17, R-WS-18). M4 no longer waits on it, but it sets how many attempts
-   improve anything, about one in six with the thing in view on 2026-10-08.
-   M5 waits on it: the rover notices furniture-sized changes and goes to look,
-   but a thing put where a look-alike stood is taken for the look-alike, which
-   fails criterion 4 (a sign-off on 2026-10-16 rested on a miscount and was
-   withdrawn the same day).
-4. **M10's outcome model for the goal types that exist**, once M4 has run.
-5. **The owner's choice on running unattended.** No milestone reaches the
+   R-WS-17, R-WS-18), and it sets how many looks improve anything: none of the
+   first run's 14 looks at the model's records improved the record they were
+   aimed at ([2026-10-18](../progress/2026-10-18-the-first-run-on-the-world-models-records.md)).
+4. **The owner's choice on running unattended.** No milestone reaches the
    design's goal of a rover left to occupy itself: R-SAFE-6 is open and nothing
    docks the rover ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).
 
-The question the programme now turns on is: **given what the rover actually
-knows, does choosing where to look make it know more?** M3 shows that it can
-choose and act safely. M4 now asks it of where things are, on average and
-against looking again from where the rover stands; how often a single attempt
-helps stays the world state's to raise.
+The question the programme now turns on is: **does what the rover remembers
+make it more useful over days, and can it tell in advance which looks will
+pay?** M3 shows that it can choose and act safely, M4 that a chosen look makes it
+know more on average, and M5 that it notices changes without confusing one
+thing for another.
