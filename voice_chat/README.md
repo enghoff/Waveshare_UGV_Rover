@@ -50,8 +50,11 @@ current Qwen Omni realtime model:
 
 ```text
 QWEN_REALTIME_URL=wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime
-QWEN_REALTIME_MODEL=qwen3.5-omni-plus-realtime-2026-03-15
+QWEN_REALTIME_MODEL=qwen3.8-omni-flash-realtime
 ```
+
+Qwen3.8-Omni-Flash replaced `qwen3.5-omni-plus-realtime-2026-03-15` on
+2026-10-18. Setting `QWEN_REALTIME_MODEL` back to that name returns to it.
 
 Both may be overridden through environment variables when the service changes.
 The model name and event shapes in `session.py` are authoritative; this README

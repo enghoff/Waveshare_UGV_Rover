@@ -58,7 +58,21 @@ ENDPOINT = os.environ.get(
     "QWEN_REALTIME_URL",
     "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime")
 MODEL = os.environ.get(
-    "QWEN_REALTIME_MODEL", "qwen3.5-omni-plus-realtime-2026-03-15")
+    "QWEN_REALTIME_MODEL", "qwen3.8-omni-flash-realtime")
+# Qwen3.8-Omni-Flash since 2026-10-18, on the owner's word: the newer generation,
+# released in September 2026, and the only size of it -- there is no 3.8 plus.
+# No dated snapshot of it is listed for this key, so this is the alias. It takes
+# this session as it stands: Jennifer, the daemon's 24 tools, and the flash cut of
+# the prompt that `instructions` makes for any model with "flash" in its name. In
+# the one run before the switch it heard "Return to me, sitting on the black
+# sofa" and called find_thing and go_to_thing in the same response, the morning
+# plus-realtime had three times said it was setting off and called nothing. One
+# run is an observation, not a measurement. It bills the text of what it says
+# as well as the audio, which the 3.5 models did not.
+#
+# Until then the default was `qwen3.5-omni-plus-realtime-2026-03-15`, and what
+# follows is why. It is kept because it is still how these models fail.
+#
 # The dated snapshot, not the undated alias. As of 2026-08-17 the alias
 # `qwen3.5-omni-plus-realtime` is refused outright: its free tier is exhausted
 # and the console marks Stop-on-Exhaust as "Not Supported" for that name, which
@@ -74,7 +88,7 @@ MODEL = os.environ.get(
 #
 # A dated snapshot is a different model with its own quota. Console as of
 # 2026-08-19: `qwen3.5-omni-plus-realtime-2026-03-15` still has 1,000,000/1,000,000
-# free until 2026-11-15, and Stop-on-Exhaust is already off. That is why it is
+# free until 2026-11-15, and Stop-on-Exhaust is already off. That is why it was
 # the default. The alias is still
 # `QWEN_REALTIME_MODEL=qwen3.5-omni-plus-realtime` once that row can bill.
 # Flash is `QWEN_REALTIME_MODEL=qwen3.5-omni-flash-realtime`.
