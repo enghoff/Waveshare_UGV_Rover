@@ -500,7 +500,8 @@ def test_which_way_something_is_in_words() -> None:
 # --- the world model's records ------------------------------------------------
 
 def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
-                   gone_at=None, session=None, height_m=None, visits=3, looked_for=0):
+                   gone_at=None, session=None, height_m=None, visits=3, looked_for=0,
+                   placed_at=None):
     """The world model's job's output (world_state/visit_model/job.py), written
     where world_state/visit_things.py reads it: one record holding the given
     looks, standing at `at`."""
@@ -513,7 +514,7 @@ def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
     record = {"id": "v7", "x_m": at[0], "y_m": at[1], "spread_m": 0.15, "extent_m": 0.6,
               "height_m": height_m, "state": state, "seen_at": now - 60.0, "since": now - 600.0,
               "gone_at": gone_at, "visits": visits, "looked_for": looked_for,
-              "path": [[at[0], at[1], round(now - 600.0)]],
+              "path": [[at[0], at[1], round(now - 600.0) if placed_at is None else placed_at]],
               "observations": list(observation_ids)}
     payload = {"model": "test", "written_at": now - age_s, "generation": "0123456789abcdef",
                "filed_until": now - age_s - 90.0,
@@ -686,6 +687,12 @@ def test_a_record_set_aside_says_it_was_not_found_again() -> None:
         _model_records(rover, [look], at=(3.0, 3.0), visits=3, looked_for=9)
         check("nor is a record seen on three visits ever set aside",
               "not_found_again" in rover.call("find_thing", {"description": "a bed"}), False)
+        # The model's own first time for a record started by looks taken at a
+        # cold boot, while the clock read 1970: the record's oldest real look
+        # is when it was first seen.
+        _model_records(rover, [look], at=(3.0, 3.0), placed_at=89)
+        check("a record the model first placed in 1970 was first seen at its oldest real look",
+              rover.call("find_thing", {"description": "a bed"})["first_seen"], "just now")
     finally:
         visit_things.SET_ASIDE_DAYS = was
         done(rover)

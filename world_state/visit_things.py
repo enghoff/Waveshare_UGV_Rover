@@ -35,6 +35,10 @@ SET_ASIDE_VISITS = 2
 SET_ASIDE_DAYS = 7.0
 SET_ASIDE_LOOKED_FOR = 3
 
+#: A look stamped before this was taken while the clock still read 1970, after
+#: a cold boot (visit_model/job.py): it says nothing of when.
+CLOCK_SET_AFTER = 1.7e9
+
 
 class VisitStore:
     def __init__(self, store) -> None:
@@ -47,6 +51,7 @@ class VisitStore:
         self._looks: dict[int, tuple[str | None, int]] = {}
         self._taken: dict[int, float] = {}
         self._newest: dict[str, float] | None = None
+        self._oldest: dict[str, float] = {}
 
     def load(self) -> bool:
         """Read the records again if the job has written them since; whether
@@ -125,12 +130,23 @@ class VisitStore:
             # every look again (2026-10-17).
             self._backends()
             newest: dict[str, float] = {}
+            oldest: dict[str, float] = {}
             for i, rid in self.owner.items():
                 t = self._taken.get(i, 0.0)
                 if t > newest.get(rid, 0.0):
                     newest[rid] = t
-            self._newest = newest
+                if t >= CLOCK_SET_AFTER and t < oldest.get(rid, float("inf")):
+                    oldest[rid] = t
+            self._newest, self._oldest = newest, oldest
         return self._newest.get(record_id)
+
+    def oldest_look(self, record_id: str) -> float | None:
+        """When the oldest look a record holds was taken, of those whose time
+        means anything. The model's own first time can be a look from 1970: the
+        very first visits it filed were taken at cold boots, and a record started
+        there said it was first seen 56 years ago (2026-10-18)."""
+        self.newest_look(record_id)
+        return self._oldest.get(record_id)
 
     def thing_prints(self) -> dict[tuple[str, str], tuple[int, int, int]]:
         """As `Store.thing_prints`: per record and backend, how many looks with
@@ -180,7 +196,7 @@ class VisitStore:
         r = self.records.get(record_id)
         if r is None:
             return None
-        first = r["path"][0][2] if r.get("path") else r.get("since")
+        first = self.oldest_look(record_id)
         return {
             "id": record_id,
             "observation_count": len(r["observations"]),
