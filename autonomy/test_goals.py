@@ -662,8 +662,9 @@ def test_a_world_model_record_gains_from_a_look_the_depth_camera_ranges() -> Non
         one = {**a_thing(rid, 1.6, 1.0, uncertainty_m=0.5), "kind": "record", "ranging": None}
         one["placement"] = {**one["placement"], "viewpoints": visits, "height_m": height}
         return one
+    person = {**at("v17", 9, 0.8), "person": True}
     here = _situation(entities=[at("v12", 6, 0.3), at("v13", 5, 0.3), at("v14", 9, None),
-                                at("v15", 9, -0.3), at("v16", 9, -0.04)])
+                                at("v15", 9, -0.3), at("v16", 9, -0.04), person])
     offered = {one.target for one in goals.generate(here) if one.type == "improve_geometry"}
     check("so a goal at it is offered", "v12" in offered, True)
     check("...but not at a record seen on fewer than six visits, or placed from sight "
@@ -673,6 +674,8 @@ def test_a_world_model_record_gains_from_a_look_the_depth_camera_ranges() -> Non
           "floor and a rug's records, and which a look would aim at the floor; a record "
           "at floor level is still looked at",
           ("v15" in offered, "v16" in offered), (False, True))
+    check("...nor at one the world model's job takes for a person, who will have gone",
+          "v17" in offered, False)
 
 
 def test_the_same_situation_produces_the_same_list_twice() -> None:

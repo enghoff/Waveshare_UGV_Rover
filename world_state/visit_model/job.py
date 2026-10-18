@@ -10,7 +10,8 @@ closed, and writes:
 
 - `things.json`: the model's records -- place, state, when seen, and the
   store's observation ids of every region filed to each -- for the daemon to
-  read in place of the store's entities (`find_thing` first);
+  read in place of the store's entities (`find_thing` first), and whether each
+  is taken for a person (`people.py`), which only the planner reads;
 - `engine.pkl`: the engine itself, so a restart carries on where it stopped
   (and one that cannot be read is kept aside and the history filed afresh,
   under a new `generation`, which names the records);
@@ -48,6 +49,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import engine  # noqa: E402
 import data  # noqa: E402
+import people  # noqa: E402
 import recorded  # noqa: E402
 import walls  # noqa: E402
 
@@ -231,6 +233,32 @@ def things(e):
     return out
 
 
+#: The scorer of people, per store (people.py), kept so that each pass reads
+#: only the regions filed since the last.
+_PEOPLE = {}
+
+
+def mark_people(records, generation, log):
+    """Each record's chance of being a person (`person_p`) and whether it is
+    taken for one (`person`), for the planner; None where that cannot be said.
+    Returns the model's digest. Whatever goes wrong here, the records are
+    still written."""
+    scorer = _PEOPLE.get(DB)
+    try:
+        if scorer is None:
+            scorer = _PEOPLE[DB] = people.People(DB)
+        scores = scorer.score(records, generation)
+    except Exception as error:                     # never past here
+        log("people not scored: %s: %s" % (type(error).__name__, error))
+        _PEOPLE.pop(DB, None)
+        scores, scorer = {}, None
+    for r in records:
+        p = scores.get(r["id"])
+        r["person_p"] = None if p is None else round(p, 4)
+        r["person"] = None if scorer is None else scorer.flag(p)
+    return None if scorer is None else scorer.digest
+
+
 def write_json(path, payload):
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
@@ -284,13 +312,14 @@ def once(e, state, use_lidar, log):
                                     **part)
         e.save(os.path.join(state, "engine.pkl"))
     records = things(e)
+    person_model = mark_people(records, e.generation, log)
     write_json(os.path.join(state, "things.json"), {
         "model": "visit_model version 4 (cabe003)", "written_at": time.time(),
         "generation": e.generation, "map_session": e.filling["map_session"],
         "map_id": e.filling["map_id"], "store_generation": e.filling["store_generation"],
         "filed_until": e.taken_until, "last_observation": e.last_id,
         "waiting": 0 if e.pending is None else int(len(e.pending["id"])),
-        "lidar": arrays is not None, "things": records})
+        "lidar": arrays is not None, "person_model": person_model, "things": records})
     if filed:
         log("filed %d regions; %d records, %d waiting; lidar %s" % (
             filed, len(records), 0 if e.pending is None else len(e.pending["id"]),

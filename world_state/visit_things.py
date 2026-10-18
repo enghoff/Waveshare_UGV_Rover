@@ -227,6 +227,9 @@ class VisitStore:
             },
             "gone_at": r.get("gone_at") if r.get("state") == "gone" else None,
             "set_aside": self.set_aside(record_id),
+            # Taken for a person by the job (visit_model/people.py); only the
+            # planner reads it, to not aim a look at one.
+            "person": r.get("person") is True,
             "moved_from": [p[:2] for p in r.get("path", [])[:-1]][-1:] or None,
             "source": "world model",
         }

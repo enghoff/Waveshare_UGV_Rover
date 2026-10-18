@@ -443,10 +443,13 @@ def _worth_looking_at(situation: Situation) -> list[dict[str, Any]]:
         if entity.get("kind") == "record" and (
                 int(placement.get("viewpoints") or 0) < RECORD_VISITS_MIN
                 or placement.get("height_m") is None
-                or float(placement["height_m"]) < -RECORD_BELOW_FLOOR_M):
+                or float(placement["height_m"]) < -RECORD_BELOW_FLOOR_M
+                or entity.get("person")):
             # A look at it would feed another record or none
-            # (`RECORD_VISITS_MIN`), or be aimed at the floor
-            # (`RECORD_BELOW_FLOOR_M`); what it needs is the model's to settle.
+            # (`RECORD_VISITS_MIN`), be aimed at the floor
+            # (`RECORD_BELOW_FLOOR_M`), or find the person gone (the world
+            # model's job takes it for one, visit_model/people.py); what it
+            # needs is the model's to settle.
             continue
         wanted.append((-_room_to_improve(entity), str(entity.get("id") or ""),
                        entity))

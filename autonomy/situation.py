@@ -53,7 +53,7 @@ ENTITY_FIELDS = ("id", "kind", "label", "observation_count", "created_at",
                  "last_seen_at", "placement", "placement_uncertainty_m",
                  "placement_map_session", "last_map_session", "ranging",
                  "exemplar_count", "same_object_suspects", "group_mates", "gone",
-                 "set_aside")
+                 "set_aside", "person")
 
 #: How the things are asked for: the world model's records (version 4, kept per
 #: visit; docs/plans/a-world-model-kept-per-visit.md), without the sight lines
