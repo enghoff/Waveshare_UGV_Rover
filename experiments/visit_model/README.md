@@ -217,3 +217,38 @@ trials strictly and 11 of 11 unmoved objects in two records or fewer, filing
 79% of labelled pictures; over the seven sessions, wrong merges deployed 20,
 versions 1-4 10, 2, 2, 0 (`run_versions.sh`, tag `s7`). Next is the plan's step
 7: version 4 in shadow on the rover.
+
+## Absence from the camera (a candidate, not adopted)
+
+Version 4 marks a record gone only when the lidar sees through its place, so a
+stray -- a record started from a region or two that was never anything -- or a
+thing above the lidar's plane stays present for ever: on the rover on
+2026-10-18, 284 of 502 standing records had been seen on one or two visits, and
+the first autonomous run's 14 looks at such records fed none of them.
+`model.py` can take absence from the camera as well (`CAM_EMPTY_VISITS`, off
+unless set): a visit with a standing record's depth place within 2.5 m and 45
+degrees of the camera's axis in three pictures or more, that files nothing to
+it, is an empty visit; so many in a row and it is gone. With it off the filing
+is version 4's byte for byte.
+
+- `absence.py`: on version 4's filing, how often a visit with a never-staged
+  object's place in view filed nothing to its records -- 11% with three
+  pictures within 2.5 m -- and the longest run of such visits in a row, 3 (the
+  snowy-tree painting).
+- `camera_gone.py`: what a run called gone by the camera, judged on the labels.
+
+Over every picture to the drives of 2026-10-17 (`looks-drives1-1017.npz`):
+
+| Empty visit means | In a row | Gone by the camera | Records of never-staged objects called gone | Standing at the end |
+|---|---|---|---|---|
+| (version 4) | | 0 | 0 | 518 |
+| nothing filed to it | 4 | 546 | 10, among them the blue painting's, the rug's and the forest painting's main records | 284 |
+| nothing filed to it, and no region of the visit placed within 0.5 m (`CAM_EMPTY_MODE` "nothing there") | 4 | 254 | 2: a second record of the rug (8 labelled regions) and one holding one picture of the animals painting | 363 |
+| the same | 8 | 131 | 1: one holding one picture of the animals painting | 426 |
+
+"Nothing filed to it" confuses a look filed to a second record of the same
+thing with the place found empty. "Nothing there" does not touch a main record,
+but still calls records of things that were there gone, so as "gone" it is not
+honest: the rover would say the rug is no longer where it was. Not adopted;
+the question it leaves is whether such records should be set aside as not
+found again rather than called gone.

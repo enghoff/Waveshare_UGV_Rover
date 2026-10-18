@@ -141,6 +141,28 @@ if os.environ.get("MARGIN_ON_MOVES", "1") == "1":
 GONE_MIN_SCANS = 5
 GONE_SHARE = 0.66
 GONE_REACH_M = 4.0
+#: Absence from the camera, for what the lidar does not judge (version 5): a
+#: visit with a standing object's place within CAM_GONE_M of the camera and
+#: CAM_CONE_DEG of its axis in CAM_PICTURES pictures or more, that files nothing
+#: to it, is an empty visit, and CAM_EMPTY_VISITS of them in a row and it is
+#: gone. On the eleven objects never staged (absence.py, 2026-10-18) the
+#: longest run of empty visits in a row was three, the snowy-tree painting's.
+#: Only an object with a depth place: a place from sight lines alone may be a
+#: metre out, and a look at it would see the wrong spot. Off (0) unless set:
+#: this file is version 4 otherwise, byte for byte.
+CAM_GONE_M = 2.5
+CAM_NEAR_M = 0.5
+CAM_CONE_DEG = 45.0
+CAM_PICTURES = 3
+CAM_EMPTY_VISITS = int(os.environ.get("CAM_EMPTY_VISITS", 0))
+#: What makes a visit empty for an object: "filed", nothing filed to it; or
+#: "nothing there", nothing filed to it and no region of the visit placed
+#: within CAM_THERE_M (or its own half-width, if more) of it, whichever record
+#: took the region -- since a look filed to a second record of the same thing
+#: is not the place found empty (2026-10-18: "filed" called ten records of
+#: things never staged gone).
+CAM_EMPTY_MODE = os.environ.get("CAM_EMPTY_MODE", "nothing there")
+CAM_THERE_M = 0.5
 #: The end of development: M5 session 2's last labelled look was before this
 #: (2026-10-14 13:00 local). Development runs see nothing after it.
 DEVELOPMENT_END = 1791963000.0
@@ -657,6 +679,47 @@ def solid_votes(L, mem, filed, recs):
         o["solid_hits"] += int(lidar.solid(recs, t, o["x"], o["y"]))
 
 
+def camera_absent(L, mem, idx, filed, decisions):
+    """Objects the lidar does not judge, looked for close up in this visit's
+    pictures and not found (CAM_EMPTY_VISITS)."""
+    if not CAM_EMPTY_VISITS:
+        return
+    a = L.a
+    seen = {mem.resolve(v) for v in filed.values()}
+    pics = {}
+    for i in idx:
+        if L.posed[i] and a["frame"][i] not in pics:
+            pics[a["frame"][i]] = (a["cx"][i], a["cy"][i], a["heading"][i] - a["pan"][i])
+    if len(pics) < CAM_PICTURES:
+        return
+    P = np.array(list(pics.values()))
+    t1 = float(a["t"][idx].max())
+    idx = np.asarray(idx)
+    there = idx[L.placed[idx]]
+    RX, RY = a["px"][there], a["py"][there]
+    for o in mem.objects:
+        if o["state"] != "present" or not math.isfinite(o["z"]):
+            continue
+        if o["id"] in seen:
+            o["empty"] = 0
+            continue
+        if o["solid_hits"] > 0 and o["solid_hits"] * 2 >= o["solid_judged"]:
+            continue  # the lidar's to judge (absent)
+        d = np.hypot(P[:, 0] - o["x"], P[:, 1] - o["y"])
+        off = (np.degrees(np.arctan2(o["y"] - P[:, 1], o["x"] - P[:, 0])) - P[:, 2] + 180.0) % 360.0 - 180.0
+        n = int(np.sum((d >= CAM_NEAR_M) & (d <= CAM_GONE_M) & (np.abs(off) <= CAM_CONE_DEG)))
+        if n < CAM_PICTURES:
+            continue
+        if CAM_EMPTY_MODE == "nothing there" and len(RX) and                 np.min(np.hypot(RX - o["x"], RY - o["y"])) <= max(CAM_THERE_M, o["extent"] / 2.0):
+            continue
+        o["empty"] = o.get("empty", 0) + 1
+        if o["empty"] >= CAM_EMPTY_VISITS:
+            o["state"] = "gone"
+            o["gone_at"] = t1
+            decisions.append({"t": round(t1), "gone": o["id"], "at": [round(o["x"], 2), round(o["y"], 2)],
+                              "by": "camera", "empty_visits": o["empty"], "pictures": n})
+
+
 def absent(L, mem, idx, filed, recs, decisions):
     """Objects not seen this visit whose place the lidar saw through."""
     a = L.a
@@ -840,6 +903,7 @@ def run(a, recs):
         if recs:
             solid_votes(L, mem, filed, recs)
             absent(L, mem, idx, filed, recs, decisions)
+        camera_absent(L, mem, idx, filed, decisions)
         # Sorted: a set of names iterates in an order that changes from run to
         # run, and the order of merges changed the result (2026-10-16).
         consolidate(mem, sorted({mem.resolve(v) for v in filed.values()}), t, decisions)
