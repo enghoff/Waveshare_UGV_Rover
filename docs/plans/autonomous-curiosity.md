@@ -1429,6 +1429,10 @@ would learn the rover's own noise
 predicted is whether a look lands on its record, the predictor is frozen in
 `autonomy/landing.py` and the planner uses it, and its test is a look trial set
 out before it runs ([the decision](../decisions/m10-predicts-whether-a-look-lands.md)).
+The trial met criteria 1, 2, 3 and 5 on 92 new looks, and 6 is tested; criterion
+4's offline comparison came out a tie and its supervised comparison is still to
+run ([2026-10-18](../progress/2026-10-18-m10-look-trial.md)). Only 6 of the 92
+looks landed, so that comparison waits on more of them landing.
 
 Pass when all are true:
 
@@ -1664,12 +1668,11 @@ M1 and M2 passed on 2026-09-08, M3 and M4 on 2026-10-10
 ([session 8](../progress/2026-10-18-m5-session-8.md)), each signed off by the
 owner. In order from here:
 
-1. **M10's outcome model for the goal types that exist.** Its condition is
-   met: in M4's acceptance every one of the ten chosen looks that changed a
-   claim moved it the way the tape did. It is offline work on recorded runs.
-   Since 2026-10-17 a run's goals are the world model's records and the
-   changes the watch reports, so which recorded runs it can learn from is its
-   first question.
+1. **M10's supervised comparison.** The landing predictor passed its look
+   trial on everything but criterion 4
+   ([2026-10-18](../progress/2026-10-18-m10-look-trial.md)), which asks for
+   runs with and without it. With one look in fifteen landing there is little
+   for that comparison to measure, so it waits on item 3.
 2. **The multi-day usefulness benchmark.** Its budget in charges and owner
    hours is to be stated and agreed before it is planned (*Multi-day
    usefulness benchmark*, above).
