@@ -76,6 +76,13 @@ colour that compute each region as before. `likeness.py` is that branch's
 `scale-1015.npz` (its scale) and `walls.npz` (the building's walls, on map
 `7da19bef3888`) are part of version 4 and are not refitted here.
 
+Since 2026-10-18 the job also marks each record a frozen model of its
+pictures takes for a person (`people.py`, `person.json`): `person_p` and
+`person` in `things.json`, which only an autonomous run reads, to not aim a
+look at one. It keeps each record's sums between passes and reads only the
+regions filed since; the first pass over the history takes about 5 s
+(docs/progress/2026-10-18-records-of-people-are-not-looked-at.md).
+
 One addition, which nothing in the filing reads: each visit counts, for every
 standing record with a depth place, whether its place was within 2.5 m and 45
 degrees of the camera in three pictures or more and nothing was filed to it

@@ -1683,9 +1683,10 @@ owner. In order from here:
    whose thing had gone; 33 of the 149 records the planner could aim at stand
    for no object
    ([2026-10-18](../progress/2026-10-18-what-the-look-trial-was-aimed-at.md)).
-   Records below the floor are no longer looked at; a classifier of the rest
-   failed its blind tests. What is left is the doorways and people, and
-   records that outlive their things.
+   Records below the floor and records of people are no longer looked at
+   ([2026-10-18](../progress/2026-10-18-records-of-people-are-not-looked-at.md));
+   a classifier of every kind of non-object failed its blind tests. What is
+   left is the views through doorways, and records that outlive their things.
 4. **The owner's choice on running unattended.** No milestone reaches the
    design's goal of a rover left to occupy itself: R-SAFE-6 is open and nothing
    docks the rover ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).

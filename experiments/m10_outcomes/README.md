@@ -140,3 +140,11 @@ of the not-an-object classifier from [labels/](labels/), and fails both, as
 on the day. Of 82 misses, 26 were at records of no object, 23 at things gone,
 14 at the dining chairs, 9 not boxed, 7 at a second record of a thing standing
 there.
+
+## People
+
+`people.py FEATURES.npz labels/records-1018.json labels/people-test-1018.json [PERSON.json]`
+fits the person model again from the labels -- development and held-out halves
+split by record id before fitting -- and judges it as on the day: held out, 9
+flagged, all people, of 13; it reproduces `world_state/visit_model/person.json`
+([the entry](../../docs/progress/2026-10-18-records-of-people-are-not-looked-at.md)).

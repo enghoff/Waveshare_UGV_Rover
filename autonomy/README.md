@@ -224,7 +224,9 @@ visits, or with no height, are not targets either way
 more than 0.05 m below the floor (`RECORD_BELOW_FLOOR_M`): a look takes its
 tilt from the height and would be aimed at the floor, and such records were
 patches of bare floor and a rug's
-([2026-10-18](../docs/progress/2026-10-18-what-the-look-trial-was-aimed-at.md)).
+([2026-10-18](../docs/progress/2026-10-18-what-the-look-trial-was-aimed-at.md)),
+nor one the world model's job takes for a person (`person`), who will have
+gone ([2026-10-18](../docs/progress/2026-10-18-records-of-people-are-not-looked-at.md)).
 
 `improve_geometry` is somewhere to stand that would make a thing's position come
 out better. **A bearing pins a thing across the line of sight and says nothing
