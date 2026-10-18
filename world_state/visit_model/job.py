@@ -53,6 +53,10 @@ READ_DELAY_S = 60.0
 #: is filed without the lidar's absence evidence, as the desk does for looks no
 #: recording covers.
 BUFFER_S = 1800.0
+#: Earlier than this, a region was stamped by a clock not yet set: the Orin
+#: reads 1970 for about 75 s after a cold boot, and the looking loop records
+#: then. The history the job first files keeps them, as the desk's runs did.
+CLOCK_SET_AFTER = 1.7e9
 #: Lidar kept on disk around each batch of visits filed.
 SCAN_MARGIN_S = 10.0
 SCANS_KEPT_S = 14 * 86400.0
@@ -163,6 +167,14 @@ def once(e, state, use_lidar, log):
             first_young = int(a["id"][young].min())
             keep = a["id"] < first_young
             a = {k: v[keep] for k, v in a.items()}
+        unset = a["t"] < CLOCK_SET_AFTER
+        if unset.any():
+            # Filed in time order, a look stamped in 1970 would be a visit 56
+            # years before the rest, and would set filed_until to 1970: on
+            # 2026-10-18 eleven did, after a cold boot. Passed over, not filed.
+            log("%d regions stamped before the clock was set: passed over" % int(unset.sum()))
+            e.last_id = max(e.last_id, int(a["id"][unset].max()))
+            a = {k: v[~unset] for k, v in a.items()}
         e.add(a)
     decisions = []
     filed = e.step(now - READ_DELAY_S, recs, decisions)
