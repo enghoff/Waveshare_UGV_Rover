@@ -100,3 +100,7 @@ autonomy/** text eol=lf
 # does half of itself. The opposite trap to every rule above, so it is written
 # down for the same reason.
 *.cmd text eol=crlf
+
+# experiments/multiday/ is copied to the rover by scp (docs/runbooks/daily-benchmark-run.md),
+# so a CRLF checkout would reach it as is: the same carriage-return trap.
+experiments/multiday/** text eol=lf
