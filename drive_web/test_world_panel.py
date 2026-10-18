@@ -1075,10 +1075,11 @@ def test_the_header_counts_the_world_models_records() -> None:
     session.world_handle("world_state_entities", {
         "ok": True, "source": "model", "recent": [],
         "entities": [{"id": "v1", "gone": False}, {"id": "v2", "gone": True},
-                     {"id": "v3", "gone": False}],
+                     {"id": "v3", "gone": False}, {"id": "v4", "gone": False, "set_aside": True}],
         "summary": {"entities": 2, "observations": 9, "map_session": 1}}, 0.1)
     world = session.world_state()
-    check("the header counts the records still in place",
+    check("the header counts the records still in place, not those seen gone or "
+          "set aside as not found again",
           (world["entities"], world["kind"]), (2, "record"))
     session.world_handle("world_state_summary", {
         "ok": True, "summary": {"entities": 741, "observations": 10, "map_session": 1}}, 0.1)

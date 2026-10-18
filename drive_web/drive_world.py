@@ -839,7 +839,7 @@ class SessionWorld:
         summary = self.world_payload.get("summary") or {}
         if self.world_payload.get("source") == "model":
             self.world["entities"] = sum(1 for one in self.world_payload.get("entities") or []
-                                         if not one.get("gone"))
+                                         if not one.get("gone") and not one.get("set_aside"))
             self.world["kind"] = "record"
         else:
             self.world["entities"] = summary.get("entities", 0)

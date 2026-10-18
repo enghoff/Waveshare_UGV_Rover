@@ -500,7 +500,7 @@ def test_which_way_something_is_in_words() -> None:
 # --- the world model's records ------------------------------------------------
 
 def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
-                   gone_at=None, session=None, height_m=None):
+                   gone_at=None, session=None, height_m=None, visits=3, looked_for=0):
     """The world model's job's output (world_state/visit_model/job.py), written
     where world_state/visit_things.py reads it: one record holding the given
     looks, standing at `at`."""
@@ -512,7 +512,8 @@ def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
     now = time.time()
     record = {"id": "v7", "x_m": at[0], "y_m": at[1], "spread_m": 0.15, "extent_m": 0.6,
               "height_m": height_m, "state": state, "seen_at": now - 60.0, "since": now - 600.0,
-              "gone_at": gone_at, "visits": 3, "path": [[at[0], at[1], round(now - 600.0)]],
+              "gone_at": gone_at, "visits": visits, "looked_for": looked_for,
+              "path": [[at[0], at[1], round(now - 600.0)]],
               "observations": list(observation_ids)}
     payload = {"model": "test", "written_at": now - age_s, "generation": "0123456789abcdef",
                "filed_until": now - age_s - 90.0,
@@ -603,14 +604,15 @@ def test_of_two_records_alike_the_present_and_recent_one_answers() -> None:
         folder = os.path.join(store.dir, "visit_model")
         os.makedirs(folder, exist_ok=True)
 
-        def write(newer_state, newer_gone):
+        def write(newer_state, newer_gone, newer_looked_for=0):
             now = time.time()
             base = {"spread_m": 0.15, "extent_m": 0.6, "height_m": None, "since": now - 600.0,
                     "visits": 2, "seen_at": now - 86400.0 * 7}
             things = [dict(base, id="v7", x_m=3.0, y_m=3.0, state="present", gone_at=None,
                            path=[[3.0, 3.0, 0]], observations=[older]),
                       dict(base, id="v8", x_m=1.0, y_m=5.0, state=newer_state, gone_at=newer_gone,
-                           path=[[1.0, 5.0, 0]], observations=[newer])]
+                           looked_for=newer_looked_for, path=[[1.0, 5.0, 0]],
+                           observations=[newer])]
             with open(os.path.join(folder, "things.json.tmp"), "w") as f:
                 json.dump({"model": "test", "written_at": now, "map_session": store.map_session(),
                            "things": things}, f)
@@ -627,7 +629,61 @@ def test_of_two_records_alike_the_present_and_recent_one_answers() -> None:
         present = rover.call("find_thing", {"description": "a bed"})
         check("one seen gone gives way to one still where it was",
               (present["distance_m"], present["direction"]), (2.0, "to your right"))
+
+        import world_state.visit_things as visit_things
+        was = visit_things.SET_ASIDE_DAYS
+        visit_things.SET_ASIDE_DAYS = 0.0   # these looks are seconds old, not a week
+        try:
+            write("present", None, newer_looked_for=3)
+            aside = rover.call("find_thing", {"description": "a bed"})
+            check("so does one set aside as not found again",
+                  (aside["distance_m"], aside["direction"], "not_found_again" in aside),
+                  (2.0, "to your right", False))
+        finally:
+            visit_things.SET_ASIDE_DAYS = was
     finally:
+        done(rover)
+
+
+def test_a_record_set_aside_says_it_was_not_found_again() -> None:
+    """A record seen on one or two visits, not for a week, and not recognised
+    on three close looks at its place since is set aside -- never called gone:
+    found, it says the rover has not found it there again and it may not be
+    there. Two looks short of that it answers as any other; a record seen on
+    three visits is never set aside."""
+    try:
+        import numpy  # noqa: F401
+        import rover_daemon  # noqa: F401
+    except ImportError as error:
+        SKIP.append(f"a record set aside as not found again ({error})")
+        return
+
+    import world_state.visit_things as visit_things
+
+    rover, done = _in_a_world()
+    was = visit_things.SET_ASIDE_DAYS
+    visit_things.SET_ASIDE_DAYS = 0.0   # these looks are seconds old, not a week
+    try:
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        look = rover._world_store().observations(limit=1)[0]["id"]
+        _model_records(rover, [look], at=(3.0, 3.0), visits=1, looked_for=3)
+        found = rover.call("find_thing", {"description": "a bed"})
+        check("set aside, it says it was not found again, and is not called gone",
+              ("not found it again" in found.get("not_found_again", ""), "no_longer_there" in found),
+              (True, False))
+        check("...and is still placed, where it was seen",
+              (found["placed"], found["distance_m"]), (True, 2.0))
+        listed = rover.call("world_state_entities", {"source": "model"})
+        check("the console's list carries it, uncounted among things in place",
+              (listed["entities"][0]["set_aside"], listed["summary"]["entities"]), (True, 0))
+        _model_records(rover, [look], at=(3.0, 3.0), visits=1, looked_for=2)
+        check("two looks for it are not enough",
+              "not_found_again" in rover.call("find_thing", {"description": "a bed"}), False)
+        _model_records(rover, [look], at=(3.0, 3.0), visits=3, looked_for=9)
+        check("nor is a record seen on three visits ever set aside",
+              "not_found_again" in rover.call("find_thing", {"description": "a bed"}), False)
+    finally:
+        visit_things.SET_ASIDE_DAYS = was
         done(rover)
 
 
@@ -751,5 +807,6 @@ TESTS = (
     test_of_two_records_alike_the_present_and_recent_one_answers,
     test_the_console_reads_the_world_models_records,
     test_autonomy_reads_the_world_models_records_or_none,
+    test_a_record_set_aside_says_it_was_not_found_again,
     test_which_way_something_is_in_words,
 )

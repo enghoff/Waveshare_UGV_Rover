@@ -137,6 +137,7 @@ def things(e):
                     "height_m": None if not math.isfinite(float(o["z"])) else round(float(o["z"]), 3),
                     "state": o["state"], "seen_at": o["seen"], "since": o["since"],
                     "gone_at": o["gone_at"], "visits": len(o["visits"]),
+                    "looked_for": o.get("looked_for", 0),
                     "path": o["path"], "observations": ids})
     return out
 
@@ -250,11 +251,19 @@ def load(path, state, log):
             os.replace(path, path + ".bad")
             log("the saved engine could not be read (%r): kept as %s.bad" % (exc, os.path.basename(path)))
         else:
-            if not getattr(e, "generation", None):
-                # Saved before engines were named.
-                e.generation = mint()
-                e.save(path)
-            return e
+            if not getattr(e, "counts_looks", False):
+                # Saved before visits counted the looks for each record: the
+                # history is filed again, to the same records, so that the
+                # counts cover it (model.looked_for).
+                os.replace(path, path + ".before-counts")
+                log("the saved engine counts no looks for its records: kept as %s.before-counts,"
+                    " filing the history again" % os.path.basename(path))
+            else:
+                if not getattr(e, "generation", None):
+                    # Saved before engines were named.
+                    e.generation = mint()
+                    e.save(path)
+                return e
     e = bootstrap(state, log)
     e.save(path)
     return e

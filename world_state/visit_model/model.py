@@ -141,6 +141,17 @@ if os.environ.get("MARGIN_ON_MOVES", "1") == "1":
 GONE_MIN_SCANS = 5
 GONE_SHARE = 0.66
 GONE_REACH_M = 4.0
+#: Added on the rover to version 4, read by nothing in the filing: how many
+#: visits since a record was last filed to had its depth place within
+#: LOOK_FAR_M of the camera and LOOK_CONE_DEG of its axis in LOOK_PICTURES
+#: pictures or more and filed nothing to it (`looked_for`). The daemon sets a
+#: record aside as not found again on it (world_state/visit_things.py); as
+#: "gone" the same count called records of things that were there gone
+#: (docs/progress/2026-10-18-absence-from-the-camera-is-not-honest-as-gone.md).
+LOOK_FAR_M = 2.5
+LOOK_NEAR_M = 0.5
+LOOK_CONE_DEG = 45.0
+LOOK_PICTURES = 3
 #: The end of development: M5 session 2's last labelled look was before this
 #: (2026-10-14 13:00 local). Development runs see nothing after it.
 DEVELOPMENT_END = 1791963000.0
@@ -657,6 +668,29 @@ def solid_votes(L, mem, filed, recs):
         o["solid_hits"] += int(lidar.solid(recs, t, o["x"], o["y"]))
 
 
+def looked_for(L, mem, idx, filed):
+    """Count, per standing object with a depth place, the visits that had its
+    place close in view and filed nothing to it, since it was last filed to.
+    Changes nothing the filing reads."""
+    a = L.a
+    seen = {mem.resolve(v) for v in filed.values()}
+    pics = {}
+    for i in idx:
+        if L.posed[i] and a["frame"][i] not in pics:
+            pics[a["frame"][i]] = (a["cx"][i], a["cy"][i], a["heading"][i] - a["pan"][i])
+    P = np.array(list(pics.values())) if len(pics) >= LOOK_PICTURES else None
+    for o in mem.objects:
+        if o["id"] in seen:
+            o["looked_for"] = 0
+            continue
+        if P is None or o["state"] != "present" or not math.isfinite(o["z"]):
+            continue
+        d = np.hypot(P[:, 0] - o["x"], P[:, 1] - o["y"])
+        off = (np.degrees(np.arctan2(o["y"] - P[:, 1], o["x"] - P[:, 0])) - P[:, 2] + 180.0) % 360.0 - 180.0
+        if int(np.sum((d >= LOOK_NEAR_M) & (d <= LOOK_FAR_M) & (np.abs(off) <= LOOK_CONE_DEG))) >= LOOK_PICTURES:
+            o["looked_for"] = o.get("looked_for", 0) + 1
+
+
 def absent(L, mem, idx, filed, recs, decisions):
     """Objects not seen this visit whose place the lidar saw through."""
     a = L.a
@@ -840,6 +874,7 @@ def run(a, recs):
         if recs:
             solid_votes(L, mem, filed, recs)
             absent(L, mem, idx, filed, recs, decisions)
+        looked_for(L, mem, idx, filed)
         # Sorted: a set of names iterates in an order that changes from run to
         # run, and the order of merges changed the result (2026-10-16).
         consolidate(mem, sorted({mem.resolve(v) for v in filed.values()}), t, decisions)

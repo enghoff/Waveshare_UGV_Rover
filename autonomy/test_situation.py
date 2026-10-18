@@ -147,13 +147,15 @@ def test_the_things_are_the_world_models_records_and_none_when_they_cannot_answe
 
     worth = dict(a_thing("v1", 1.6, 1.0, uncertainty_m=0.6, major_deg=90.0))
     gone = dict(a_thing("v2", 1.0, 1.4, uncertainty_m=0.6, major_deg=90.0), gone=True)
-    rover = FakeRover(room=ROOM, entities=[worth, gone])
+    aside = dict(a_thing("v3", 1.2, 1.2, uncertainty_m=0.6, major_deg=90.0), set_aside=True)
+    rover = FakeRover(room=ROOM, entities=[worth, gone, aside])
     rover.generation = "0123456789abcdef"
     here = situation_mod.Situation.read(rover, at=1757320800.0)
     check("the things are the world model's", here.things.get("source"), "model")
     check("...named under its generation", here.world_generation, "0123456789abcdef")
     check("...with when it last filed", here.things.get("filed_until") is not None, True)
-    check("the gone record is in the reading", len(here.body["entities"]), 2)
+    check("the gone record and the one set aside as not found again are in the reading",
+          len(here.body["entities"]), 3)
     check("...and planned around by nothing",
           [one["id"] for one in here.entities], ["v1"])
     check("...so only the other is a goal",

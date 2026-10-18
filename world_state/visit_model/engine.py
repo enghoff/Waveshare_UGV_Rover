@@ -71,6 +71,9 @@ class Engine:
         self.taken_until = None
         #: What names these records (job.mint); None until the job names it.
         self.generation = None
+        #: Whether every visit it filed counted looks for each record
+        #: (model.looked_for); one saved before that files the history again.
+        self.counts_looks = True
 
     def add(self, a):
         """Regions read from the store, waiting for their visit to close."""
@@ -112,6 +115,7 @@ class Engine:
             if recs:
                 model.solid_votes(L, mem, filed, recs)
                 model.absent(L, mem, idx, filed, recs, decisions)
+            model.looked_for(L, mem, idx, filed)
             model.consolidate(mem, sorted({mem.resolve(v) for v in filed.values()}), t, decisions)
             model.settle_pending(mem, t, decisions)
             self.filing.update({int(sub["id"][i]): oid for i, oid in filed.items()})

@@ -52,7 +52,8 @@ WORLD_STALE_S = 600.0
 ENTITY_FIELDS = ("id", "kind", "label", "observation_count", "created_at",
                  "last_seen_at", "placement", "placement_uncertainty_m",
                  "placement_map_session", "last_map_session", "ranging",
-                 "exemplar_count", "same_object_suspects", "group_mates", "gone")
+                 "exemplar_count", "same_object_suspects", "group_mates", "gone",
+                 "set_aside")
 
 #: How the things are asked for: the world model's records (version 4, kept per
 #: visit; docs/plans/a-world-model-kept-per-visit.md), without the sight lines
@@ -117,9 +118,11 @@ class Situation:
     @property
     def entities(self) -> list[dict[str, Any]]:
         """The things a decision may plan around: every record but those the
-        world model has seen gone, which stand nowhere now. The reading keeps
-        those too, so the record shows what was left out."""
-        return [one for one in self.body.get("entities") or [] if not one.get("gone")]
+        world model has seen gone, which stand nowhere now, and those set aside
+        as not found again. The reading keeps those too, so the record shows
+        what was left out."""
+        return [one for one in self.body.get("entities") or []
+                if not one.get("gone") and not one.get("set_aside")]
 
     @property
     def things(self) -> dict[str, Any]:

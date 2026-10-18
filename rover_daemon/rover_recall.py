@@ -121,7 +121,9 @@ def _present_and_recent_first(matches, floor, lookup):
 
     def key(match):
         entity = lookup(match["entity_id"]) or {}
-        return (1 if entity.get("gone_at") else 0, -float(entity.get("last_seen_at") or 0.0))
+        # Still where it was, then set aside as not found again, then seen gone.
+        where = 2 if entity.get("gone_at") else 1 if entity.get("set_aside") else 0
+        return (where, -float(entity.get("last_seen_at") or 0.0))
 
     return sorted(near, key=key) + rest
 
@@ -342,6 +344,16 @@ class RoverRecall:
                 "when the rover looked at where it was last seen, %s, it was no "
                 "longer there; the place below is where it was last seen, not "
                 "where it is" % how_long_ago(entity["gone_at"]))
+        # Weaker than gone: seen once or twice, a while ago, and not recognised
+        # when the rover looked there again since -- a stray, or a thing kept
+        # under another record, as often as a thing taken away.
+        elif entity.get("set_aside"):
+            visits = int((entity.get("placement") or {}).get("viewpoints") or 0)
+            answer["not_found_again"] = (
+                "the rover saw this on %s, last %s, and has not found it again "
+                "when it looked there since; it may not be there" % (
+                    "one visit" if visits == 1 else "%d visits" % visits,
+                    how_long_ago(recalled.get("last_seen_at"))))
         place = self._placed_now(entity)
         if place is None:
             return {**answer, "placed": False,

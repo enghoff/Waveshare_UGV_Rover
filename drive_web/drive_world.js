@@ -314,9 +314,12 @@ const WGRADES = {
       && wSpread(one) <= 0.3,
 };
 let worldGrade = "best";
-// Whether the world model's records it has seen gone are shown, faded. Off by
-// default: the popup is for where things are now.
+// Whether the world model's records it has seen gone, or set aside as not
+// found again, are shown, faded. Off by default: the popup is for where things
+// are now.
 let worldShowGone = false;
+// Seen gone, or set aside as not found again (world_state/visit_things.py).
+const wAside = (one) => !!(one.gone || one.set_aside);
 
 const wPlacedFrom = (one) => +((one.placement || {}).viewpoints || 0);
 const wSpread = (one) => +((one.placement || {}).error_major_m
@@ -342,7 +345,7 @@ function wShown() {
 // The same, before the thinning: what the bar and the phrase let through.
 function wNarrowed() {
   const graded = (world.entities || []).filter(
-      (one) => (worldShowGone || !one.gone) && (WGRADES[worldGrade] || WGRADES.all)(one));
+      (one) => (worldShowGone || !wAside(one)) && (WGRADES[worldGrade] || WGRADES.all)(one));
   if (!worldFilter) return graded;
   const best = worldFilter.things;
   return graded.filter((one) => best.has(one.id))
@@ -401,7 +404,7 @@ function wThin(things) {
     one.id === chosen ? 0 : 1,
     // A thing still where it was before one seen gone from there, whatever
     // either scores: the faded mark must never take a patch from the live one.
-    one.gone ? 1 : 0,
+    wAside(one) ? 1 : 0,
     score ? -(score.get(one.id) || 0) : 0,
     wDisagreeing(one) ? 1 : 0,
     wPlacedFrom(one) < 3 ? 1 : 0,
@@ -420,7 +423,7 @@ function wThin(things) {
   const reach = WTHIN_M * WTHIN_M;
   for (const [, one] of ranked) {
     const {x_m: x, y_m: y} = one.placement;
-    const kept = one.gone ? keptGone : keptLive;
+    const kept = wAside(one) ? keptGone : keptLive;
     if (kept.some((k) => (k.x_m - x) ** 2 + (k.y_m - y) ** 2 < reach)) continue;
     kept.push(one.placement);
     keep.add(one);
@@ -435,7 +438,7 @@ function wThin(things) {
 function wHeldBack() {
   const keep = WGRADES[worldGrade] || WGRADES.all;
   return (world.entities || []).filter(
-      (one) => (worldShowGone || !one.gone) && one.placement && !keep(one)).length;
+      (one) => (worldShowGone || !wAside(one)) && one.placement && !keep(one)).length;
 }
 
 // What a row or a tile scored, as the line the two of them share. Dimmed below
@@ -513,7 +516,7 @@ function drawWorldList() {
 // thing, without any of that having to be undone.
 function wRowFace(row, entity, newest, summary) {
   row.className = "wrow" + (entity.id === state.world.selected ? " on" : "")
-                + (entity.gone ? " wgone" : "");
+                + (wAside(entity) ? " wgone" : "");
   row.onclick = () => post({do: "world", what: "select",
                             id: entity.id === state.world.selected ? "" : entity.id});
 
@@ -545,7 +548,8 @@ function wRowFace(row, entity, newest, summary) {
            + `${entity.observation_count === 1 ? "" : "s"}`
            + ` · first ${wTime(entity.created_at)}`
            + ` · last ${wAgo(entity.last_seen_at)}`
-           + (entity.gone ? ` · gone ${wAgo(entity.gone_at)}` : "");
+           + (entity.gone ? ` · gone ${wAgo(entity.gone_at)}` : "")
+           + (entity.set_aside ? " · not found again" : "");
   if (entity.last_map_session && summary.map_session
       && entity.last_map_session !== summary.map_session) {
     // Not stale as such -- the sofa is still there -- but everything positional

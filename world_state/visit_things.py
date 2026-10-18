@@ -23,6 +23,18 @@ THINGS_FILE = os.path.join("visit_model", "things.json")
 #: Older than this, the job has stopped, and the store's own things answer.
 MAX_AGE_S = 900.0
 
+#: A record is set aside as not found again -- never called gone -- when it was
+#: seen on at most SET_ASIDE_VISITS visits, not for SET_ASIDE_DAYS, and has been
+#: looked for since: its place close in view on SET_ASIDE_LOOKED_FOR visits
+#: that filed nothing to it (visit_model/model.py, `looked_for`). Over every
+#: labelled session to 2026-10-17 it set aside 81 of 518 standing records and
+#: not one holding a labelled picture; every object kept its main record.
+#: Asked as "gone", the camera's count alone called records of things that were
+#: there gone (docs/progress/2026-10-18-absence-from-the-camera-is-not-honest-as-gone.md).
+SET_ASIDE_VISITS = 2
+SET_ASIDE_DAYS = 7.0
+SET_ASIDE_LOOKED_FOR = 3
+
 
 class VisitStore:
     def __init__(self, store) -> None:
@@ -152,6 +164,16 @@ class VisitStore:
                     box = None
                 yield self.owner[int(row[0])], row[1] or "", row[2], box
 
+    def set_aside(self, record_id: str) -> bool:
+        """Whether a record is set aside as not found again (SET_ASIDE_*)."""
+        r = self.records.get(record_id)
+        if r is None or r.get("state") == "gone":
+            return False
+        newest = self.newest_look(record_id) or r.get("seen_at") or 0.0
+        return (int(r.get("visits") or 0) <= SET_ASIDE_VISITS
+                and time.time() - float(newest) >= SET_ASIDE_DAYS * 86400.0
+                and int(r.get("looked_for") or 0) >= SET_ASIDE_LOOKED_FOR)
+
     def entity(self, record_id: str) -> dict[str, Any] | None:
         """A record in the shape `find_thing` reads a store entity: counts,
         times and a placement in this map session."""
@@ -180,6 +202,7 @@ class VisitStore:
                 "height_m": r.get("height_m"),
             },
             "gone_at": r.get("gone_at") if r.get("state") == "gone" else None,
+            "set_aside": self.set_aside(record_id),
             "moved_from": [p[:2] for p in r.get("path", [])[:-1]][-1:] or None,
             "source": "world model",
         }

@@ -1218,7 +1218,8 @@ class RoverWorld:
                                              placement=entity.get("placement"))
             entities.append(entity)
         summary = dict(store.summary(),
-                       entities=sum(1 for one in entities if not one["gone"]))
+                       entities=sum(1 for one in entities
+                                    if not one["gone"] and not one.get("set_aside")))
         payload = records.payload
         answer = {"ok": True, "entities": entities, "source": "model", "summary": summary,
                   # What names the records, and up to when the model has filed
