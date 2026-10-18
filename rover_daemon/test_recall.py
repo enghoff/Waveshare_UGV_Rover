@@ -519,8 +519,12 @@ def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
                "filed_until": now - age_s - 90.0,
                "map_session": store.map_session() if session is None else session,
                "things": [record]}
-    with open(os.path.join(folder, "things.json"), "w") as f:
+    # A new file renamed into place, as the job writes it: rewritten in place,
+    # two payloads of one size within one clock tick read as unchanged on the
+    # rover's filesystem, and the daemon kept the first (2026-10-18).
+    with open(os.path.join(folder, "things.json.tmp"), "w") as f:
         json.dump(payload, f)
+    os.replace(os.path.join(folder, "things.json.tmp"), os.path.join(folder, "things.json"))
 
 
 def test_the_world_models_records_answer_first() -> None:
