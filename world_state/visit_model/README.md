@@ -25,7 +25,8 @@ every world_state deploy, both niced:
    batch at a time), with the last half hour of the logger's lidar for absence;
 3. writes, in `~/.ugv/world/visit_model/`:
    - `things.json`, the records: place, spread, height, state (present or
-     gone), when seen, and the store's observation ids of each, for the daemon
+     gone), when seen, how often looked for and not found (`looked_for`), and
+     the store's observation ids of each, for the daemon
      (`world_state/visit_things.py`), with `filed_until`, up to when looks are
      filed, and `generation`, what the records' names `v12` are minted under;
    - `engine.pkl`, the engine, so a restart carries on where it stopped;
@@ -38,7 +39,8 @@ With no `engine.pkl` it first files the whole history (about two and a half
 minutes), with the drive recordings in `~/.ugv/world/visit_model/recordings/`
 read in name order, as the desk's `run_versions.sh` lists them, then its own
 `scans/` in time order, under a new `generation`. One it cannot read is kept
-as `engine.pkl.bad` and the history is filed the same way.
+as `engine.pkl.bad`, and one filed some earlier way (`job.FILED_AS`) as
+`engine.pkl.filed-as-N`, and the history is filed the same way.
 
 ## What is frozen
 
@@ -49,6 +51,12 @@ colour that compute each region as before. `likeness.py` is that branch's
 `metric.py` without the fitting. `metric-1015.npz` (the learned likeness),
 `scale-1015.npz` (its scale) and `walls.npz` (the building's walls) are part of
 version 4 and are not refitted here.
+
+One addition, which nothing in the filing reads: each visit counts, for every
+standing record with a depth place, whether its place was within 2.5 m and 45
+degrees of the camera in three pictures or more and nothing was filed to it
+(`model.looked_for`), back to zero when something is. Over every picture to
+2026-10-17 the filing with it is version 4's byte for byte.
 
 ## What proves it
 
@@ -70,6 +78,15 @@ All since 2026-10-17, through `world_state/visit_things.py`:
 - an autonomous run (`autonomy/situation.py`), with **no** fallback: it carries
   the records' names from step to step, and the store names things
   differently. With no records it plans around no things, and says why.
+
+Since 2026-10-18 the daemon sets a record aside as **not found again** -- never
+calls it gone -- when it was seen on two visits or fewer, not for a week, and
+looked for three times since (`visit_things.SET_ASIDE_*`). Over every labelled
+session that set aside 81 of 518 standing records, none holding a labelled
+picture; on the rover 127 of 630, each of eight sampled a second record of
+something held within 0.4 m or a thing passing through. `find_thing` ranks it
+after records in place and says it was not found there again, the console
+hides it with the gone ones, and a run plans around it no more than a gone one.
 
 The resolver still files to the store's entities.
 
@@ -94,3 +111,9 @@ The resolver still files to the store's entities.
   lidar file is now skipped as well.
 - **The model is pinned to one map session** (`data.MAP_SESSION`, 67). On
   another, the job reads nothing and its records stop answering.
+- **Anything stamped before the clock was set is left out live** -- regions and
+  lidar alike (`job.CLOCK_SET_AFTER`). A lidar chunk from a cold boot that began
+  in 1970 "covered" 1970 to 2026, and filing the history with it took from
+  records the lidar hits that let them be seen gone (74 gone, not 129). The
+  history keeps its 1970 regions, as the desk's runs do, so a record's first
+  sighting is its oldest look with a real time (`visit_things.oldest_look`).

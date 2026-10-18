@@ -191,8 +191,9 @@ the record says so, and it does not take one of the eight places.
 version 4 of the world model kept per visit
 ([`world_state/visit_model/`](../world_state/visit_model/README.md)), named `v12`
 under the model's own generation, read without their sight lines
-(`situation.THINGS_FROM`). A record the model has seen gone stays in the reading
-and is planned around by nothing. **There is no fallback to the store's
+(`situation.THINGS_FROM`). A record the model has seen gone, or that is set
+aside as not found again, stays in the reading and is planned around by
+nothing. **There is no fallback to the store's
 entities**, unlike the voice tools and the console: a run carries the records'
 names from step to step, and the store names the same things differently, so a
 reading that switched would make strangers of the goal it just chose and what it

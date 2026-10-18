@@ -109,10 +109,10 @@ console asks for its list, a thing's detail and its search with
 `source: "model"`, and the daemon answers from the model's records whenever they
 are fresh and on this map, and from the store's entities when they are not.
 Records are named `v` and a number, the store's entities `object:` and one. A
-record the model has seen gone -- the lidar saw through its place -- is left off
-the list and the map unless the **gone** box beside the bar is ticked, and is
-then drawn faded with when it went; the count under the map says how many are
-left off. The box is clear on every load. The observation stream is still the
+record the model has seen gone -- the lidar saw through its place -- or set
+aside as not found again is left off the list and the map unless the **gone**
+box beside the bar is ticked, and is then drawn faded with when it went or "not
+found again"; the count under the map says how many of each are left off. The box is clear on every load. The observation stream is still the
 store's, with the store's entity on each look. Selecting an entity shows every
 stored observation used for it: the source frame with the measured box drawn on
 it, and under it a table of every field stored with the look -- pose, bearing,

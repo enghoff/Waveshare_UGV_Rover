@@ -220,11 +220,17 @@ line, never to the model. Two things follow from the model:
 - **A thing seen gone says so.** The model marks a record gone when the lidar
   has seen through its place; `find_thing` then adds `no_longer_there`, so the
   rover says where a thing was last seen rather than that it is there.
+- **A record set aside says it was not found again.** One seen on two visits
+  or fewer, not for a week, and not recognised on three close looks at its
+  place since (`world_state/visit_things.py`): `find_thing` adds
+  `not_found_again`, so the rover says it may not be there -- never that it is
+  gone, since most such records are a second record of something held
+  elsewhere.
 - **Of near-ties, the present and recent one answers.** The model keeps a
   record of each place a thing stood and several of one thing it could not join,
   which a phrase scores within about 0.01 of each other; among matches that
-  close to the best, one still in place comes before one seen gone, then the one
-  whose newest look is newest. A record's last sighting is its newest look, not
+  close to the best, one still in place comes before one set aside, and that
+  before one seen gone, then the one whose newest look is newest. A record's last sighting is its newest look, not
   the record's own time, which a merge leaves behind.
 
 When the rover cannot say how far away a thing is, or cannot measure a route to

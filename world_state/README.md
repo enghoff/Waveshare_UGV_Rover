@@ -22,8 +22,10 @@ Its job reads the store and never writes to it; it writes its records to
 `search.ThingIndex` in the store's place. The voice tools rank its records first
 (`rover_daemon/rover_recall.py`) and the console's world popup lists them, both
 answering from the store's entities when the records cannot; an autonomous run
-plans around them with no such fallback (`autonomy/situation.py`). The resolver
-still files to the store's entities.
+plans around them with no such fallback (`autonomy/situation.py`). A record seen
+once or twice, not for a week, and looked for since without being found is set
+aside as not found again, never called gone (`visit_things.SET_ASIDE_*`). The
+resolver still files to the store's entities.
 
 ## Grouping preview
 
