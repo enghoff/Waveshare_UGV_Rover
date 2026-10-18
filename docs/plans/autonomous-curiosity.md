@@ -1425,6 +1425,11 @@ would learn the rover's own noise
 
 ### Milestone M10: learned outcome prediction improves planning on held-out experience
 
+**Under way since 2026-10-18**, for looks at the world model's records: what is
+predicted is whether a look lands on its record, the predictor is frozen in
+`autonomy/landing.py` and the planner uses it, and its test is a look trial set
+out before it runs ([the decision](../decisions/m10-predicts-whether-a-look-lands.md)).
+
 Pass when all are true:
 
 1. training and held-out episodes are separated by time/run so near-duplicate
