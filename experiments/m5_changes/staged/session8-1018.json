@@ -1,0 +1,17 @@
+{"note": "M5 session 8, 2026-10-18, run as planned in session8-planned.json except in two places. The owner set out the two bean bags with the rover unplugged but parked on its charger spot, where it takes no new picture of a view it already has (its newest picture before the session was 13:47). Then the pre-flight read READY and the session ran unplugged: loop A from the charger, living room first, 14:38:40-14:42:50; the photo check fired at living-4 and found the red bean bag in 11 pictures and the black one in 7, so both were moved. The moves were made while loop A drove its corridor and bedroom stops, from about 14:41 (when the move list was given) to 14:43:15, not in the wait: the rover parked at bedroom-2 at 14:43:06, the owner said the moves were done at 14:43:17 and the wait ended at 14:43:21. No region from 14:40:41 to the end of the wait has a sight line within 0.6 m of any of the four places within its range, so the end of the wait stands as the moment of the staging. Loop B 14:43:21-14:48:12, a run from 14:48:12 that ended at 14:50:17 with nothing left worth doing (125 s of its 210, 13.6 m, 11 actions), home at 14:50:25, 9 cm from the spot. Every stop's position check stayed within 7 cm (one at bedroom-1 in loop B returned no fit); the battery went from 95% to 72%. Places are the medians of the session's labelled photographs: the red bean bag at (-20.27, -12.73) before and (-17.33, -13.51) after, 0.08 m from where the black one ended session 7 by the same reading ((-17.41, -13.53)); the black bean bag at (-16.21, -12.11) before and (-17.9, -16.67) after. The change watch logged three of the four changes furniture-sized in loop B (both arrivals and the black bean bag's departure) and the red one's departure small (0.55 m) by the end of the run; it also logged, in loop A, the office chair gone from where it stood when the map was made (-12.22, -15.98), which the run looked at.",
+ "staged_in": "wait",
+ "added": [
+  {"what": "red bean bag", "at": [-20.27, -12.73], "moved_at_step": "start"},
+  {"what": "black bean bag", "at": [-16.21, -12.11], "moved_at_step": "start"}
+ ],
+ "moves": [
+  {"what": "red bean bag", "from": [-20.27, -12.73], "to": [-17.33, -13.51], "moved_at_step": "wait 1"},
+  {"what": "black bean bag", "from": [-16.21, -12.11], "to": [-17.9, -16.67], "moved_at_step": "wait 1"}
+ ],
+ "removed": [],
+ "doors": [],
+ "rooms": ["living"],
+ "reset_rooms": ["living"],
+ "also_moved": [],
+ "bad": []
+}
