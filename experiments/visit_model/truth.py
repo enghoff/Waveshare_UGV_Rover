@@ -63,6 +63,11 @@ SESSIONS = [
     ("drives 1", os.path.join(TMP, "drives1-1017", "drives1-1017.json"),
      os.path.join(MAIN, "experiments", "m5_changes", "staged", "drives1-1017.json"),
      os.path.join(HERE, "labels", "drives1-1017.json"), "drives"),
+    # M5 session 8: version 4 as the rover runs it, on pictures it has not
+    # seen, filed live (docs/plans/autonomous-curiosity.md, milestone M5).
+    ("session 8", os.path.join(TMP, "session8-1018", "session8-1018.json"),
+     os.path.join(MAIN, "experiments", "m5_changes", "staged", "session8-1018.json"),
+     os.path.join(HERE, "labels", "session8-1018.json"), "session 8"),
 ]
 #: Labels for a session made later than its own file, for things a later
 #: session carried in again (session 5's box, stool and step ladder were
