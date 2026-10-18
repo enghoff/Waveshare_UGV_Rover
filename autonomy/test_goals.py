@@ -124,7 +124,16 @@ def test_it_cannot_reach_the_rover() -> None:
                               source, re.M))
     check("it imports nothing that could talk to the rover",
           sorted(imported - {"__future__", "typing", "math"}),
-          ["cooling", "mapgrid", "refs", "situation"])
+          ["cooling", "landing", "mapgrid", "refs", "situation"])
+    # `landing` reads its numbers from a file deployed beside it, and the
+    # decision records which file (`lands_model`), so a decision replayed on
+    # the same commit comes out the same.
+    source = open(os.path.join(os.path.dirname(__file__), "landing.py"),
+                  encoding="utf-8").read()
+    imported = set(re.findall(r"^(?:from|import)\s+([A-Za-z_][\w.]*)",
+                              source, re.M))
+    check("...nor does the look predictor it asks",
+          sorted(imported - {"__future__", "typing", "math", "json", "hashlib", "pathlib"}), [])
 
 
 # --- going where the map stops ----------------------------------------------
@@ -719,8 +728,57 @@ def test_a_change_is_looked_at_level_and_aimed_at_where_it_is() -> None:
           facts["change"]["kind"], "GONE")
 
 
+def test_how_often_a_look_lands_is_predicted_rather_than_assumed() -> None:
+    """Since 2026-10-18 the planner asks M10's predictor how likely a look is to
+    land on a record, where it assumed half (`landing.py`). On the rover's
+    history what decided it most was how long ago the record was last seen,
+    then whether a more established record stood within 0.8 m to take the
+    picture instead; without the predictor's numbers the old half stands in."""
+    import json as json_mod
+    import tempfile
+    from pathlib import Path
+
+    import landing
+    import scenarios
+    now = 1757320800.0
+    lone = scenarios.record("v12", 1.6, 1.0, spread_m=0.5, visits=8)
+    near = landing.neighbours(lone, [lone])
+    fresh, source = landing.lands(lone, near, now, 1.5, True, 0.5)
+    stale, _ = landing.lands({**lone, "last_seen_at": now - 2 * 86400.0}, near, now, 1.5, True, 0.5)
+    check("a record seen minutes ago is predicted to take a look more often than one "
+          "unseen for two days, and the numbers are the predictor's",
+          (source, fresh > stale, stale < 0.1), ("learned", True, True))
+    crowded = landing.neighbours(lone, [lone, scenarios.record("v13", 1.9, 1.2, visits=40)])
+    with_rival, _ = landing.lands(lone, crowded, now, 1.5, True, 0.5)
+    check("...and one with a more established record 0.36 m away less often",
+          (crowded["rival"], crowded["crowd"], with_rival < fresh), (True, 1, True))
+    check("without the predictor's numbers the planner's old half stands in",
+          landing.lands(lone, near, now, 1.5, True, 0.5, path=Path("no-such-file.json")),
+          (0.5, "fallback"))
+    with tempfile.TemporaryDirectory() as tmp:
+        other = Path(tmp) / "landing.json"
+        other.write_text(json_mod.dumps({"features": ["visits"], "mean": [0.0], "scale": [1.0],
+                                         "coef": [1.0], "intercept": 0.0}))
+        check("...and so it does with numbers fitted on other features",
+              landing.lands(lone, near, now, 1.5, True, 0.5, path=other), (0.5, "fallback"))
+    check("...and for a record with no time it was last seen",
+          landing.lands({**lone, "last_seen_at": None}, near, now, 1.5, True, 0.5)[1], "fallback")
+
+    here = _situation(entities=[lone])
+    looks = [one for one in goals.generate(here) if one.type == "improve_geometry"]
+    detail = looks[0].gain_detail if looks else {}
+    check("the planner's look at it carries the predicted share and says so",
+          (bool(looks), detail.get("lands_from"), detail.get("lands") == round(
+              landing.lands(lone, landing.neighbours(lone, [lone]), here.at,
+                            detail.get("range_m") or 0.0,
+                            bool(looks and looks[0].constraints.get("needs_movement")), 0.5)[0], 3),
+           "as the look predictor has it" in (looks[0].why if looks else "")),
+          (True, "learned", True, True))
+
+
 TESTS = (test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands,
     test_a_world_model_record_gains_from_a_look_the_depth_camera_ranges,
+    test_how_often_a_look_lands_is_predicted_rather_than_assumed,
     test_a_change_is_named_after_the_record_nearest_it,
     test_a_change_is_looked_at_level_and_aimed_at_where_it_is,
          

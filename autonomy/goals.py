@@ -50,6 +50,7 @@ import math
 from typing import Any, Iterable
 
 import cooling
+import landing
 import mapgrid
 import refs
 import situation as situation_mod
@@ -184,7 +185,11 @@ RECORD_LOOK_SIGMA_M = 0.25
 #: (docs/progress/2026-10-18-the-first-run-on-the-world-models-records.md). So
 #: only a record seen on this many visits, with a depth place (a height), is
 #: looked at, and what a look is predicted to gain it is the inverse-variance
-#: gain times how often a look lands.
+#: gain times how often a look lands. How often is M10's predictor's to say
+#: since 2026-10-18 (`landing.py`): by how long ago the record was last seen and
+#: what stands near it, it ranges from a few percent to over a half. This half is
+#: what the planner assumed before, and assumes again when the predictor has no
+#: numbers to use.
 RECORD_VISITS_MIN = 6
 RECORD_LOOK_LANDS = 0.5
 
@@ -480,12 +485,15 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
     ring = (in_band or whole)[:VIEWPOINTS_CONSIDERED]
     predicted, outside = [], []
     usable = blocked = 0
+    near = _neighbours(situation, entity)
     for view_x, view_y, walk_m in ring:
         if not reach.clear_line(view_x, view_y, x, y, ignore_within_m=SURFACE_M):
             blocked += 1
             continue
         usable += 1
-        got = _from_viewpoint(placement, entity, view_x, view_y)
+        got = _from_viewpoint(placement, entity, view_x, view_y,
+                              *_landing(situation, entity, near, view_x, view_y,
+                                        walk_m > 0.05))
         if got["gain_m"] <= 0.0:
             continue
         if BAND_NEAR_M <= got["range_m"] <= BAND_FAR_M:
@@ -634,7 +642,9 @@ def _in_reach(situation: Situation, reach: mapgrid.Reach,
     if where is None:
         return None
     hx, hy = where
-    got = _from_viewpoint(placement, entity, hx, hy)
+    got = _from_viewpoint(placement, entity, hx, hy,
+                          *_landing(situation, entity, _neighbours(situation, entity),
+                                    hx, hy, False))
     if not BAND_NEAR_M <= got["range_m"] <= REACH_FAR_M:
         return None
     if got["in_depth_view"] is False:
@@ -688,8 +698,32 @@ def _look_from_here(here: dict[str, Any], best: dict[str, Any],
                      "look_at": {"x_m": round(x, 3), "y_m": round(y, 3)}})
 
 
+def _neighbours(situation: Situation, entity: dict[str, Any]) -> dict[str, Any] | None:
+    """What stands near one of the world model's records, for `landing`; None
+    for anything else. Every record the reading holds is counted, the ones seen
+    gone or set aside too, because the looks the predictor was fitted on were
+    judged against every record the model held."""
+    if entity.get("kind") != "record":
+        return None
+    return landing.neighbours(entity, list(situation.body.get("entities") or []))
+
+
+def _landing(situation: Situation, entity: dict[str, Any],
+             near: dict[str, Any] | None, view_x: float, view_y: float,
+             needs_movement: bool) -> tuple[float | None, str | None]:
+    """How likely a look from (view_x, view_y) is to land on the record, and
+    whether the predictor said so or the old half stands in (`landing.lands`)."""
+    if near is None:
+        return None, None
+    place = entity.get("placement") or {}
+    range_m = math.hypot(view_x - float(place["x_m"]), view_y - float(place["y_m"]))
+    return landing.lands(entity, near, situation.at, range_m, needs_movement,
+                         RECORD_LOOK_LANDS)
+
+
 def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
-                    view_x: float, view_y: float) -> dict[str, Any]:
+                    view_x: float, view_y: float, lands: float | None = None,
+                    lands_from: str | None = None) -> dict[str, Any]:
     """What one more look from here would do to where the thing is believed to be.
 
     **A bearing constrains a position across the line of sight and not along
@@ -765,7 +799,8 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
             and in_depth_view is not False):
         filed = 1.0 / math.sqrt(1.0 / (before * before)
                                 + 1.0 / (RECORD_LOOK_SIGMA_M * RECORD_LOOK_SIGMA_M))
-        after = before - RECORD_LOOK_LANDS * (before - filed)
+        share = RECORD_LOOK_LANDS if lands is None else lands
+        after = before - share * (before - filed)
 
     ranging = entity.get("ranging") or {}
     first_range = bool(ranging.get("never_ranged"))
@@ -796,8 +831,13 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
             "elevation_deg": None if elevation is None else round(elevation, 1),
             "look_tilt_deg": tilt,
             "in_depth_view": in_depth_view,
+            "lands": (None if not record else
+                      round(RECORD_LOOK_LANDS if lands is None else lands, 3)),
+            "lands_from": (None if not record else lands_from or "assumed"),
+            "lands_model": landing.digest() if lands_from == "learned" else None,
             "why": _why(entity, before, after, range_m, crossing_deg,
-                        first_range, record)}
+                        first_range, record,
+                        None if lands_from != "learned" else lands)}
 
 
 def _tilt_for(placement: dict[str, Any], range_m: float
@@ -816,15 +856,18 @@ def _tilt_for(placement: dict[str, Any], range_m: float
 
 
 def _why(entity: dict[str, Any], before: float, after: float, range_m: float,
-         crossing_deg: float, first_range: bool, record: bool = False) -> str:
+         crossing_deg: float, first_range: bool, record: bool = False,
+         lands: float | None = None) -> str:
     """One sentence a person could be told, with the numbers in it."""
     name = str(entity.get("id") or "a thing")
     looks = entity.get("observation_count")
     seen = f", seen {looks} times" if looks else ""
     if record:
+        often = ("half the time" if lands is None else
+                 f"{round(100 * lands)}% of the time, as the look predictor has it")
         return (f"{name} is placed to {before:.2f} m{seen}; a look from "
                 f"{range_m:.1f} m that the depth camera ranges, filed to it about "
-                f"half the time, would bring that to about {after:.2f} m")
+                f"{often}, would bring that to about {after:.2f} m")
     if first_range:
         return (f"{name} has never had its distance measured{seen}; from "
                 f"{range_m:.1f} m the depth camera could, which would place it "

@@ -203,6 +203,23 @@ at changes. The model files a look when its visit closes, a few minutes after
 it is taken, so an attempt's placement is measured only once filed; until then
 the attempt says so, rather than "no better".
 
+**How likely a look is to land on its record is predicted, not assumed**
+([`landing.py`](landing.py), M10's predictor, since 2026-10-18). A look lands
+when the model files a region of its picture to the record it was aimed at, and
+what it is predicted to gain is the inverse-variance gain times that chance.
+Replayed over the history, 115 of 430 looks landed: 41% at records seen in the
+last three hours, 2% at records unseen for over a day, since the model takes a
+picture into a stale record only on a move's likeness, and far fewer where a
+record at least as established stands within 0.8 m to take the picture
+instead. A logistic regression on those and a few other features, fitted by
+`experiments/m10_outcomes/predict.py`, is frozen in `landing.json`; each
+geometry goal records the share (`lands`), where it came from (`lands_from`)
+and which numbers (`lands_model`). Without the numbers, or without a record's
+last-seen time, the planner falls back to the half it assumed before. It only
+re-ranks what would be offered anyway: records seen on fewer than six visits,
+or with no height, are still not targets
+([why](../experiments/m10_outcomes/README.md)).
+
 `improve_geometry` is somewhere to stand that would make a thing's position come
 out better. **A bearing pins a thing across the line of sight and says nothing
 along it**, so two looks from nearly the same place leave the same long thin
