@@ -196,6 +196,13 @@ RECORD_LOOK_LANDS = 0.5
 #: and its choice at each stop landed less often than the half's); the plan gives
 #: learned ranking a say only once M10 passes.
 LANDING_RANKS = False
+#: A record placed this far below the floor is not looked at: a look takes its
+#: tilt from the record's height, so it would be aimed at the floor short of
+#: the place. On 2026-10-18 the 15 such records among the 149 the planner could
+#: aim at were 11 patches of bare floor and 4 of a rug's records, and 1 of the
+#: look trial's 8 looks at them landed
+#: (docs/progress/2026-10-18-what-the-look-trial-was-aimed-at.md).
+RECORD_BELOW_FLOOR_M = 0.05
 
 #: How uncertain a thing's height may be before the tilt needed to look at it
 #: cannot be predicted. Above it the candidate is marked `tilt_unknown` and the
@@ -435,9 +442,11 @@ def _worth_looking_at(situation: Situation) -> list[dict[str, Any]]:
             continue
         if entity.get("kind") == "record" and (
                 int(placement.get("viewpoints") or 0) < RECORD_VISITS_MIN
-                or placement.get("height_m") is None):
+                or placement.get("height_m") is None
+                or float(placement["height_m"]) < -RECORD_BELOW_FLOOR_M):
             # A look at it would feed another record or none
-            # (`RECORD_VISITS_MIN`); what it needs is the model's to settle.
+            # (`RECORD_VISITS_MIN`), or be aimed at the floor
+            # (`RECORD_BELOW_FLOOR_M`); what it needs is the model's to settle.
             continue
         wanted.append((-_room_to_improve(entity), str(entity.get("id") or ""),
                        entity))

@@ -1677,9 +1677,15 @@ owner. In order from here:
    hours is to be stated and agreed before it is planned (*Multi-day
    usefulness benchmark*, above).
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
-   R-WS-17, R-WS-18), and it sets how many looks improve anything: none of the
-   first run's 14 looks at the model's records improved the record they were
-   aimed at ([2026-10-18](../progress/2026-10-18-the-first-run-on-the-world-models-records.md)).
+   R-WS-17, R-WS-18). The look trial's misses were mostly not a second record
+   of one object: a third were aimed at records of no object -- bare floor,
+   wall, the view through a doorway, a person -- and over a quarter at records
+   whose thing had gone; 33 of the 149 records the planner could aim at stand
+   for no object
+   ([2026-10-18](../progress/2026-10-18-what-the-look-trial-was-aimed-at.md)).
+   Records below the floor are no longer looked at; a classifier of the rest
+   failed its blind tests. What is left is the doorways and people, and
+   records that outlive their things.
 4. **The owner's choice on running unattended.** No milestone reaches the
    design's goal of a rover left to occupy itself: R-SAFE-6 is open and nothing
    docks the rover ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).

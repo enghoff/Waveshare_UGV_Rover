@@ -126,3 +126,17 @@ every filing of the history the job has made, each naming records afresh from
 v0; read whole, it folded standing records into others by merges from earlier
 filings, and the first scoring of this trial counted 6 landed and every
 criterion met.
+
+## What the trial's misses were aimed at
+
+[The entry](../../docs/progress/2026-10-18-what-the-look-trial-was-aimed-at.md).
+`pointing.py LANDED.json OUT.json` (on the rover) finds, for each look, the
+regions of its picture that point at the target and where the model filed
+them; `miss_sheets.py` draws each missed look beside its target's and the
+taker's earlier crops; `record_sheets.py` draws records three crops each for
+labelling; `record_features.py` writes each record's mean DINOv2 and SigLIP2
+vectors and what its regions measured; `objectness.py` reruns the two rounds
+of the not-an-object classifier from [labels/](labels/), and fails both, as
+on the day. Of 82 misses, 26 were at records of no object, 23 at things gone,
+14 at the dining chairs, 9 not boxed, 7 at a second record of a thing standing
+there.

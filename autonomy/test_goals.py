@@ -662,12 +662,17 @@ def test_a_world_model_record_gains_from_a_look_the_depth_camera_ranges() -> Non
         one = {**a_thing(rid, 1.6, 1.0, uncertainty_m=0.5), "kind": "record", "ranging": None}
         one["placement"] = {**one["placement"], "viewpoints": visits, "height_m": height}
         return one
-    here = _situation(entities=[at("v12", 6, 0.3), at("v13", 5, 0.3), at("v14", 9, None)])
+    here = _situation(entities=[at("v12", 6, 0.3), at("v13", 5, 0.3), at("v14", 9, None),
+                                at("v15", 9, -0.3), at("v16", 9, -0.04)])
     offered = {one.target for one in goals.generate(here) if one.type == "improve_geometry"}
     check("so a goal at it is offered", "v12" in offered, True)
     check("...but not at a record seen on fewer than six visits, or placed from sight "
           "lines alone, which a look did not feed once in 20 (2026-10-18)",
           sorted(offered & {"v13", "v14"}), [])
+    check("...nor at one placed below the floor, which on the rover were patches of bare "
+          "floor and a rug's records, and which a look would aim at the floor; a record "
+          "at floor level is still looked at",
+          ("v15" in offered, "v16" in offered), (False, True))
 
 
 def test_the_same_situation_produces_the_same_list_twice() -> None:

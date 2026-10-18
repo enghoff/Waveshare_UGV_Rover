@@ -220,7 +220,11 @@ then failed its trial
 ([2026-10-18](../docs/progress/2026-10-18-m10-look-trial.md)), so
 `goals.LANDING_RANKS` is off until M10 passes. Records seen on fewer than six
 visits, or with no height, are not targets either way
-([why](../experiments/m10_outcomes/README.md)).
+([why](../experiments/m10_outcomes/README.md)), nor since 2026-10-18 one placed
+more than 0.05 m below the floor (`RECORD_BELOW_FLOOR_M`): a look takes its
+tilt from the height and would be aimed at the floor, and such records were
+patches of bare floor and a rug's
+([2026-10-18](../docs/progress/2026-10-18-what-the-look-trial-was-aimed-at.md)).
 
 `improve_geometry` is somewhere to stand that would make a thing's position come
 out better. **A bearing pins a thing across the line of sight and says nothing
