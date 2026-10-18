@@ -162,6 +162,15 @@ class WorldStore:
         except ValueError:
             return 1
 
+    def map_id(self) -> str:
+        """The navigation stack's identity for the map this store's coordinates
+        are measured in, as `follow_map` was last told it; "" until it has been.
+
+        Not the map session: a map cleared from the console empties the store
+        first, and an empty store takes the new map without a new session, so
+        the session number alone does not say the coordinates changed."""
+        return self._meta("map_id", "")
+
     def generation(self) -> str:
         """Which filling of this store the identifiers in it belong to.
 

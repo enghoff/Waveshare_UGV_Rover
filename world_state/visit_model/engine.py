@@ -43,13 +43,14 @@ def _take(a, rows):
     return {k: v[rows] for k, v in a.items()}
 
 
-def prepare(db_path, recordings=(), after_id=None):
-    """The store's regions after `after_id` as the model reads them: the
-    loader's arrays, wall places, colour and the learned likeness, as
-    data.py, wallplace.py, colour.py and extend_looks.py make them on the desk."""
-    a = data.build(db_path, recordings, after_id=after_id)
-    wallplace.place(a, walls.load(WALLS))
-    ids, cols, _n = colour.colours(db_path, data.MAP_SESSION, after_id=after_id)
+def prepare(db_path, recordings=(), after_id=None, session=data.MAP_SESSION, wall_cells=None):
+    """The store's regions of map session `session` after `after_id` as the
+    model reads them: the loader's arrays, wall places, colour and the learned
+    likeness, as data.py, wallplace.py, colour.py and extend_looks.py make them
+    on the desk. The walls are `wall_cells` (walls.load), or WALLS."""
+    a = data.build(db_path, recordings, after_id=after_id, session=session)
+    wallplace.place(a, wall_cells if wall_cells is not None else walls.load(WALLS))
+    ids, cols, _n = colour.colours(db_path, session, after_id=after_id)
     at = {int(i): k for k, i in enumerate(ids)}
     rows = np.array([at.get(int(i), -1) for i in a["id"]], dtype=np.int64)
     have = rows >= 0
@@ -74,6 +75,9 @@ class Engine:
         #: How the history was filed (job.FILED_AS); one filed before the
         #: job's present way is filed again.
         self.filed_as = 0
+        #: Which filling of the store, on which map, the records are of
+        #: (job.filling); None until the job says.
+        self.filling = None
 
     def add(self, a):
         """Regions read from the store, waiting for their visit to close."""

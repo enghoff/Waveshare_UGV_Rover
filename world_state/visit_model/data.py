@@ -63,11 +63,11 @@ def _reaches_down(bbox, tilt):
     return lidar_ranges.reaches_down(lower - locate.ELEVATION_BIAS_DEG.get(round(float(tilt or 0.0)), 0.0))
 
 
-def build(db_path, recordings=(), after_id=None):
-    """The arrays for every region, or, with `after_id`, for the regions the
-    store has added since (the job on the rover reads them a batch at a time;
-    each region is built on its own, so a batch matches the whole). A
-    recording may be a path or a recorded.Recording."""
+def build(db_path, recordings=(), after_id=None, session=MAP_SESSION):
+    """The arrays for every region of map session `session`, or, with
+    `after_id`, for the regions the store has added since (the job on the rover
+    reads them a batch at a time; each region is built on its own, so a batch
+    matches the whole). A recording may be a path or a recorded.Recording."""
     recs = [p if isinstance(p, recorded.Recording) else recorded.Recording(p) for p in recordings]
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     rows = con.execute(
@@ -78,7 +78,7 @@ def build(db_path, recordings=(), after_id=None):
         " from observations o left join frames f on f.id = o.frame_id"
         " where o.source = 'perception' and o.camera = 'gimbal' and o.map_session = ?"
         " and o.dino_alone_blob is not null and o.id > ? order by o.observed_at, o.id",
-        (MAP_SESSION, int(after_id or 0))).fetchall()
+        (int(session), int(after_id or 0))).fetchall()
     con.close()
     n = len(rows)
     nan = float("nan")

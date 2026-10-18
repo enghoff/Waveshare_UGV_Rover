@@ -45,6 +45,23 @@ def build(paths):
     return {"stable": stable, "res": res, "ox": ox, "oy": oy}
 
 
+def from_grid(g):
+    """The walls of one grid as the daemon's `nav_grid` sends it: every cell
+    the mapper calls occupied, furniture included. Over every picture to
+    2026-10-17 version 4 filed with one session's grid as it does with the
+    four intersected (630 records against 624, every score the same), and with
+    no walls it filed a fifth fewer of the paintings' pictures."""
+    cells = np.frombuffer(zlib.decompress(base64.b64decode(g["data"])), dtype=np.int8)
+    return {"stable": cells.reshape(g["height"], g["width"]) >= 50,
+            "res": float(g["resolution_m"]), "ox": float(g["origin_x_m"]),
+            "oy": float(g["origin_y_m"])}
+
+
+def none():
+    """No walls: nothing raised is placed on one."""
+    return {"stable": np.zeros((1, 1), bool), "res": 0.05, "ox": 0.0, "oy": 0.0}
+
+
 def wall_hit(w, x, y, bearing_deg, near=0.3, far=8.0):
     """Distance along a sight line to the first wall cell, or None."""
     res = w["res"]

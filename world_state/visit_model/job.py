@@ -25,8 +25,14 @@ the desk's run_versions.sh lists them), then carries on with the live lidar.
 
 The store keeps filing as it always has; nothing here writes to it. A region
 is read only once it is READ_DELAY_S old, so that what the store settles
-about it just after the look is in. Regions of another map session than the
-model's are not read (data.MAP_SESSION).
+about it just after the look is in.
+
+The records are of one filling of the store on one map (`filling`). When the
+store is cleared, or put on another map, the engine and everything of its map
+are kept aside in `set-aside/` and the job files what the store holds then,
+starting from nothing (`follow`). On a map other than the one version 4's
+walls were drawn from, raised things are placed on the map's own grid
+(`walls_for`).
 """
 import argparse
 import json
@@ -43,6 +49,7 @@ sys.path.insert(0, HERE)
 import engine  # noqa: E402
 import data  # noqa: E402
 import recorded  # noqa: E402
+import walls  # noqa: E402
 
 WORLD = os.path.expanduser(os.environ.get("UGV_WORLD_DIR", "~/.ugv/world"))
 DB = os.path.join(WORLD, "world.db")
@@ -67,6 +74,17 @@ FILED_AS = 2
 #: Lidar kept on disk around each batch of visits filed.
 SCAN_MARGIN_S = 10.0
 SCANS_KEPT_S = 14 * 86400.0
+#: The map version 4's walls (engine.WALLS) were drawn from: the M5 sessions'
+#: grids, all of map session 67. On any other map the walls are that map's
+#: own grid, fetched again every WALLS_EVERY_S while the rover maps it.
+WALLS_MAP_ID = "7da19bef3888"
+WALLS_EVERY_S = 600.0
+#: The rover's daemon, which answers for navigation's map.
+DAEMON = ("127.0.0.1", 8769)
+#: What goes aside with an engine when the store changes under it: its
+#: records, what it decided, and the lidar, recordings and walls of its map.
+KEPT_WITH_ENGINE = ("engine.pkl", "things.json", "decisions.jsonl", "scans", "recordings",
+                    "walls.npz")
 
 
 def clean(arrays):
@@ -128,13 +146,68 @@ def _slice(arrays, t0, t1):
             "odom_tf": arrays["odom_tf"][o], "map_tf": arrays["map_tf"][m]}
 
 
-def map_session(db_path):
-    con = sqlite3.connect("file:%s?mode=ro" % db_path, uri=True)
+def filling(db_path=None):
+    """Which filling of the store, on which map: what records filed from it
+    now are of. The store's generation changes when it is cleared, its map
+    identity when navigation's map is replaced, and its session when that
+    happens with rows kept (world_state/store.py, `follow_map`)."""
+    con = sqlite3.connect("file:%s?mode=ro" % (db_path or DB), uri=True)
     try:
-        row = con.execute("select value from meta where key = 'map_session'").fetchone()
+        meta = dict(con.execute("select key, value from meta where key in"
+                                " ('generation', 'map_id', 'map_session')").fetchall())
     finally:
         con.close()
-    return int(row[0]) if row and str(row[0]).isdigit() else None
+    session = str(meta.get("map_session") or "")
+    return {"store_generation": meta.get("generation") or "", "map_id": meta.get("map_id") or "",
+            "map_session": int(session) if session.isdigit() else 1}
+
+
+def daemon(call, arguments=None, timeout=10.0):
+    """One call to the rover's daemon, or None when it does not answer."""
+    import socket
+    try:
+        with socket.create_connection(DAEMON, timeout) as s:
+            f = s.makefile("rwb")
+            f.write(json.dumps({"call": call, "arguments": arguments or {}}).encode() + b"\n")
+            f.flush()
+            return json.loads(f.readline())
+    except (OSError, ValueError):
+        return None
+
+
+def grid_walls(map_id):
+    """The walls of navigation's grid when its map is `map_id`, else None."""
+    before = (daemon("nav_status") or {}).get("map_id")
+    grid = daemon("nav_grid") or {}
+    after = (daemon("nav_status") or {}).get("map_id")
+    if not grid.get("ok") or not map_id or not before == after == map_id:
+        return None
+    return walls.from_grid(grid)
+
+
+def walls_for(e, state, log):
+    """The walls raised things are placed on: version 4's on the map they were
+    drawn from, else the map's own grid, kept as `walls.npz` and fetched again
+    when it is WALLS_EVERY_S old; none until navigation has sent one."""
+    if e.filling["map_id"] == WALLS_MAP_ID:
+        return walls.load(engine.WALLS)
+    path = os.path.join(state, "walls.npz")
+    try:
+        age = time.time() - os.path.getmtime(path)
+    except OSError:
+        age = None
+    if age is None or age > WALLS_EVERY_S:
+        w = grid_walls(e.filling["map_id"])
+        if w is not None:
+            tmp = path + ".tmp.npz"
+            np.savez_compressed(tmp, **w)
+            os.replace(tmp, path)
+            age = 0.0
+        elif age is None:
+            log("no grid of map %s from navigation: nothing raised is placed on a wall" % e.filling["map_id"])
+    if age is None:
+        return walls.none()
+    return walls.load(path)
 
 
 def things(e):
@@ -169,13 +242,15 @@ def write_json(path, payload):
 
 def once(e, state, use_lidar, log):
     now = time.time()
-    session = map_session(DB)
-    if session != data.MAP_SESSION:
-        log("the store is on map session %s, the model on %s: nothing read" % (session, data.MAP_SESSION))
-        return 0
     arrays = lidar(os.path.join(state, "lidar")) if use_lidar else None
     recs = [recorded.Recording(arrays=arrays)] if arrays is not None else []
-    a = engine.prepare(DB, recs, after_id=e.last_id)
+    a = engine.prepare(DB, recs, after_id=e.last_id, session=e.filling["map_session"],
+                       wall_cells=walls_for(e, state, log))
+    if filling(DB) != e.filling:
+        # Cleared or moved onto another map while the batch was read, which may
+        # then hold the new map's looks: `follow` starts afresh next pass.
+        log("the store changed while a batch was read: nothing filed")
+        return 0
     if len(a["id"]):
         # Only regions READ_DELAY_S old, and only an unbroken run of ids, so
         # that a region the store adds late is not skipped.
@@ -211,7 +286,8 @@ def once(e, state, use_lidar, log):
     records = things(e)
     write_json(os.path.join(state, "things.json"), {
         "model": "visit_model version 4 (cabe003)", "written_at": time.time(),
-        "generation": e.generation, "map_session": data.MAP_SESSION,
+        "generation": e.generation, "map_session": e.filling["map_session"],
+        "map_id": e.filling["map_id"], "store_generation": e.filling["store_generation"],
         "filed_until": e.taken_until, "last_observation": e.last_id,
         "waiting": 0 if e.pending is None else int(len(e.pending["id"])),
         "lidar": arrays is not None, "things": records})
@@ -238,7 +314,9 @@ def bootstrap(state, log):
     e = engine.Engine()
     e.generation = mint()
     e.filed_as = FILED_AS
-    a = engine.prepare(DB, recs, after_id=0)
+    e.filling = filling(DB)
+    a = engine.prepare(DB, recs, after_id=0, session=e.filling["map_session"],
+                       wall_cells=walls_for(e, state, log))
     young = a["t"] > time.time() - READ_DELAY_S
     if young.any():
         keep = a["id"] < int(a["id"][young].min())
@@ -283,9 +361,41 @@ def load(path, state, log):
                     # Saved before engines were named.
                     e.generation = mint()
                     e.save(path)
+                e.filling = getattr(e, "filling", None)
+                if e.filling is None and filling(DB)["map_session"] == data.MAP_SESSION:
+                    # Saved before the job wrote down what it files from: it
+                    # filed map session 67 alone, of which the store has held
+                    # one filling on one map since 2026-10-03. Of any other,
+                    # `follow` keeps it aside.
+                    e.filling = filling(DB)
+                    e.save(path)
                 return e
     e = bootstrap(state, log)
     e.save(path)
+    return e
+
+
+def follow(e, state, log):
+    """The engine for the store as it is now: `e` while the store holds the
+    filling, on the map, that `e` files from; else a new one filing what the
+    store holds now, with `e` and everything of its map kept aside."""
+    now = filling(DB)
+    if e.filling == now:
+        return e
+    was = e.filling or {}
+    moved = (now["map_id"], now["map_session"]) != (was.get("map_id"), was.get("map_session"))
+    aside = os.path.join(state, "set-aside", "%s-%s-%s" % (
+        time.strftime("%Y%m%d-%H%M%S"), "map" if moved else "cleared", e.generation))
+    os.makedirs(aside, exist_ok=True)
+    for name in KEPT_WITH_ENGINE:
+        if os.path.exists(os.path.join(state, name)):
+            os.replace(os.path.join(state, name), os.path.join(aside, name))
+    log("%s: the records named %s are kept in %s, and what the store holds now is filed afresh" % (
+        "the store is on map %s, session %d, not %s, session %s" % (
+            now["map_id"], now["map_session"], was.get("map_id"), was.get("map_session"))
+        if moved else "the world state was cleared", e.generation, aside))
+    e = bootstrap(state, log)
+    e.save(os.path.join(state, "engine.pkl"))
     return e
 
 
@@ -316,6 +426,7 @@ def main():
         len(e.filing), e.last_id, e.generation))
     while True:
         try:
+            e = follow(e, args.state, log)
             once(e, args.state, not args.no_lidar, log)
             prune(args.state)
         except Exception as exc:  # noqa: BLE001 - a bad batch must not stop the job

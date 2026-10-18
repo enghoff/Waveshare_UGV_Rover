@@ -516,9 +516,13 @@ def _model_records(rover, observation_ids, at, state="present", age_s=0.0,
               "gone_at": gone_at, "visits": visits, "looked_for": looked_for,
               "path": [[at[0], at[1], round(now - 600.0) if placed_at is None else placed_at]],
               "observations": list(observation_ids)}
+    # Of the map and the filling of the store the job filed them from, as it
+    # writes them beside the records.
     payload = {"model": "test", "written_at": now - age_s, "generation": "0123456789abcdef",
                "filed_until": now - age_s - 90.0,
                "map_session": store.map_session() if session is None else session,
+               "map_id": store.map_id(),
+               "store_generation": store.generation(),
                "things": [record]}
     # A new file renamed into place, as the job writes it: rewritten in place,
     # two payloads of one size within one clock tick read as unchanged on the
@@ -584,6 +588,66 @@ def test_the_world_models_records_answer_first() -> None:
         done(rover)
 
 
+def test_the_world_models_records_answer_only_on_their_own_map() -> None:
+    """Records are places on the map they were filed on, from the looks the
+    store held then. **A map cleared from the console** empties the store and
+    puts it on the new map without a new session (store.follow_map: an empty
+    store has nothing measured in the old map), so records checked by session
+    alone stood on the new map at the old map's coordinates. Nor do records
+    answer for looks the world state has been cleared of, the map kept (an
+    acceptance drive's clear), or after the map changed with the store's rows
+    kept, which moves the session."""
+    try:
+        import numpy  # noqa: F401
+        import rover_daemon  # noqa: F401
+    except ImportError as error:
+        SKIP.append(f"the world model's records on their own map ({error})")
+        return
+
+    asked = {"source": "model", "fallback": False, "rays": False}
+    rover, done = _in_a_world()
+    try:
+        store = rover._world_store()
+        store.follow_map("0000000000aa")
+
+        def answers():
+            listed = rover.call("world_state_entities", asked)
+            return listed["ok"], listed.get("error", "")
+
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        look = store.observations(limit=1)[0]["id"]
+        _model_records(rover, [look], at=(3.0, 3.0))
+        check("records of this map and these looks answer", answers(), (True, ""))
+        session = store.map_session()
+        store.clear()
+        store.follow_map("0000000000bb")
+        check("a map cleared from the console keeps the session number",
+              store.map_session(), session)
+        check("...and the old map's records do not answer on the new one",
+              answers(), (False, "the world model's records are of another map"))
+        check("...nor does the bed, for the voice: the store it falls back to was cleared",
+              rover.call("find_thing", {"description": "a bed"})["found"], False)
+
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        look = store.observations(limit=1)[0]["id"]
+        _model_records(rover, [look], at=(3.0, 3.0))
+        store.clear()
+        check("records of looks the world state was cleared of, the map kept, do not answer",
+              answers(), (False, "the world model's records are of looks the world state "
+                                 "has since been cleared of"))
+
+        _remember(rover, "a bed", from_xy=(1.0, 3.0))
+        look = store.observations(limit=1)[0]["id"]
+        _model_records(rover, [look], at=(3.0, 3.0))
+        store.follow_map("0000000000cc")
+        check("a map changed with the store's rows kept moves the session",
+              store.map_session(), session + 1)
+        check("...and the records of the map before do not answer",
+              answers(), (False, "the world model's records are of another map"))
+    finally:
+        done(rover)
+
+
 def test_of_two_records_alike_the_present_and_recent_one_answers() -> None:
     """The model keeps a record of each place a thing stood, and several of one
     thing it could not join, which a phrase scores within about 0.01 of each
@@ -620,6 +684,7 @@ def test_of_two_records_alike_the_present_and_recent_one_answers() -> None:
                            observations=[newer])]
             with open(os.path.join(folder, "things.json.tmp"), "w") as f:
                 json.dump({"model": "test", "written_at": now, "map_session": store.map_session(),
+                           "map_id": store.map_id(), "store_generation": store.generation(),
                            "things": things}, f)
             os.replace(os.path.join(folder, "things.json.tmp"), os.path.join(folder, "things.json"))
 
@@ -815,6 +880,7 @@ TESTS = (
     test_a_thing_with_nowhere_to_see_it_from_is_refused_in_words,
     test_a_found_thing_carries_what_was_measured_about_it,
     test_the_world_models_records_answer_first,
+    test_the_world_models_records_answer_only_on_their_own_map,
     test_of_two_records_alike_the_present_and_recent_one_answers,
     test_the_console_reads_the_world_models_records,
     test_autonomy_reads_the_world_models_records_or_none,

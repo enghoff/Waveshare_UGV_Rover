@@ -9,9 +9,10 @@ changed things' looks are -- from those records, with the looks' vectors read
 from the store as they always are, so ranking a phrase against things works
 unchanged and only what a thing is changes.
 
-`fresh` says whether the records can be used: written recently, and in the
-map session the store is in. When they cannot, a caller answers from the
-store's own things, as it did before the model ran (docs/plans/
+`fresh` says whether the records can be used: written recently, on the map
+the store is on, and from the looks the store holds -- not from a filling it
+has since been cleared of. When they cannot, a caller answers from the store's
+own things, as it did before the model ran (docs/plans/
 a-world-model-kept-per-visit.md, step 8).
 """
 import json
@@ -84,10 +85,17 @@ class VisitStore:
         age = time.time() - float(self.payload.get("written_at") or 0.0)
         if age > MAX_AGE_S:
             return "the world model's records are %d minutes old" % round(age / 60.0)
-        # The records are in the coordinates of the map session the job reads
-        # (visit_model/data.py's MAP_SESSION), which it writes beside them.
-        if self.store.map_session() != self.payload.get("map_session"):
-            return "the world model is on another map"
+        # The records are in the coordinates of the map the job filed them on,
+        # from the looks of one filling of the store, all of which it writes
+        # beside them (visit_model/job.py). The session alone is not enough: a
+        # map cleared from the console empties the store and keeps the session
+        # number, so the old map's records would stand on the new one.
+        p = self.payload
+        if (self.store.map_session() != p.get("map_session")
+                or self.store.map_id() != p.get("map_id")):
+            return "the world model's records are of another map"
+        if self.store.generation() != p.get("store_generation"):
+            return "the world model's records are of looks the world state has since been cleared of"
         return ""
 
     def generation(self) -> str:
