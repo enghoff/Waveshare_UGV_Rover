@@ -269,9 +269,13 @@ Those conditions are retired.
      2026-10-17, the executive without a fallback. Its first run, on
      2026-10-18, ran end to end but none of its 14 looks improved its record
      ([entry](../progress/2026-10-18-the-first-run-on-the-world-models-records.md)).
-     Still ahead: choosing records a look can improve, and the model following
-     a change of map session (it is pinned to session 67, and on another its
-     records stop answering everywhere).
+     A run now aims only at records seen on six visits or more
+     ([entry](../progress/2026-10-18-aimed-looks-feed-only-established-records.md)).
+     Still ahead: the model's strays, which absence from the camera would
+     clear but not honestly as "gone"
+     ([entry](../progress/2026-10-18-absence-from-the-camera-is-not-honest-as-gone.md)),
+     and the model following a change of map session (it is pinned to session
+     67, and on another its records stop answering everywhere).
 
 **Paused meanwhile**: tuning the resolver and the record-moving step, and staged
 sessions for them. The shadow runner keeps acting on moved events as deployed;
