@@ -252,3 +252,26 @@ but still calls records of things that were there gone, so as "gone" it is not
 honest: the rover would say the rug is no longer where it was. Not adopted;
 the question it leaves is whether such records should be set aside as not
 found again rather than called gone.
+
+### Set aside as not found again (adopted, on the rover)
+
+The owner agreed on 2026-10-18 that a record looked for and not found should be
+set aside as not found again rather than called gone. In `model.py` the camera
+rule now only flags a record (`unfound`), reading nothing the filing reads, so
+the filing stays version 4's whatever the switch. Scored with `unfound.py`:
+
+| An empty visit also needs | In a row | Set aside | Of never-staged objects |
+|---|---|---|---|
+| nothing placed within 0.5 m | 3, 4, 6 | 267, 226, 155 | 9, 6, 4 -- the snowy-tree painting's main record (54 pictures) aside at the end |
+| no sight line past it that stopped there or short, or was not ranged | 2, 3, 4 | 6, 3, 0 | 0 |
+| the same, regions filed to a record standing elsewhere not counted | 2, 3, 4 | 62, 49, 30 | 0, but 31, 19, 10 found again later |
+
+Paintings hung above what the depth camera ranges up close give no distance,
+so nothing seems placed there; unranged sight lines from a 160-degree camera
+pass near nearly every place. What was adopted is simpler (`set_aside.py`):
+seen on two visits or fewer, not for 7 days, and nothing filed to it on three
+close visits since -- 81 of 518 standing records at the end, none holding a
+labelled picture, every labelled object keeping its main record. The rover's
+model counts the close visits (`world_state/visit_model/model.py`,
+`looked_for`) and the daemon applies the rule
+(docs/progress/2026-10-18-records-not-found-again-are-set-aside.md).

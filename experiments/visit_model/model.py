@@ -142,26 +142,21 @@ GONE_MIN_SCANS = 5
 GONE_SHARE = 0.66
 GONE_REACH_M = 4.0
 #: Absence from the camera, for what the lidar does not judge (version 5): a
-#: visit with a standing object's place within CAM_GONE_M of the camera and
-#: CAM_CONE_DEG of its axis in CAM_PICTURES pictures or more, that files nothing
-#: to it, is an empty visit, and CAM_EMPTY_VISITS of them in a row and it is
-#: gone. On the eleven objects never staged (absence.py, 2026-10-18) the
-#: longest run of empty visits in a row was three, the snowy-tree painting's.
-#: Only an object with a depth place: a place from sight lines alone may be a
-#: metre out, and a look at it would see the wrong spot. Off (0) unless set:
-#: this file is version 4 otherwise, byte for byte.
+#: visit with a standing object's depth place within CAM_GONE_M of the camera
+#: and CAM_CONE_DEG of its axis in CAM_PICTURES pictures or more, that files
+#: nothing to it and has no region of any record whose sight line passes within
+#: CAM_THERE_M (or its own half-width) of it without its range running on past
+#: it or its being filed to a record standing elsewhere, is an empty visit. CAM_EMPTY_VISITS of them in a row
+#: and it is set aside as not found again (`camera_absent`) -- not called gone:
+#: called gone, the same rule took two records of things that were there
+#: (2026-10-18, README). Only an object with a depth place: one from sight lines
+#: alone may be a metre out. Off (0) unless set: the filing is version 4's
+#: either way.
 CAM_GONE_M = 2.5
 CAM_NEAR_M = 0.5
 CAM_CONE_DEG = 45.0
 CAM_PICTURES = 3
 CAM_EMPTY_VISITS = int(os.environ.get("CAM_EMPTY_VISITS", 0))
-#: What makes a visit empty for an object: "filed", nothing filed to it; or
-#: "nothing there", nothing filed to it and no region of the visit placed
-#: within CAM_THERE_M (or its own half-width, if more) of it, whichever record
-#: took the region -- since a look filed to a second record of the same thing
-#: is not the place found empty (2026-10-18: "filed" called ten records of
-#: things never staged gone).
-CAM_EMPTY_MODE = os.environ.get("CAM_EMPTY_MODE", "nothing there")
 CAM_THERE_M = 0.5
 #: The end of development: M5 session 2's last labelled look was before this
 #: (2026-10-14 13:00 local). Development runs see nothing after it.
@@ -681,11 +676,21 @@ def solid_votes(L, mem, filed, recs):
 
 def camera_absent(L, mem, idx, filed, decisions):
     """Objects the lidar does not judge, looked for close up in this visit's
-    pictures and not found (CAM_EMPTY_VISITS)."""
+    pictures and not found, CAM_EMPTY_VISITS visits in a row: set aside as not
+    found again (`unfound`, the time), not called gone. Nothing else reads the
+    flag, so the filing is version 4's; the next look filed to the object takes
+    it off."""
     if not CAM_EMPTY_VISITS:
         return
     a = L.a
     seen = {mem.resolve(v) for v in filed.values()}
+    t1 = float(a["t"][idx].max())
+    for o in mem.objects:
+        if o["id"] in seen:
+            o["empty"] = 0
+            if o.get("unfound"):
+                o["unfound"] = None
+                decisions.append({"t": round(t1), "found again": o["id"]})
     pics = {}
     for i in idx:
         if L.posed[i] and a["frame"][i] not in pics:
@@ -693,15 +698,23 @@ def camera_absent(L, mem, idx, filed, decisions):
     if len(pics) < CAM_PICTURES:
         return
     P = np.array(list(pics.values()))
-    t1 = float(a["t"][idx].max())
     idx = np.asarray(idx)
-    there = idx[L.placed[idx]]
-    RX, RY = a["px"][there], a["py"][there]
+    rays = idx[L.posed[idx] & np.isfinite(a["bearing"][idx])]
+    RX, RY = a["cx"][rays], a["cy"][rays]
+    UX, UY = np.cos(np.radians(a["bearing"][rays])), np.sin(np.radians(a["bearing"][rays]))
+    RR = a["range"][rays]
+    # Where the record each region was filed to stands, if it was filed: a
+    # region filed to a record standing elsewhere is accounted for there.
+    byid = {o["id"]: o for o in mem.objects}
+    FX = np.full(len(rays), np.nan)
+    FY = np.full(len(rays), np.nan)
+    for k, i in enumerate(rays):
+        oid = filed.get(int(i))
+        f = byid.get(mem.resolve(oid)) if oid is not None else None
+        if f is not None:
+            FX[k], FY[k] = f["x"], f["y"]
     for o in mem.objects:
-        if o["state"] != "present" or not math.isfinite(o["z"]):
-            continue
-        if o["id"] in seen:
-            o["empty"] = 0
+        if o["state"] != "present" or o.get("unfound") or o["id"] in seen or not math.isfinite(o["z"]):
             continue
         if o["solid_hits"] > 0 and o["solid_hits"] * 2 >= o["solid_judged"]:
             continue  # the lidar's to judge (absent)
@@ -710,14 +723,24 @@ def camera_absent(L, mem, idx, filed, decisions):
         n = int(np.sum((d >= CAM_NEAR_M) & (d <= CAM_GONE_M) & (np.abs(off) <= CAM_CONE_DEG)))
         if n < CAM_PICTURES:
             continue
-        if CAM_EMPTY_MODE == "nothing there" and len(RX) and                 np.min(np.hypot(RX - o["x"], RY - o["y"])) <= max(CAM_THERE_M, o["extent"] / 2.0):
+        # A sight line past its place, of any record's region, says the place
+        # is not empty unless its range ran on beyond the place: one that
+        # stopped there, or short of it, or was not ranged at all -- a look
+        # filed to a second record of the same thing, a painting above the
+        # depth camera's view, something standing in front -- may be it.
+        vx, vy = o["x"] - RX, o["y"] - RY
+        along = vx * UX + vy * UY
+        across = np.abs(vx * UY - vy * UX)
+        near = max(CAM_THERE_M, o["extent"] / 2.0)
+        through = np.isfinite(RR) & (RR > along + near)
+        elsewhere = np.isfinite(FX) & (np.hypot(FX - o["x"], FY - o["y"]) > near + CAM_THERE_M)
+        if np.any((along > 0) & (across <= near) & ~through & ~elsewhere):
             continue
         o["empty"] = o.get("empty", 0) + 1
         if o["empty"] >= CAM_EMPTY_VISITS:
-            o["state"] = "gone"
-            o["gone_at"] = t1
-            decisions.append({"t": round(t1), "gone": o["id"], "at": [round(o["x"], 2), round(o["y"], 2)],
-                              "by": "camera", "empty_visits": o["empty"], "pictures": n})
+            o["unfound"] = t1
+            decisions.append({"t": round(t1), "unfound": o["id"], "at": [round(o["x"], 2), round(o["y"], 2)],
+                              "empty_visits": o["empty"], "pictures": n})
 
 
 def absent(L, mem, idx, filed, recs, decisions):
