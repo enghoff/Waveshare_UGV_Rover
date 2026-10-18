@@ -1,0 +1,19 @@
+{"note": "M5 session 8, planned 2026-10-18 before the run: M5 re-judged on the world model kept per visit, which every reader has used since 2026-10-17 (docs/plans/autonomous-curiosity.md, milestone M5). Version 4 was developed on the shakedown and sessions 1-6 and tested on session 7, so this is the first staged session it has not seen, filed live on the rover rather than on the desk, and the first in which an autonomous run plans around its records. Two bean bags only. The red one is moved to the table's corridor end, where the black one ended session 7 yesterday: a look-alike put down where the other stood the day before, the case that failed version 2 in session 5. Order as in session 7, except that the owner sets the two out with the rover on its charger, not switched off (session 7's cold boot cost it a settled map): the coding agent runs session_preflight.py, the owner unplugs it, loop A from the charger, living room first; session_check.py runs once loop A's \"viewpoint\": \"living-4\" note is written and the move list is given while the rover drives the corridor; a bean bag with fewer than two pictures in loop A is not moved. The wait at bedroom-2 ends when the owner says the moves are done. Then loop B, a 3.5-minute run from where loop B ends, home (session.py all session8-1018 --b-first). Places are map coordinates; where things really stood and went is read afterwards from the scans and photographs into session8-1018.json.",
+ "added": [
+  {"what": "red bean bag", "at": [-20.2, -12.55], "in_words": "in the gap between the dining table and wall A, at the end away from the stops: where the black bean bag started session 7"},
+  {"what": "black bean bag", "at": [-16.45, -11.76], "in_words": "beyond the dining table's far end from wall A, on the side away from the stops: where the red bean bag ended session 7"}
+ ],
+ "moves": [
+  {"what": "red bean bag", "from": [-20.2, -12.55], "to": [-17.45, -13.4], "in_words": "round the table to its corridor end, on the stops' side, where the black bean bag ended session 7, about 2.9 m"},
+  {"what": "black bean bag", "from": [-16.45, -11.76], "to": [-17.9, -16.55], "in_words": "across the room to between the two armchairs, short of the window, where the stool stood in sessions 6 and 7, about 5 m"}
+ ],
+ "unmoved": ["plain black armchair (by the window)", "black armchair with the throw", "black cabinet"],
+ "left_out": ["stool", "step ladder", "box"],
+ "people": "nobody in the living room from the start of loop A to the end of the run, except the owner staging in the wait",
+ "counts": {
+  "criterion 5": "shown on the floor if the run's first choices are looks at the furniture-sized changes the change watch reports, ahead of any look at one of the world model's records; a change the planner refuses with a reason (nowhere to stand) is reported and not counted against it",
+  "criterion 6": "shown on the floor if no change is chosen again during the run once it has been looked at",
+  "criterion 4": "on pictures the world model has not seen, filed live on the rover: labels for the two bean bags and the eleven unmoved objects are made from the session's photographs before the model's filing is read. It fails if any record takes labelled pictures of a thing other than those it already held, in this session or any earlier one, the two armchairs counting as one thing. Each bean bag's move is reported kept (strictly or not), split or unresolved: a trial when the live model held the bean bag in two or more labelled pictures before the move.",
+  "reported beside, without a bar": "what the change watch found of the four changes (two departures, two arrivals); records per unmoved object; the share of labelled pictures filed"
+ }
+}

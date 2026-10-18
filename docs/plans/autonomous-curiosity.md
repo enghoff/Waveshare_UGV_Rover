@@ -1047,6 +1047,13 @@ the red bean bag in session 1 as ordinary matches, which fails criterion 4
 ([the correction](../progress/2026-10-16-m5-session-5.md#a-correction-m5s-criterion-4-was-not-met)).
 Keeping a thing's identity is the
 [world model kept per visit](a-world-model-kept-per-visit.md)'s to answer.
+Every reader has used it since 2026-10-17. On the rover's own filing it makes no
+wrong merge in any of the seven sessions, six of which it was developed on
+([2026-10-18](../progress/2026-10-18-m5-criterion-4-recounted-on-the-world-model.md)),
+so M5 is to be judged again on session 8, planned that day
+(`experiments/m5_changes/staged/session8-planned.json`): criterion 4 on
+pictures the model has not seen, and criteria 5 and 6 on the floor with
+autonomy planning around its records.
 
 Pass when all are true:
 
