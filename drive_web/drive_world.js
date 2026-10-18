@@ -281,38 +281,16 @@ function wReadFilter() {
                  floor: answer.floor};
 }
 
-// How well a thing has to be pinned down before it is worth drawing.
+// How far a crowded map is thinned before it is drawn.
 //
-// **A store this size is mostly things nobody has really located.** Of the 45
-// things on the map on 2026-09-05, a quarter were crossed from two places or
-// fewer, a third carried a look that no longer agrees with the position it is
-// attached to, and the widest error ellipse was 1.4 m across. Drawn together
-// they are one cloud, and a cloud is what made a map of where things are read
-// as a map of where the rover had been.
-//
-// Three bars rather than a slider, because the question a person has is which
-// of these to believe rather than which number to tune, and the two conditions
-// that matter are not one axis. `viewpoints` is how many separated places the
-// crossing was made from, which is the guard against a phantom; `error_major_m`
-// is how long the error ellipse is, which is nearly always the axis down the
-// line of sight and is what "to within" on the row means. `disagreeing` is the
-// third and the sharpest: a look attached to a thing whose bearing or measured
-// range no longer points at it, decided on the rover by the same `locate.agrees`
-// that would attach it today -- see `view.relate`. One of those is a thing whose
-// own evidence has moved out from under it.
-//
-// Every step past the first is also thinned -- see `wThin` -- because on its own
-// a bar does not clear the cloud: on 2026-10-10 "agreed" still left 486 of 630
-// things on the map and "settled" 185, a median 0.14 m from their nearest
-// neighbour. `best` is that thinning with no bar at all, and is where the popup
-// opens.
-const WGRADES = {
-  all: () => true,
-  best: () => true,
-  agreed: (one) => wPlacedFrom(one) >= 3 && !wDisagreeing(one),
-  settled: (one) => wPlacedFrom(one) >= 4 && !wDisagreeing(one)
-      && wSpread(one) <= 0.3,
-};
+// **A store this size is mostly one object recorded several times.** `best`,
+// where the popup opens, keeps only the best placed thing within a metre -- see
+// `wThin` -- and `all` draws every placed thing. Two placement bars stood after
+// `best` until 2026-10-18, three viewpoints and four with 0.3 m: on their own
+// they did not clear the cloud (on 2026-10-10 they left 486 and 185 of 630
+// things on the map), and the world model's records the popup shows since
+// 2026-10-17 count visits, not viewpoints, so they no longer meant what they
+// said.
 let worldGrade = "best";
 // Whether the world model's records it has seen gone, or set aside as not
 // found again, are shown, faded. Off by default: the popup is for where things
@@ -322,8 +300,6 @@ let worldShowGone = false;
 const wAside = (one) => !!(one.gone || one.set_aside);
 
 const wPlacedFrom = (one) => +((one.placement || {}).viewpoints || 0);
-const wSpread = (one) => +((one.placement || {}).error_major_m
-                           || (one.placement || {}).uncertainty_m || 9);
 // Only the looks the rover sent with this entity, which is the newest handful
 // rather than all of them -- `RAY_LIMIT` in `rover_world.py`. That is the right
 // handful: a thing whose recent looks have stopped agreeing is the case this is
@@ -332,23 +308,22 @@ const wSpread = (one) => +((one.placement || {}).error_major_m
 const wDisagreeing = (one) => (one.rays || []).filter(
     (ray) => ray.relation && ray.relation.agrees === false).length;
 
-// The things the entity list and the map are showing: the ones well enough
-// placed for the chosen bar, narrowed again by the search and best-scoring
-// first. Both narrowings apply to the list and the map together, because two
-// views of one store disagreeing on screen is the fault this popup exists to
-// make visible and must never itself invent.
+// The things the entity list and the map are showing: thinned unless every
+// placed thing is asked for, narrowed by the search and best-scoring first.
+// Both apply to the list and the map together, because two views of one store
+// disagreeing on screen is the fault this popup exists to make visible and must
+// never itself invent.
 function wShown() {
   const narrowed = wNarrowed();
   return worldGrade === "all" ? narrowed : wThin(narrowed);
 }
 
-// The same, before the thinning: what the bar and the phrase let through.
+// The same, before the thinning: what the gone box and the phrase let through.
 function wNarrowed() {
-  const graded = (world.entities || []).filter(
-      (one) => (worldShowGone || !wAside(one)) && (WGRADES[worldGrade] || WGRADES.all)(one));
-  if (!worldFilter) return graded;
+  const kept = (world.entities || []).filter((one) => worldShowGone || !wAside(one));
+  if (!worldFilter) return kept;
   const best = worldFilter.things;
-  return graded.filter((one) => best.has(one.id))
+  return kept.filter((one) => best.has(one.id))
       .sort((a, b) => best.get(b.id) - best.get(a.id));
 }
 
@@ -431,16 +406,6 @@ function wThin(things) {
   return things.filter((one) => keep.has(one) || !wOnMap(one));
 }
 
-// How many placed things the bar is holding back, for the line under the map.
-// Counted against what is placed rather than against the whole store, because
-// the things with no position are already reported separately and counting them
-// twice would say the bar had hidden two hundred things it never saw.
-function wHeldBack() {
-  const keep = WGRADES[worldGrade] || WGRADES.all;
-  return (world.entities || []).filter(
-      (one) => (worldShowGone || !wAside(one)) && one.placement && !keep(one)).length;
-}
-
 // What a row or a tile scored, as the line the two of them share. Dimmed below
 // the floor, because those rows are the nearest thing the rover has and are not
 // matches -- a list of scores always has a top, and that top meaning nothing is
@@ -467,12 +432,7 @@ function drawWorldList() {
     // at all and it matching looks the rover has not yet made a thing of --
     // which is the ordinary state of anything seen once, and sends them to the
     // stream rather than to the inspect button.
-    // A third case joined them: the store has things in it and none of them is
-    // placed well enough for the bar. Saying "none placed" there would blame the
-    // rover for a choice made in this popup.
-    empty.textContent = wHeldBack()
-        ? `${wHeldBack()} placed, none of them this well`
-        : !worldFilter
+    empty.textContent = !worldFilter
         ? (summary.observations
            ? `${summary.observations} observations, none placed`
            : summary.inspections

@@ -137,9 +137,11 @@ entities sat a median 0.14 m from their nearest neighbour, and the thinning
 left about 75. Ranking by viewpoint count first, as it briefly did, showed a
 thing with a 1.12 m error over a neighbour ranged to 0.2 m, because the counts
 saturate on anything looked at often. The selected entity is never thinned
-away, and under a search the best match wins its patch. Two further steps add a placement bar
-(three viewpoints; four viewpoints and 0.3 m), and "every placed thing" turns
-both off. What each step hides is counted under the map.
+away, and under a search the best match wins its patch. "Every placed thing"
+turns the thinning off, and what it hides is counted under the map. Two
+placement steps after it (three viewpoints; four viewpoints and 0.3 m) were
+removed on 2026-10-18: they left hundreds of marks on their own, and the world
+model's records do not count viewpoints.
 
 The popup has its own map picture, at `/world_map.png`, drawn wide enough to hold
 both the entities and the room; the driving map is a fallback until the first one

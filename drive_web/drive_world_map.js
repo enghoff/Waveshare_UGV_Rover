@@ -270,25 +270,19 @@ function drawWorldMap() {
 
   // --- what is on the screen ------------------------------------------------
   const missing = entities.length - placed.length;
-  const held = wHeldBack();
   const bits = [];
   if (selected) bits.push(selected);
   bits.push(`${placed.length} on the map`);
-  // What the evidence bar is keeping off it, which is a different absence from
-  // the one below and has to be said separately: those things have a position
-  // and it is not good enough, these have none at all. Silence here is what
-  // would make a bar look like a store that had lost half its contents.
-  if (held > 0) bits.push(`${held} held back`);
-  // A fourth: what the world model has seen gone, or set aside as not found
-  // again, left off unless asked for.
+  // What the world model has seen gone, or set aside as not found again, left
+  // off unless asked for.
   if (!worldShowGone) {
     const gone = (world.entities || []).filter((one) => one.gone && wOnMap(one)).length;
     if (gone > 0) bits.push(`${gone} gone`);
     const aside = (world.entities || []).filter((one) => one.set_aside && !one.gone && wOnMap(one)).length;
     if (aside > 0) bits.push(`${aside} not found again`);
   }
-  // And what the thinning is keeping off it, which is a third absence: these are
-  // placed well enough and have a better placed thing beside them.
+  // And what the thinning is keeping off it, which is another absence: these
+  // have a position and a better placed thing beside them.
   const crowded = wNarrowed().filter(wOnMap).length - placed.length;
   if (crowded > 0) bits.push(`${crowded} within ${WTHIN_M} m of a better one`);
   if (missing > 0) {

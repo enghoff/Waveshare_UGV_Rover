@@ -246,34 +246,31 @@ def test_the_search_box_narrows_the_views_rather_than_owning_one() -> None:
           and 'event.key === " " && !phrase' in stop, True)
 
 
-def test_the_evidence_bar_narrows_both_views_and_says_what_it_hid() -> None:
-    """How well placed a thing must be to be drawn, and the count that goes with it.
+def test_the_evidence_bar_thins_both_views_and_says_what_it_hid() -> None:
+    """Whether a crowded map is thinned, and the count that goes with it.
 
-    The same rule the phrase above obeys: a list narrowed to the well-placed
+    The same rule the phrase above obeys: a list thinned to the best placed
     things beside a map still carrying the cloud would be two answers to one
-    question. And a bar that hid things silently would read as a store that had
-    lost them, so the line under the map says how many it is holding back --
-    separately from the things that have no position at all, which is a different
-    absence and already counted there.
+    question. And thinning that hid things silently would read as a store that
+    had lost them, so the line under the map says how many it hid. The two
+    placement steps that once followed it went on 2026-10-18, since the world
+    model's records do not count the places they asked for, and with them the
+    count of what they held back.
     """
     html = _console("html")
     js = _console("world.js")
+    bar = html[html.index('id="wGrade"'):html.index("</select>", html.index('id="wGrade"'))]
 
     check("the bar sits beside the phrase, above the views",
           html.index('id="wGrade"') < html.index('id="worldBody"'), True)
-    check("...and offers four steps",
-          html[html.index('id="wGrade"'):
-               html.index("</select>", html.index('id="wGrade"'))
-               ].count("<option"), 4)
-    check("every step the markup offers is a step the script knows",
-          sorted(re.findall(r'<option value="([a-z]+)"', html)),
-          sorted(re.findall(r"^  ([a-z]+): \(", js, re.M)))
+    check("...and offers every placed thing and the thinned map",
+          re.findall(r'<option value="([a-z]+)"', bar), ["all", "best"])
     check("the page opens on the thinned map, in the markup and the script",
           '<option value="best" selected>' in html
           and 'let worldGrade = "best";' in js, True)
-    check("the bar is applied where both views read their things",
-          "WGRADES[worldGrade]" in js, True)
-    check("...which is one function they share", js.count("= wShown()"), 2)
+    check("no placement step is left in the script, nor a count of what one held back",
+          "WGRADES" in js or "held back" in js or "wHeldBack" in js, False)
+    check("both views read their things from one function", js.count("= wShown()"), 2)
     check("...and the thinning is inside it, for every step but the first",
           'worldGrade === "all" ? narrowed : wThin(narrowed)' in js, True)
     check("the line under the map says how many the thinning hid",
@@ -281,10 +278,6 @@ def test_the_evidence_bar_narrows_both_views_and_says_what_it_hid() -> None:
     check("changing it redraws both without asking the rover",
           '$("wGrade").onchange' in js
           and "drawWorldList();" in js and "drawWorldMap();" in js, True)
-    check("the line under the map says how many it is holding back",
-          "held} held back" in js, True)
-    check("...counted against what is placed, not against the whole store",
-          "one.placement && !keep(one)" in js, True)
 
 
 def test_the_thinning_keeps_the_best_placed_thing_of_each_patch() -> None:
@@ -519,7 +512,7 @@ def test_the_console_is_written_in_the_encoding_it_is_served_in() -> None:
 TESTS = (
     test_the_page_draws_every_pane_its_tabs_offer,
     test_the_console_is_written_in_the_encoding_it_is_served_in,
-    test_the_evidence_bar_narrows_both_views_and_says_what_it_hid,
+    test_the_evidence_bar_thins_both_views_and_says_what_it_hid,
     test_the_thinning_keeps_the_best_placed_thing_of_each_patch,
     test_the_map_offers_its_acts_and_the_script_can_find_them,
     test_the_snapshot_popup_is_all_there_and_takes_no_key,
