@@ -636,8 +636,9 @@ def test_a_world_model_record_gains_from_a_look_the_depth_camera_ranges() -> Non
                 "error_minor_m": spread, "stated_uncertainty_m": spread, "height_m": height}
     entity = {"id": "v12", "kind": "record"}
     got = goals._from_viewpoint(record(0.5), entity, 0.5, 0.0)
-    check("a record placed to 0.5 m from sight lines alone comes to about 0.22 m",
-          (got["before_m"], round(got["after_m"], 2), got["in_depth_view"]), (0.5, 0.22, True))
+    check("a record placed to 0.5 m comes to about 0.22 m when the look is filed to "
+          "it, so about 0.36 m expected, filed half the time",
+          (got["before_m"], round(got["after_m"], 2), got["in_depth_view"]), (0.5, 0.36, True))
     check("a record at the model's floor has nothing to gain",
           goals._from_viewpoint(record(0.1), entity, 0.5, 0.0)["gain_m"], 0.0)
     check("...nor one beyond the depth camera's band",
@@ -646,12 +647,18 @@ def test_a_world_model_record_gains_from_a_look_the_depth_camera_ranges() -> Non
           goals._from_viewpoint(record(0.5, height=1.6), entity, 1.0, 0.0)["gain_m"], 0.0)
     check("a record of no known height is not judged for the view, and still gains",
           (goals._from_viewpoint(record(0.5, height=None), entity, 0.5, 0.0)["tilt_unknown"],
-           goals._from_viewpoint(record(0.5, height=None), entity, 0.5, 0.0)["gain_m"] > 0.2),
+           goals._from_viewpoint(record(0.5, height=None), entity, 0.5, 0.0)["gain_m"] > 0.1),
           (True, True))
-    here = _situation(entities=[{**a_thing("v12", 1.6, 1.0, uncertainty_m=0.5),
-                                 "kind": "record", "ranging": None}])
-    check("so a goal at it is offered", bool([one for one in goals.generate(here)
-                                             if one.target == "v12"]), True)
+    def at(rid, visits, height):
+        one = {**a_thing(rid, 1.6, 1.0, uncertainty_m=0.5), "kind": "record", "ranging": None}
+        one["placement"] = {**one["placement"], "viewpoints": visits, "height_m": height}
+        return one
+    here = _situation(entities=[at("v12", 6, 0.3), at("v13", 5, 0.3), at("v14", 9, None)])
+    offered = {one.target for one in goals.generate(here) if one.type == "improve_geometry"}
+    check("so a goal at it is offered", "v12" in offered, True)
+    check("...but not at a record seen on fewer than six visits, or placed from sight "
+          "lines alone, which a look did not feed once in 20 (2026-10-18)",
+          sorted(offered & {"v13", "v14"}), [])
 
 
 def test_the_same_situation_produces_the_same_list_twice() -> None:

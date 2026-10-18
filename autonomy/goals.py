@@ -175,6 +175,19 @@ PLACEMENT_FLOOR_M = 0.10
 #: bearings below, which the store's placements are and the model's are not.
 RECORD_LOOK_SIGMA_M = 0.25
 
+#: Which of the world model's records a look can feed, and how often it does.
+#: Of the looks the store recorded as aimed at a thing in the M3 and M4
+#: sessions, judged under the model on 2026-10-18, 52 of 100 at records seen on
+#: six visits or more were filed to that record, and none of 6 at records seen
+#: on fewer. That morning's run aimed 14 looks at records seen on fewer, or
+#: placed from sight lines alone, and none was filed to its record
+#: (docs/progress/2026-10-18-the-first-run-on-the-world-models-records.md). So
+#: only a record seen on this many visits, with a depth place (a height), is
+#: looked at, and what a look is predicted to gain it is the inverse-variance
+#: gain times how often a look lands.
+RECORD_VISITS_MIN = 6
+RECORD_LOOK_LANDS = 0.5
+
 #: How uncertain a thing's height may be before the tilt needed to look at it
 #: cannot be predicted. Above it the candidate is marked `tilt_unknown` and the
 #: scorer discounts it, because the validated envelope covers tilt zero and
@@ -410,6 +423,12 @@ def _worth_looking_at(situation: Situation) -> list[dict[str, Any]]:
             continue
         if (session is not None
                 and entity.get("placement_map_session") not in (None, session)):
+            continue
+        if entity.get("kind") == "record" and (
+                int(placement.get("viewpoints") or 0) < RECORD_VISITS_MIN
+                or placement.get("height_m") is None):
+            # A look at it would feed another record or none
+            # (`RECORD_VISITS_MIN`); what it needs is the model's to settle.
             continue
         wanted.append((-_room_to_improve(entity), str(entity.get("id") or ""),
                        entity))
@@ -744,8 +763,9 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
                                 + (cos_phi * cos_phi) / (across_m * across_m))
     if (record and BAND_NEAR_M <= range_m <= BAND_FAR_M
             and in_depth_view is not False):
-        after = 1.0 / math.sqrt(1.0 / (before * before)
+        filed = 1.0 / math.sqrt(1.0 / (before * before)
                                 + 1.0 / (RECORD_LOOK_SIGMA_M * RECORD_LOOK_SIGMA_M))
+        after = before - RECORD_LOOK_LANDS * (before - filed)
 
     ranging = entity.get("ranging") or {}
     first_range = bool(ranging.get("never_ranged"))
@@ -803,8 +823,8 @@ def _why(entity: dict[str, Any], before: float, after: float, range_m: float,
     seen = f", seen {looks} times" if looks else ""
     if record:
         return (f"{name} is placed to {before:.2f} m{seen}; a look from "
-                f"{range_m:.1f} m that the depth camera ranges would bring that "
-                f"to about {after:.2f} m")
+                f"{range_m:.1f} m that the depth camera ranges, filed to it about "
+                f"half the time, would bring that to about {after:.2f} m")
     if first_range:
         return (f"{name} has never had its distance measured{seen}; from "
                 f"{range_m:.1f} m the depth camera could, which would place it "
