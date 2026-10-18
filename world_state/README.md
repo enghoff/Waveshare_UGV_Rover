@@ -24,8 +24,11 @@ Its job reads the store and never writes to it; it writes its records to
 answering from the store's entities when the records cannot; an autonomous run
 plans around them with no such fallback (`autonomy/situation.py`). A record seen
 once or twice, not for a week, and looked for since without being found is set
-aside as not found again, never called gone (`visit_things.SET_ASIDE_*`). The
-resolver still files to the store's entities.
+aside as not found again, never called gone (`visit_things.SET_ASIDE_*`).
+Records answer only on the map and from the filling of the store they were
+filed from; when the store is cleared or put on another map, the job sets them
+aside and starts again (`visit_model/job.py`, `follow`). The resolver still
+files to the store's entities.
 
 ## Grouping preview
 

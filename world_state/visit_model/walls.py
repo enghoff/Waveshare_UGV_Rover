@@ -50,7 +50,8 @@ def from_grid(g):
     the mapper calls occupied, furniture included. Over every picture to
     2026-10-17 version 4 filed with one session's grid as it does with the
     four intersected (630 records against 624, every score the same), and with
-    no walls it filed a fifth fewer of the paintings' pictures."""
+    no walls it filed a tenth fewer of the paintings' labelled pictures (188
+    against 206; the snowy-tree painting's 31 against 41)."""
     cells = np.frombuffer(zlib.decompress(base64.b64decode(g["data"])), dtype=np.int8)
     return {"stable": cells.reshape(g["height"], g["width"]) >= 50,
             "res": float(g["resolution_m"]), "ox": float(g["origin_x_m"]),

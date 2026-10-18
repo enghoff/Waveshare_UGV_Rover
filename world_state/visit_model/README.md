@@ -14,7 +14,8 @@ every world_state deploy, both niced:
 
 - `scan_log.py`, inside navigation's ROS environment (RoboStack's conda
   Python), listens to the lidar and navigation's pose and writes what arrived
-  every 30 s to `~/.ugv/world/visit_model/lidar/`, kept 40 minutes;
+  every 30 s to `~/.ugv/world/visit_model/lidar/`, kept 40 minutes. A SIGTERM
+  ends it after it writes what it holds, and so does ROS stopping under it;
 - `job.py`, on the system Python, where version 4 was verified -- the conda
   environment has its own numpy and no PIL. Every minute it:
 
@@ -28,7 +29,10 @@ every world_state deploy, both niced:
      gone), when seen, how often looked for and not found (`looked_for`), and
      the store's observation ids of each, for the daemon
      (`world_state/visit_things.py`), with `filed_until`, up to when looks are
-     filed, and `generation`, what the records' names `v12` are minted under;
+     filed, `generation`, what the records' names `v12` are minted under, and
+     which map and which filling of the store they are of (`map_id`,
+     `map_session`, `store_generation`), which the daemon checks before they
+     answer;
    - `engine.pkl`, the engine, so a restart carries on where it stopped;
    - `decisions.jsonl`, what each visit decided;
    - `scans/`, the lidar and pose over each batch, in the drive recordings'
@@ -42,6 +46,26 @@ read in name order, as the desk's `run_versions.sh` lists them, then its own
 as `engine.pkl.bad`, and one filed some earlier way (`job.FILED_AS`) as
 `engine.pkl.filed-as-N`, and the history is filed the same way.
 
+**When the store changes under it, it starts again** (`job.follow`). Its
+records are places on one map, filed from one filling of the store: the
+store's generation changes when it is cleared, its map identity when
+navigation's map is replaced, and its session when that happens with its rows
+kept. When any of them changes, the engine, its records and decisions, and the
+lidar, recordings and walls of its map go to
+`~/.ugv/world/visit_model/set-aside/<when>-<map|cleared>-<generation>/`, and
+the job files what the store holds then, from nothing, under a new
+`generation`; until it has filed something, readers answer from the store. A
+map cleared from the console empties the store and keeps the session number,
+which is why the session alone was not enough. Nothing carries the old records
+across to a new map; the set-aside engine is kept for that.
+
+On the map `walls.npz` was drawn from (`job.WALLS_MAP_ID`) raised things are
+placed on it; on any other, on the map's own grid, which the job asks the
+daemon for (`nav_grid`) and fetches again every ten minutes while the rover
+maps (`job.walls_for`). Over every picture to 2026-10-17, one grid's walls filed
+as the four intersected do; with none, a tenth of the paintings' pictures went
+unfiled.
+
 ## What is frozen
 
 `model.py`, `data.py`, `recorded.py`, `lidar.py`, `poses.py`, `walls.py`,
@@ -49,8 +73,8 @@ as `engine.pkl.bad`, and one filed some earlier way (`job.FILED_AS`) as
 at `cabe003`, with batch entry points added to the loader, wall places and
 colour that compute each region as before. `likeness.py` is that branch's
 `metric.py` without the fitting. `metric-1015.npz` (the learned likeness),
-`scale-1015.npz` (its scale) and `walls.npz` (the building's walls) are part of
-version 4 and are not refitted here.
+`scale-1015.npz` (its scale) and `walls.npz` (the building's walls, on map
+`7da19bef3888`) are part of version 4 and are not refitted here.
 
 One addition, which nothing in the filing reads: each visit counts, for every
 standing record with a depth place, whether its place was within 2.5 m and 45
@@ -109,8 +133,16 @@ The resolver still files to the store's entities.
   batch failed on it for the half hour it stayed in the job's buffer, while the
   records went stale and every reader fell back to the store. An unreadable
   lidar file is now skipped as well.
-- **The model is pinned to one map session** (`data.MAP_SESSION`, 67). On
-  another, the job reads nothing and its records stop answering.
+- **A world_state deploy restarts the lidar logger, and until 2026-10-18 that
+  left it deaf.** rclpy's own signal handler took the SIGTERM as "shut ROS
+  down" and kept the process running, so the supervisor never replaced it and
+  the job filed without lidar until the next boot: nothing could be seen gone.
+  Its handlers are off now. If `job.log` says `lidar no` while the lidar
+  publishes, look at the logger first.
+- **Clearing the world state, or the map, sets the model's records aside**
+  (`job.follow`). Bringing archived looks back into the store afterwards, as
+  was done on 2026-10-03, wants the job filed afresh: move `engine.pkl` aside
+  and run `restart_job.sh`.
 - **Anything stamped before the clock was set is left out live** -- regions and
   lidar alike (`job.CLOCK_SET_AFTER`). A lidar chunk from a cold boot that began
   in 1970 "covered" 1970 to 2026, and filing the history with it took from

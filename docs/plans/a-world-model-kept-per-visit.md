@@ -273,8 +273,11 @@ Those conditions are retired.
      ([entry](../progress/2026-10-18-aimed-looks-feed-only-established-records.md)).
      The model's strays are set aside as not found again, never called gone
      ([entry](../progress/2026-10-18-records-not-found-again-are-set-aside.md)).
-     Still ahead: the model following a change of map session (it is pinned to
-     session 67, and on another its records stop answering everywhere).
+     Since 2026-10-18 it follows the store onto another map, or a cleared
+     store, starting again from what the store holds
+     ([entry](../progress/2026-10-18-the-world-model-starts-again-on-another-map.md));
+     carrying old records across a map change is not planned while maps stay
+     put as they have since 2026-09-06.
 
 **Paused meanwhile**: tuning the resolver and the record-moving step, and staged
 sessions for them. The shadow runner keeps acting on moved events as deployed;
