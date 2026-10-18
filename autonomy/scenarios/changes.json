@@ -61,6 +61,43 @@
       }
     },
     {
+      "name": "a changed place outranks a world-model record equally far that was seen lately",
+      "why": "M5's criterion 5 as autonomy plans since 2026-10-17, around the world model's records: one seen on twelve visits with a depth place 0.12 m wide, 2 m from the rover as the armchair's old place is. A look would narrow it little and land about half the time; the change has everything to gain.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "entities": [
+        {"id": "v8", "record": true, "at": [2.45, 1.9], "spread_m": 0.12, "visits": 12}
+      ],
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {
+        "chose": {"type": "investigate_change"},
+        "order": [{"type": "investigate_change"}, {"type": "improve_geometry", "target": "v8"}]
+      }
+    },
+    {
+      "name": "a change looked at since it was seen is worth nothing beside a record that is not",
+      "why": "M5's criterion 6 as autonomy plans since 2026-10-17: the change looked at is worth nothing until the place changes again, and the rover goes on to a world-model record with something to gain rather than being held by the formerly novel place.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "entities": [
+        {"id": "v8", "record": true, "at": [2.45, 1.9], "spread_m": 0.45, "visits": 12}
+      ],
+      "changes": [
+        {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "examined": [
+        {"kind": "GONE", "x_m": 2.45, "y_m": 1.05, "at": 1757320600.0, "outcome": "looked"}
+      ],
+      "expect": {
+        "chose": {"type": "improve_geometry", "target": "v8"},
+        "terms": [{"match": {"type": "investigate_change"}, "field": "gain", "at_most": 0.0}]
+      }
+    },
+    {
       "name": "a change looked at since it was seen is worth nothing",
       "why": "M5's criterion 6. The look was taken after the watch began seeing the change, so another would learn nothing until the place changes again, and the rover is not held by one formerly novel thing.",
       "map": "flat",

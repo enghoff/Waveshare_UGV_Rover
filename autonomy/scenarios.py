@@ -140,6 +140,26 @@ def thing(entity_id: str, x: float, y: float, *, uncertainty_m: float = 0.30,
     }
 
 
+def record(record_id: str, x: float, y: float, *, spread_m: float = 0.15,
+           visits: int = 8, height_m: float | None = 0.3, map_session: int = 7,
+           gone: bool = False, set_aside: bool = False) -> dict[str, Any]:
+    """One of the world model's records in the shape `world_state_entities`
+    reports one to autonomy (rover_daemon/rover_world.py, `_world_model_thing`):
+    one spread and no axis, how many visits it was seen on, and its height."""
+    return {
+        "id": record_id, "kind": "record", "source": "world model",
+        "observation_count": visits * 3, "created_at": 1757320000.0,
+        "last_seen_at": 1757320600.0, "placement_map_session": map_session,
+        "placement": {"x_m": x, "y_m": y, "uncertainty_m": spread_m,
+                      "error_major_m": spread_m, "error_minor_m": spread_m,
+                      "stated_uncertainty_m": spread_m, "viewpoints": visits,
+                      "extent_m": 0.3, "height_m": height_m},
+        "gone_at": 1757320500.0 if gone else None, "gone": gone,
+        "set_aside": set_aside, "moved_from": None, "ranging": None,
+        "same_object_suspects": [], "group_mates": [],
+    }
+
+
 def situation(rows: list[str], *, entities: list[dict] | None = None,
               at: float = 1757320800.0, battery_v: float = 12.1,
               driving: bool = False, exploring: bool = False,
@@ -213,7 +233,10 @@ def build(scenario: dict[str, Any], maps: dict[str, Any]) -> Situation:
     room = maps[scenario["map"]]
     rows = expand(room["rows"] if isinstance(room, dict) else room)
     fields = dict(scenario.get("rover") or {})
-    entities = [thing(one.pop("id"), *one.pop("at"), **one)
+    # `"record": true` is one of the world model's records, which autonomy
+    # plans around since 2026-10-17; otherwise a store entity.
+    entities = [(record if one.pop("record", False) else thing)(
+                    one.pop("id"), *one.pop("at"), **one)
                 for one in [dict(each) for each in
                             scenario.get("entities") or []]]
     body = situation(rows, entities=entities,
