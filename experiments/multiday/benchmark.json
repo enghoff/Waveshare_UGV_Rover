@@ -1,0 +1,123 @@
+{
+ "what": "The multi-day usefulness benchmark (docs/decisions/the-multi-day-benchmark-is-judged-so.md): autonomy against fixed-schedule revisits, one session of each a day for three days, the questions answered from each session's pictures alone.",
+ "arm_minutes": 9.0,
+ "correct_m": 1.0,
+ "moved_m": 1.0,
+ "items": {
+  "red bean bag": "a red bean bag",
+  "black bean bag": "a black bean bag",
+  "stool": "a stool"
+ },
+ "spots": {
+  "P1": {
+   "at": [
+    -20.2,
+    -12.55
+   ],
+   "in_words": "in the gap between the dining table and the wall with the three pictures, at the end away from the window"
+  },
+  "P2": {
+   "at": [
+    -17.45,
+    -13.4
+   ],
+   "in_words": "at the dining table's corridor end, on the living-room side"
+  },
+  "P3": {
+   "at": [
+    -16.45,
+    -11.76
+   ],
+   "in_words": "beyond the dining table's corridor end, on the far side from the living room"
+  },
+  "P4": {
+   "at": [
+    -17.9,
+    -16.55
+   ],
+   "in_words": "between the two black armchairs, short of the balcony window"
+  },
+  "P5": {
+   "at": [
+    -19.5,
+    -16.3
+   ],
+   "in_words": "beside the black cabinet's end, toward the window"
+  }
+ },
+ "days": {
+  "1": {
+   "order": "AB",
+   "restart": false,
+   "put": {
+    "red bean bag": "P1",
+    "black bean bag": "P4",
+    "stool": "P2"
+   }
+  },
+  "2": {
+   "order": "BA",
+   "restart": true,
+   "put": {
+    "red bean bag": "P1",
+    "black bean bag": "P5",
+    "stool": "P3"
+   }
+  },
+  "3": {
+   "order": "AB",
+   "restart": false,
+   "put": {
+    "red bean bag": "P2",
+    "black bean bag": "P5",
+    "stool": "P4"
+   }
+  }
+ },
+ "controls": {
+  "the bed": {
+   "phrase": "a bed",
+   "at": [
+    -8.7,
+    -11.15
+   ]
+  },
+  "the wardrobe": {
+   "phrase": "a wardrobe",
+   "at": [
+    -6.97,
+    -10.31
+   ]
+  },
+  "the floor lamp": {
+   "phrase": "a floor lamp",
+   "at": [
+    -16.29,
+    -17.92
+   ]
+  },
+  "the black cabinet": {
+   "phrase": "a black cabinet",
+   "at": [
+    -19.94,
+    -15.08
+   ]
+  },
+  "the portrait in the bedroom": {
+   "phrase": "a portrait painting",
+   "at": [
+    -6.09,
+    -12.16
+   ]
+  },
+  "the snowy-tree painting": {
+   "phrase": "a painting of snowy trees",
+   "at": [
+    -19.75,
+    -15.07
+   ]
+  }
+ },
+ "controls_from": "the main records of each object on 2026-10-18 (v1465, v42, v1454, v1804, v1868, v4), each confirmed from its pictures; none is moved during the benchmark",
+ "schedule_why": "On 2026-10-18 the world model held the red bean bag and the stool on records seen gone (near P3 and P4) and the black bean bag standing near P3; day 1 puts none of them where it is believed to be. Each later day moves two and leaves one where it was."
+}

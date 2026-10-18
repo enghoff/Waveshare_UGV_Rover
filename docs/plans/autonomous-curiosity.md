@@ -1094,6 +1094,11 @@ equal time/travel budgets, and independent annotations. Counterbalance compariso
 order or reset matched scenes so one policy does not inherit another's observations.
 Keep acceptance objects/runs separate from tuning data.
 
+**Planned 2026-10-18 for a first round of three days**, the budget agreed with
+the owner and the map reset left out until the world model's records can cross
+maps ([the decision](../decisions/the-multi-day-benchmark-is-judged-so.md);
+[the daily run](../runbooks/daily-benchmark-run.md)).
+
 State its budget in charges and owner hours before planning it. R-SAFE-6 is open
 and nothing docks the rover, so every minute of it is supervised and every charge
 is plugged in by hand, at 20 to 25 minutes of driving a charge. Its questions and
@@ -1673,9 +1678,11 @@ owner. In order from here:
    and 4 ([2026-10-18](../progress/2026-10-18-m10-look-trial.md)): with one
    look in nine landing there is little for a predictor to separate, so a second
    trial waits on item 3.
-2. **The multi-day usefulness benchmark.** Its budget in charges and owner
-   hours is to be stated and agreed before it is planned (*Multi-day
-   usefulness benchmark*, above).
+2. **The multi-day usefulness benchmark.** Planned on 2026-10-18 and ready
+   to run: three days, about 20 minutes of driving and 45 minutes of the
+   owner's time each, the owner saying "do the daily run"
+   ([the decision](../decisions/the-multi-day-benchmark-is-judged-so.md)). Its
+   days also give the fresh drives items 1 and 3 need.
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). The look trial's misses were mostly not a second record
    of one object: a third were aimed at records of no object -- bare floor,

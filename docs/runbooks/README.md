@@ -12,6 +12,7 @@ disagree, the runbook is a bug.
 | [scripting.md](scripting.md) | running short programs on the rover that compose its existing tools |
 | [p0-gimbal-calibration.md](p0-gimbal-calibration.md) | printing and mounting the measured reference for the bounded P0 camera test |
 | [autonomy-session.md](autonomy-session.md) | letting the rover choose where it goes, under supervision, and taking it back |
+| [daily-benchmark-run.md](daily-benchmark-run.md) | "do the daily run": one day of the multi-day usefulness benchmark, from the owner's brief to the day's score |
 | [rover-unresponsive.md](rover-unresponsive.md) | a rover that has dropped off the network |
 | [world-state-rebuild.md](world-state-rebuild.md) | reading the kept looks again and building the things again after a change to how looks are measured |
 | [world-state-merge.md](world-state-merge.md) | joining things the resolver split into two, after a person has looked at them, and putting them back |
