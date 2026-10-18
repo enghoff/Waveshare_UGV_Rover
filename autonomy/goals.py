@@ -185,13 +185,17 @@ RECORD_LOOK_SIGMA_M = 0.25
 #: (docs/progress/2026-10-18-the-first-run-on-the-world-models-records.md). So
 #: only a record seen on this many visits, with a depth place (a height), is
 #: looked at, and what a look is predicted to gain it is the inverse-variance
-#: gain times how often a look lands. How often is M10's predictor's to say
-#: since 2026-10-18 (`landing.py`): by how long ago the record was last seen and
-#: what stands near it, it ranges from a few percent to over a half. This half is
-#: what the planner assumed before, and assumes again when the predictor has no
-#: numbers to use.
+#: gain times how often a look lands, which the planner takes as a half. M10's
+#: predictor (`landing.py`) says how often from how long ago the record was last
+#: seen and what stands near it, and every look records what it said.
 RECORD_VISITS_MIN = 6
 RECORD_LOOK_LANDS = 0.5
+#: Whether the predictor's chance sets a look's predicted gain instead of the
+#: half. It did for one afternoon, and then failed its trial
+#: (docs/progress/2026-10-18-m10-look-trial.md: not shown better than a constant,
+#: and its choice at each stop landed less often than the half's); the plan gives
+#: learned ranking a say only once M10 passes.
+LANDING_RANKS = False
 
 #: How uncertain a thing's height may be before the tilt needed to look at it
 #: cannot be predicted. Above it the candidate is marked `tilt_unknown` and the
@@ -791,6 +795,9 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
         crossing_deg = 90.0 - abs(_fold(across_deg - float(major_deg)))
         crossing_deg = abs(crossing_deg)
 
+    predicted = lands if lands_from == "learned" else None
+    ranks = lands is not None and LANDING_RANKS
+    share = lands if ranks else RECORD_LOOK_LANDS
     after = before
     if cos_phi > 0.0:
         after = 1.0 / math.sqrt(1.0 / (before * before)
@@ -799,7 +806,6 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
             and in_depth_view is not False):
         filed = 1.0 / math.sqrt(1.0 / (before * before)
                                 + 1.0 / (RECORD_LOOK_SIGMA_M * RECORD_LOOK_SIGMA_M))
-        share = RECORD_LOOK_LANDS if lands is None else lands
         after = before - share * (before - filed)
 
     ranging = entity.get("ranging") or {}
@@ -831,13 +837,15 @@ def _from_viewpoint(placement: dict[str, Any], entity: dict[str, Any],
             "elevation_deg": None if elevation is None else round(elevation, 1),
             "look_tilt_deg": tilt,
             "in_depth_view": in_depth_view,
-            "lands": (None if not record else
-                      round(RECORD_LOOK_LANDS if lands is None else lands, 3)),
-            "lands_from": (None if not record else lands_from or "assumed"),
-            "lands_model": landing.digest() if lands_from == "learned" else None,
+            "lands": None if not record else round(share, 3),
+            "lands_from": (None if not record else
+                           (lands_from or "assumed") if ranks else "assumed"),
+            # What the predictor said, whether or not it set the gain.
+            "lands_predicted": None if predicted is None else round(predicted, 4),
+            "lands_model": landing.digest() if predicted is not None else None,
             "why": _why(entity, before, after, range_m, crossing_deg,
                         first_range, record,
-                        None if lands_from != "learned" else lands)}
+                        predicted if ranks else None)}
 
 
 def _tilt_for(placement: dict[str, Any], range_m: float

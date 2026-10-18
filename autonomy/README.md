@@ -203,21 +203,23 @@ at changes. The model files a look when its visit closes, a few minutes after
 it is taken, so an attempt's placement is measured only once filed; until then
 the attempt says so, rather than "no better".
 
-**How likely a look is to land on its record is predicted, not assumed**
-([`landing.py`](landing.py), M10's predictor, since 2026-10-18). A look lands
+**How likely a look is to land on its record is predicted and recorded, and
+does not yet rank** ([`landing.py`](landing.py), M10's predictor). A look lands
 when the model files a region of its picture to the record it was aimed at, and
-what it is predicted to gain is the inverse-variance gain times that chance.
-Replayed over the history, 115 of 430 looks landed: 41% at records seen in the
-last three hours, 2% at records unseen for over a day, since the model takes a
-picture into a stale record only on a move's likeness, and far fewer where a
-record at least as established stands within 0.8 m to take the picture
-instead. A logistic regression on those and a few other features, fitted by
-`experiments/m10_outcomes/predict.py`, is frozen in `landing.json`; each
-geometry goal records the share (`lands`), where it came from (`lands_from`)
-and which numbers (`lands_model`). Without the numbers, or without a record's
-last-seen time, the planner falls back to the half it assumed before. It only
-re-ranks what would be offered anyway: records seen on fewer than six visits,
-or with no height, are still not targets
+what it is predicted to gain is the inverse-variance gain times that chance,
+which the planner takes as a half. Replayed over the history, 115 of 430 looks
+landed: 41% at records seen in the last three hours, 2% at records unseen for
+over a day, since the model takes a picture into a stale record only on a
+move's likeness, and far fewer where a record at least as established stands
+within 0.8 m to take the picture instead. A logistic regression on those and a
+few other features, fitted by `experiments/m10_outcomes/predict.py`, is frozen
+in `landing.json`, and each geometry goal records what it said
+(`lands_predicted`) and which numbers (`lands_model`) beside the share used
+(`lands`, `lands_from`). It set the share for an afternoon on 2026-10-18 and
+then failed its trial
+([2026-10-18](../docs/progress/2026-10-18-m10-look-trial.md)), so
+`goals.LANDING_RANKS` is off until M10 passes. Records seen on fewer than six
+visits, or with no height, are not targets either way
 ([why](../experiments/m10_outcomes/README.md)).
 
 `improve_geometry` is somewhere to stand that would make a thing's position come

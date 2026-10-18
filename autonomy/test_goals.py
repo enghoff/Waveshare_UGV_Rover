@@ -765,15 +765,31 @@ def test_how_often_a_look_lands_is_predicted_rather_than_assumed() -> None:
           landing.lands({**lone, "last_seen_at": None}, near, now, 1.5, True, 0.5)[1], "fallback")
 
     here = _situation(entities=[lone])
-    looks = [one for one in goals.generate(here) if one.type == "improve_geometry"]
-    detail = looks[0].gain_detail if looks else {}
-    check("the planner's look at it carries the predicted share and says so",
-          (bool(looks), detail.get("lands_from"), detail.get("lands") == round(
-              landing.lands(lone, landing.neighbours(lone, [lone]), here.at,
-                            detail.get("range_m") or 0.0,
-                            bool(looks and looks[0].constraints.get("needs_movement")), 0.5)[0], 3),
-           "as the look predictor has it" in (looks[0].why if looks else "")),
-          (True, "learned", True, True))
+
+    def planned() -> tuple[dict, float, str]:
+        looks = [one for one in goals.generate(here) if one.type == "improve_geometry"]
+        assert looks, "no look at the record was planned"
+        detail = looks[0].gain_detail
+        said = landing.lands(lone, landing.neighbours(lone, [lone]), here.at,
+                             detail.get("range_m") or 0.0,
+                             bool(looks[0].constraints.get("needs_movement")), 0.5)[0]
+        return detail, said, looks[0].why
+
+    detail, said, why = planned()
+    check("since the predictor failed its trial the planner ranks a look by the old "
+          "half, and records what the predictor said beside it",
+          (detail.get("lands"), detail.get("lands_from"), detail.get("lands_predicted") == round(said, 4),
+           detail.get("lands_model") == landing.digest(), "half the time" in why),
+          (0.5, "assumed", True, True, True))
+    ranks, goals.LANDING_RANKS = goals.LANDING_RANKS, True
+    try:
+        detail, said, why = planned()
+    finally:
+        goals.LANDING_RANKS = ranks
+    check("...and with the predictor given the ranking, the look carries its share and says so",
+          (detail.get("lands_from"), detail.get("lands") == round(said, 3),
+           "as the look predictor has it" in why),
+          ("learned", True, True))
 
 
 TESTS = (test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands,

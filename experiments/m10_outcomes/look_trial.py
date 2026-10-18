@@ -69,7 +69,13 @@ def eligible(here, x, y):
         near = landing.neighbours(e, every)
         chance, source = landing.lands(e, near, here.at, rng, False, goals.RECORD_LOOK_LANDS)
         seen = e.get("last_seen_at")
-        filed = goals._from_viewpoint(p, e, x, y, lands=1.0)
+        # What it gains if it lands: a share of one, which the planner takes
+        # only when the predictor ranks.
+        ranks, goals.LANDING_RANKS = goals.LANDING_RANKS, True
+        try:
+            filed = goals._from_viewpoint(p, e, x, y, lands=1.0)
+        finally:
+            goals.LANDING_RANKS = ranks
         out.append({"record": e["id"], "x_m": p["x_m"], "y_m": p["y_m"],
                     "tilt_deg": got["look_tilt_deg"], "lands": round(chance, 4), "lands_from": source,
                     # What the planner's arithmetic says the look gains if it
