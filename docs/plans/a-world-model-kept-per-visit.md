@@ -266,10 +266,12 @@ Those conditions are retired.
      answer when the records are missing or stale. Proof: spoken phrases
      through the rover.
    - *Then the console and the executive*, one at a time; both moved on
-     2026-10-17, the executive without a fallback. Still ahead: a supervised
-     run driven on the records, and the model following a change of map
-     session (it is pinned to session 67, and on another its records stop
-     answering everywhere).
+     2026-10-17, the executive without a fallback. Its first run, on
+     2026-10-18, ran end to end but none of its 14 looks improved its record
+     ([entry](../progress/2026-10-18-the-first-run-on-the-world-models-records.md)).
+     Still ahead: choosing records a look can improve, and the model following
+     a change of map session (it is pinned to session 67, and on another its
+     records stop answering everywhere).
 
 **Paused meanwhile**: tuning the resolver and the record-moving step, and staged
 sessions for them. The shadow runner keeps acting on moved events as deployed;
