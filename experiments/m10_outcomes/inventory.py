@@ -45,10 +45,20 @@ def rows(db):
                         and b.get("what") == "the attempt"), {})
         closed = next((b for _, k, b in events if k == "closed"), {})
         calls = [b for _, k, b in events if k == "call"]
+        frames = [(c.get("result") or {}).get("frame_id") for c in calls
+                  if c.get("call") == "world_inspect" and (c.get("result") or {}).get("frame_id")]
+        constraints = params.get("constraints") or {}
         e = eps[eid]
         yield {
             "episode": eid, "at": round(e["at"], 1), "generation": e["generation"],
             "map_session": e["map_session"], "type": params.get("type"), "goal": chose,
+            # "improve_geometry:v990@-10.47,-13.04" names record v990;
+            # before 2026-10-17 the name is the store's, "object:625".
+            "target": chose.split(":", 1)[1].rsplit("@", 1)[0] if ":" in chose else None,
+            "frames": frames, "gain_detail": params.get("gain_detail"),
+            "constraints": {k: constraints.get(k) for k in (
+                "range_m", "in_depth_view", "needs_movement", "in_certified_band",
+                "elevation_deg", "look_tilt_deg", "reachable_m", "look_at")},
             "gain_kind": params.get("gain_kind"), "gain_value": params.get("gain_value"),
             "gain": score.get("gain"), "utility": score.get("utility"),
             "weights": score.get("weights_version"),
