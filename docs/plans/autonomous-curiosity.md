@@ -1429,10 +1429,11 @@ would learn the rover's own noise
 predicted is whether a look lands on its record, the predictor is frozen in
 `autonomy/landing.py` and the planner uses it, and its test is a look trial set
 out before it runs ([the decision](../decisions/m10-predicts-whether-a-look-lands.md)).
-The trial met criteria 1, 2, 3 and 5 on 92 new looks, and 6 is tested; criterion
-4's offline comparison came out a tie and its supervised comparison is still to
-run ([2026-10-18](../progress/2026-10-18-m10-look-trial.md)). Only 6 of the 92
-looks landed, so that comparison waits on more of them landing.
+**The trial did not pass** ([2026-10-18](../progress/2026-10-18-m10-look-trial.md)):
+on 92 new looks the predictor beat the old rule and was calibrated, but was
+not shown better than a constant (criterion 3), and at each stop its choice
+landed less often than the old ranking's (criterion 4). 10 of the 92 looks
+landed. A second trial means little until more of them do.
 
 Pass when all are true:
 
@@ -1668,11 +1669,10 @@ M1 and M2 passed on 2026-09-08, M3 and M4 on 2026-10-10
 ([session 8](../progress/2026-10-18-m5-session-8.md)), each signed off by the
 owner. In order from here:
 
-1. **M10's supervised comparison.** The landing predictor passed its look
-   trial on everything but criterion 4
-   ([2026-10-18](../progress/2026-10-18-m10-look-trial.md)), which asks for
-   runs with and without it. With one look in fifteen landing there is little
-   for that comparison to measure, so it waits on item 3.
+1. **M10, again.** The landing predictor failed its look trial on criteria 3
+   and 4 ([2026-10-18](../progress/2026-10-18-m10-look-trial.md)): with one
+   look in nine landing there is little for a predictor to separate, so a second
+   trial waits on item 3.
 2. **The multi-day usefulness benchmark.** Its budget in charges and owner
    hours is to be stated and agreed before it is planned (*Multi-day
    usefulness benchmark*, above).

@@ -107,16 +107,22 @@ looks. The test is looks recorded after the predictor is frozen.
 `m10trial1-1018`, 92 scored looks at 53 records drawn at random, every one
 after the freeze ([the entry](../../docs/progress/2026-10-18-m10-look-trial.md);
 the looks with their features and outcomes in
-[trials/](trials/m10trial1-1018-landed.json)). 6 landed.
+[trials/](trials/m10trial1-1018-landed.json)). 10 landed. **It failed criteria
+3 and 4.**
 
 | | Brier |
 |---|---|
-| learned, frozen `088b4d51a9a9` | **0.064** |
-| constant, the history's 115/430 | 0.102 |
-| the old rule | 0.177 |
-| constant at the trial's own 6/92, in hindsight | 0.061 |
+| learned, frozen `088b4d51a9a9` | **0.100** |
+| constant, the history's 115/430 | 0.122 |
+| the old rule | 0.188 |
+| constant at the trial's own 10/92, in hindsight | 0.097 |
 
-Calibrated within 0.07 in every bin of 20 looks or more; AUC 0.72; at each stop
-the new ranking chose as the old did 13 times in 16, and each choice landed
-twice. The predictor knew looks would rarely land (7.8% on average), and that
-is most of its margin over the declared constant.
+Learned minus constant -0.044 to +0.001, 95% bootstrap; calibrated within 0.09
+in every bin of 20 looks or more; AUC 0.68; at each stop the new ranking's
+choice landed once, the old one's twice.
+
+**`landed.py` reads only the last filing's merges.** `decisions.jsonl` holds
+every filing of the history the job has made, each naming records afresh from
+v0; read whole, it folded standing records into others by merges from earlier
+filings, and the first scoring of this trial counted 6 landed and every
+criterion met.

@@ -45,9 +45,18 @@ def main():
         raise SystemExit("the world model has filed to %s, not yet past the last look; wait" % things.get("filed_until"))
     owner = {o: t["id"] for t in things["things"] for o in t["observations"]}
     spread = {t["id"]: t.get("spread_m") for t in things["things"]}
+    # decisions.jsonl holds every filing of the history the job has made, each
+    # minting its names afresh from v0, so only the merges of the last filing
+    # name today's records: one that starts again begins hours or years before
+    # the line above it. Read whole, on 2026-10-18 v1465, v1460, v1804 and v1279
+    # took merges from filings of the morning and before.
     merged = {}
+    prev = None
     for line in open(os.path.join(STATE, "decisions.jsonl")):
         d = json.loads(line)
+        if prev is not None and d["t"] < prev - 3600:
+            merged = {}
+        prev = d["t"]
         if "merged" in d:
             merged[d["merged"]] = d["into"]
 
