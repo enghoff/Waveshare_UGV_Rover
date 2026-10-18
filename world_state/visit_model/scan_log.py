@@ -43,11 +43,19 @@ class Listener:
     def _stamp(h):
         return h.stamp.sec + h.stamp.nanosec * 1e-9
 
+    #: Stamped before the clock was set: the Orin reads 1970 for about 75 s
+    #: after a cold boot. One such scan made a chunk that "covered" 1970 to
+    #: 2026, and every sighting without a drive recording was judged against
+    #: it and found no lidar there (2026-10-18).
+    CLOCK_SET_AFTER = 1.7e9
+
     @staticmethod
     def _yaw(q):
         return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
     def _scan(self, msg):
+        if self._stamp(msg.header) < self.CLOCK_SET_AFTER:
+            return
         with self.lock:
             self.scans.append(np.asarray(msg.ranges, dtype=np.float32))
             self.meta.append((self._stamp(msg.header), time.time(), msg.angle_min,
@@ -56,6 +64,8 @@ class Listener:
     def _tf(self, msg):
         with self.lock:
             for t in msg.transforms:
+                if self._stamp(t.header) < self.CLOCK_SET_AFTER:
+                    continue
                 row = (self._stamp(t.header), time.time(), t.transform.translation.x,
                        t.transform.translation.y, self._yaw(t.transform.rotation))
                 if t.header.frame_id == "odom" and t.child_frame_id == "base_link":

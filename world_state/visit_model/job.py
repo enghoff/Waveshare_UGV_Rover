@@ -56,10 +56,26 @@ BUFFER_S = 1800.0
 #: Earlier than this, a region was stamped by a clock not yet set: the Orin
 #: reads 1970 for about 75 s after a cold boot, and the looking loop records
 #: then. The history the job first files keeps them, as the desk's runs did.
+#: Lidar stamped then is left out everywhere (`clean`).
 CLOCK_SET_AFTER = 1.7e9
+#: How the history is filed; a saved engine filed some other way is kept aside
+#: and the history filed again. 1: each visit counts the looks for each record
+#: (model.looked_for). 2: lidar stamped before the clock was set left out, which
+#: had made one scan file "cover" 1970 to 2026 and taken from records the lidar
+#: hits that let them be seen gone (2026-10-18: 74 gone, not about 110).
+FILED_AS = 2
 #: Lidar kept on disk around each batch of visits filed.
 SCAN_MARGIN_S = 10.0
 SCANS_KEPT_S = 14 * 86400.0
+
+
+def clean(arrays):
+    """A recording's arrays without what was stamped before the clock was set."""
+    s = arrays["scan_meta"][:, 0] >= CLOCK_SET_AFTER
+    o = arrays["odom_tf"][:, 0] >= CLOCK_SET_AFTER
+    m = arrays["map_tf"][:, 0] >= CLOCK_SET_AFTER
+    return {"ranges": arrays["ranges"][s], "scan_meta": arrays["scan_meta"][s],
+            "odom_tf": arrays["odom_tf"][o], "map_tf": arrays["map_tf"][m]}
 
 
 def lidar(directory):
@@ -80,7 +96,7 @@ def lidar(directory):
             continue
         try:
             with np.load(os.path.join(directory, name)) as d:
-                parts.append({k: d[k] for k in ("ranges", "scan_meta", "odom_tf", "map_tf")})
+                parts.append(clean({k: d[k] for k in ("ranges", "scan_meta", "odom_tf", "map_tf")}))
         except Exception:  # noqa: BLE001 - one bad file must not stop every batch
             # A file a power cut left empty raises EOFError, which no narrower
             # list here caught: on 2026-10-17 one stopped every batch for the
@@ -210,14 +226,18 @@ def bootstrap(state, log):
     """An engine that has filed the whole history, with the drive recordings
     kept in `recordings/` and then the lidar this job kept in `scans/`."""
     import glob
-    paths = sorted(glob.glob(os.path.join(state, "recordings", "*.npz")))
-    paths += sorted(glob.glob(os.path.join(state, "scans", "*.npz")),
-                    key=lambda p: float(os.path.basename(p)[:-4]))
-    recs = [recorded.Recording(p) for p in paths]
+    recs = [recorded.Recording(p) for p in sorted(glob.glob(os.path.join(state, "recordings", "*.npz")))]
+    for p in sorted(glob.glob(os.path.join(state, "scans", "*.npz")),
+                    key=lambda p: float(os.path.basename(p)[:-4])):
+        with np.load(p) as d:
+            arrays = clean({k: d[k] for k in ("ranges", "scan_meta", "odom_tf", "map_tf")})
+        if len(arrays["scan_meta"]) >= 10 and len(arrays["odom_tf"]) >= 10 and len(arrays["map_tf"]):
+            recs.append(recorded.Recording(arrays=arrays))
     log("filing the history with %d recordings" % len(recs))
     t0 = time.time()
     e = engine.Engine()
     e.generation = mint()
+    e.filed_as = FILED_AS
     a = engine.prepare(DB, recs, after_id=0)
     young = a["t"] > time.time() - READ_DELAY_S
     if young.any():
@@ -251,13 +271,13 @@ def load(path, state, log):
             os.replace(path, path + ".bad")
             log("the saved engine could not be read (%r): kept as %s.bad" % (exc, os.path.basename(path)))
         else:
-            if not getattr(e, "counts_looks", False):
-                # Saved before visits counted the looks for each record: the
-                # history is filed again, to the same records, so that the
-                # counts cover it (model.looked_for).
-                os.replace(path, path + ".before-counts")
-                log("the saved engine counts no looks for its records: kept as %s.before-counts,"
-                    " filing the history again" % os.path.basename(path))
+            filed_as = getattr(e, "filed_as", 0)
+            if filed_as < FILED_AS:
+                # Filed some earlier way (FILED_AS): kept aside, and the
+                # history filed again.
+                os.replace(path, "%s.filed-as-%d" % (path, filed_as))
+                log("the saved engine was filed as %d, not %d: kept as %s.filed-as-%d,"
+                    " filing the history again" % (filed_as, FILED_AS, os.path.basename(path), filed_as))
             else:
                 if not getattr(e, "generation", None):
                     # Saved before engines were named.

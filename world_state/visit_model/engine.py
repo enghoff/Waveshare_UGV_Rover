@@ -71,9 +71,9 @@ class Engine:
         self.taken_until = None
         #: What names these records (job.mint); None until the job names it.
         self.generation = None
-        #: Whether every visit it filed counted looks for each record
-        #: (model.looked_for); one saved before that files the history again.
-        self.counts_looks = True
+        #: How the history was filed (job.FILED_AS); one filed before the
+        #: job's present way is filed again.
+        self.filed_as = 0
 
     def add(self, a):
         """Regions read from the store, waiting for their visit to close."""
