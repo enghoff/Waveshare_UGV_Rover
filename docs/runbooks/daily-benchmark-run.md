@@ -40,7 +40,9 @@ where; then unplug the rover and say go. About 20 minutes of driving.
     ssh orin 'cd ~/m5 && python3 session_preflight.py'     # READY, unplugged
     ssh orin 'bash ~/multiday/launch.sh md-dayN-MMDD N'
 
-It runs detached: the morning copy of the world model, the two arms in the
+Put a `now` hold on the console's "keep it on" card first (`power_hold`, as in
+[AGENTS.md](../../AGENTS.md), with `hours` 2) and release it once the answers
+are scored. It runs detached: the morning copy of the world model, the two arms in the
 day's order, home, the lidar kept. Watch `~/.ugv/sessions/md-dayN-MMDD.out`
 with a Monitor of short, retrying ssh calls -- ssh drops mid-drive and comes
 back. STOP is the console's STOP button, or
