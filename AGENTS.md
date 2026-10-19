@@ -45,6 +45,22 @@ where they disagree the hardware is right. Navigation has `ros_nav/nav_record.py
 with replay and controller simulations ([ros_nav/README.md](ros_nav/README.md));
 `wifi_roam/selftest.sh` drives the network scripts against a fake board.
 
+## Survey the field before choosing a route
+
+**A new top-level capability with no single obvious way to build it starts with a
+round of research, not a design.** Search three kinds of source: academic work (the
+recent papers and the foundational ones they build on), commercial practice
+(products, white papers, patents and engineering blogs — what ships, as distinct
+from what is claimed) and open-source projects (what runs, on what hardware, under
+what licence, and what its issue tracker says goes wrong). Judge each against this
+rover rather than the benchmark it was published on: the Orin Nano's shared memory,
+a 2D lidar map, cameras on a gimbal, one flat. Say when a result comes only from
+simulation or a curated dataset. The findings, with their citations, go into the plan
+that proposes the route, under what the field has learned, and once a route is chosen
+what was ruled out and why goes into a decision record, so the survey is not done
+twice. A fault, a change inside an existing design, or a requirement with one
+evident route needs none of this: looking up a known answer is not a survey.
+
 ## Where things run
 
 Rover services run on the Jetson Orin Nano (`orin`), which replaced the Banana Pi on

@@ -628,3 +628,42 @@ well past the noise between two grabs, and every vector in the store came off
 that mode ([R-WS-4](#r-ws-4) is about backends, and this is the same hazard by
 another route). The 640x480 picture is a measured window of the full one
 (`world_state/evidence.py`), and the lens carries both.
+
+<a id="r-ws-20"></a>
+### R-WS-20 — The rover knows which of the flat's rooms each placed thing is in
+
+- **State:** proposed
+- **Proposed in:** [../plans/rooms-and-things-within-things.md](../plans/rooms-and-things-within-things.md) (Rooms, named by the owner)
+
+A room is a part of the map with a name a person gave it, and a placed thing is
+in the room its place falls in; a thing on a wall between two rooms is in the
+room it was seen from. It is false when, on the map in use, more than one thing
+in twenty whose room the owner has given is put in another room, and false after
+navigation replaces the map if the rooms are lost or moved without the rover
+saying so.
+
+The names come from a person because nothing in this component may assign a
+name from a fixed vocabulary or from the nearest text ([R-WS-7](#r-ws-7)), and
+because every robot that names rooms has a person name them. The map's
+geometry only drafts the rooms: on 2026-10-19 it could not tell the kitchen
+from the living room at any width
+([the first try](../progress/2026-10-19-rooms-from-the-map.md)). The tolerance
+of one in twenty is for the owner to agree before it is measured against.
+
+<a id="r-ws-21"></a>
+### R-WS-21 — What a thing stands on, lies in or is part of is a claim on its evidence, never a ground for identity
+
+- **State:** proposed
+- **Proposed in:** [../plans/rooms-and-things-within-things.md](../plans/rooms-and-things-within-things.md) (What stands on or in what, as claims)
+
+A relation between two things -- the throw lies on the armchair, the books
+stand on the shelf -- is stored with the looks and pictures it rests on, the
+method that proposed it, how sure it is, and when it was first and last seen to
+hold. It is false when a relation is stored without those, when it is still
+held after either thing has been seen to move and before a look has seen it
+again, or when it is used to join two records, split one, or place one.
+
+A relation is only as good as the two records it joins, and a record has held
+both armchairs ([R-WS-18](#r-ws-18)). Geometry decides which record a look
+belongs to ([R-WS-8](#r-ws-8)); a relation is read off records geometry has
+already formed, as every other claim is to be.

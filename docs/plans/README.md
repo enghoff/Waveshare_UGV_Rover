@@ -13,6 +13,7 @@ or abandoned.
 | [sessions-that-serve-several-milestones.md](sessions-that-serve-several-milestones.md) | proposed 2026-10-11 | one supervised session per charge serving M5, the multi-day benchmark and later milestones together, around a fixed survey loop, with everything else on recordings |
 | [autonomous-curiosity-design.md](autonomous-curiosity-design.md) | proposed | the architecture the plan above implements |
 | [perception-that-keeps-what-it-learns.md](perception-that-keeps-what-it-learns.md) | proposed 2026-10-12; full-resolution evidence landed the same day (R-WS-19); the rest not built (R-WS-11, R-WS-12, R-WS-17, R-WS-18) | keeping what the cameras see at full resolution in a dense 3D field, and what models and the owner understand about it as claims with evidence |
+| [rooms-and-things-within-things.md](rooms-and-things-within-things.md) | proposed 2026-10-19 at the owner's question; nothing built; a first split of the map into rooms did not give the owner's rooms at any width (R-WS-20, R-WS-21) | rooms the owner names, what stands on or in what as claims a describing model confirms, and what a thing shows as a description; why none of the published scene-graph systems can run here whole |
 | [what-where-streams.md](what-where-streams.md) | proposed 2026-10-14; step 1 run offline on the M5 shakedown, met its frozen bar narrowly; nothing on the rover (R-WS-8, R-WS-16, R-WS-17, R-WS-18) | comparing expectation with observation in a frozen appearance space ("what") and on the map ("where") per thing, not as pictures or depth: new, out of place and gone, calibrated on unchanged revisits, with a latest-state memory of things and learned predictors to follow |
 | [perceiving-by-prediction.md](perceiving-by-prediction.md) | proposed 2026-10-12; nothing built; its house model replaced by what-where-streams on 2026-10-14, its rules and gates kept (R-WS-2, R-WS-8, R-NAV-3, R-NAV-9) | the specific architecture for relying on prediction: a body model and a house model of stored RGB-D looks, unknown kept apart from measured, changes and identities pending until a later look settles them, errors explained at the highest level that accounts for them (a moved chair as one placement change, a damaged cushion as a content change inside it), and consumers switched on one gate at a time, starting with where to point the camera |
 | [perception-from-first-principles.md](perception-from-first-principles.md) | proposed 2026-10-12, a design with hardware set aside; nothing built; five tests on recordings declared (R-NAV-9, R-NAV-11, R-WS-17, R-WS-18) | what brains and video world models suggest: predicting rather than describing, a fovea aimed where unsure, anchoring on what does not move, objects as paths, two memories joined by nightly replay |
@@ -29,6 +30,11 @@ rewritten.
 **Say what would count as done, before doing it.** Predeclare the success
 predicate, the minimum improvement and the number of trials. A criterion written
 after the results are in is not a criterion.
+
+**Say what the field has learned, when the route was not obvious.** A plan for a
+new capability carries the survey behind it, with citations, judged against this
+rover rather than the benchmark it was published on
+([AGENTS.md](../../AGENTS.md#survey-the-field-before-choosing-a-route)).
 
 **Distinguish what is agreed from what is only proposed.** Later phases of a long
 plan are guesses about work that has not started. Say so, so that nobody treats
