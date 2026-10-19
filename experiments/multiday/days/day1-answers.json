@@ -1,0 +1,355 @@
+{
+ "name": "md-day1-1019",
+ "windows": {
+  "A": [
+   1792376662.1,
+   1792376722.4
+  ],
+  "B": [
+   1792376722.4,
+   1792377233.8
+  ]
+ },
+ "states": {
+  "base": {
+   "answers": {
+    "red bean bag": {
+     "record": "v1471",
+     "score": 0.1535,
+     "at": [
+      -16.38,
+      -11.64
+     ],
+     "gone": true,
+     "set_aside": false,
+     "last_seen_at": 1792218223.53756
+    },
+    "black bean bag": {
+     "record": "v1470",
+     "score": 0.1599,
+     "at": [
+      -16.13,
+      -10.95
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792218238.410259
+    },
+    "stool": {
+     "record": "v1731",
+     "score": 0.1447,
+     "at": [
+      -17.95,
+      -16.62
+     ],
+     "gone": true,
+     "set_aside": false,
+     "last_seen_at": 1792217618.688587
+    },
+    "the bed": {
+     "record": "v1465",
+     "score": 0.1133,
+     "at": [
+      -8.7,
+      -11.15
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792323919.0607898
+    },
+    "the wardrobe": {
+     "record": "v42",
+     "score": 0.1205,
+     "at": [
+      -6.97,
+      -10.31
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792323919.0607898
+    },
+    "the floor lamp": {
+     "record": "v1454",
+     "score": 0.1334,
+     "at": [
+      -16.29,
+      -17.92
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792324144.8009136
+    },
+    "the black cabinet": {
+     "record": "v1804",
+     "score": 0.1378,
+     "at": [
+      -19.94,
+      -15.08
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792324161.5310426
+    },
+    "the portrait in the bedroom": {
+     "record": "v1868",
+     "score": 0.122,
+     "at": [
+      -6.09,
+      -12.15
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792323919.0607898
+    },
+    "the snowy-tree painting": {
+     "record": "v1908",
+     "score": 0.121,
+     "at": [
+      -20.44,
+      -15.26
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792324052.6246989
+    }
+   },
+   "filed": 0,
+   "decisions": 0
+  },
+  "A": {
+   "answers": {
+    "red bean bag": {
+     "record": "v1471",
+     "score": 0.1535,
+     "at": [
+      -16.38,
+      -11.64
+     ],
+     "gone": true,
+     "set_aside": false,
+     "last_seen_at": 1792218223.53756
+    },
+    "black bean bag": {
+     "record": "v1470",
+     "score": 0.1599,
+     "at": [
+      -16.13,
+      -10.95
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792218238.410259
+    },
+    "stool": {
+     "record": "v1731",
+     "score": 0.1447,
+     "at": [
+      -17.95,
+      -16.62
+     ],
+     "gone": true,
+     "set_aside": false,
+     "last_seen_at": 1792217618.688587
+    },
+    "the bed": {
+     "record": "v1465",
+     "score": 0.1133,
+     "at": [
+      -8.7,
+      -11.15
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792323919.0607898
+    },
+    "the wardrobe": {
+     "record": "v42",
+     "score": 0.1205,
+     "at": [
+      -6.97,
+      -10.31
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792323919.0607898
+    },
+    "the floor lamp": {
+     "record": "v1454",
+     "score": 0.1334,
+     "at": [
+      -16.29,
+      -17.92
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792324144.8009136
+    },
+    "the black cabinet": {
+     "record": "v1804",
+     "score": 0.1378,
+     "at": [
+      -19.94,
+      -15.08
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792324161.5310426
+    },
+    "the portrait in the bedroom": {
+     "record": "v1868",
+     "score": 0.122,
+     "at": [
+      -6.09,
+      -12.15
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792323919.0607898
+    },
+    "the snowy-tree painting": {
+     "record": "v1908",
+     "score": 0.121,
+     "at": [
+      -20.44,
+      -15.26
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792324052.6246989
+    }
+   },
+   "filed": 44,
+   "decisions": 8
+  },
+  "B": {
+   "answers": {
+    "red bean bag": {
+     "record": "v1927",
+     "score": 0.1442,
+     "at": [
+      -20.19,
+      -13.36
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792377232.4580703
+    },
+    "black bean bag": {
+     "record": "v1470",
+     "score": 0.1599,
+     "at": [
+      -16.13,
+      -10.95
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792218238.410259
+    },
+    "stool": {
+     "record": "v1934",
+     "score": 0.1419,
+     "at": [
+      -17.3,
+      -13.33
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792377167.0318341
+    },
+    "the bed": {
+     "record": "v1465",
+     "score": 0.1135,
+     "at": [
+      -8.71,
+      -11.16
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792377031.7370167
+    },
+    "the wardrobe": {
+     "record": "v35",
+     "score": 0.1255,
+     "at": [
+      -6.93,
+      -10.26
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792377023.0108843
+    },
+    "the floor lamp": {
+     "record": "v1454",
+     "score": 0.1339,
+     "at": [
+      -16.29,
+      -17.92
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792377190.8193705
+    },
+    "the black cabinet": {
+     "record": "v1804",
+     "score": 0.1378,
+     "at": [
+      -19.94,
+      -15.08
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792377170.9363728
+    },
+    "the portrait in the bedroom": {
+     "record": "v1034",
+     "score": 0.1222,
+     "at": [
+      -6.16,
+      -11.75
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792377053.0988586
+    },
+    "the snowy-tree painting": {
+     "record": "v1908",
+     "score": 0.121,
+     "at": [
+      -20.44,
+      -15.26
+     ],
+     "gone": false,
+     "set_aside": false,
+     "last_seen_at": 1792324052.6246989
+    }
+   },
+   "filed": 531,
+   "decisions": 160
+  }
+ },
+ "autonomy_goals": {
+  "goals": [
+   "return_to_start",
+   "nothing",
+   "improve_geometry:v495@-14.37,-13.94"
+  ],
+  "at_gone_or_set_aside": []
+ },
+ "day": 1,
+ "put": {
+  "red bean bag": "P1",
+  "black bean bag": "P4",
+  "stool": "P2"
+ },
+ "cost": {
+  "A": {
+   "minutes": 1.01,
+   "battery_used": 18
+  },
+  "B": {
+   "minutes": 8.52,
+   "battery_used": -3
+  }
+ },
+ "stops": []
+}
