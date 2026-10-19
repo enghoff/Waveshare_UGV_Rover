@@ -188,6 +188,11 @@ DEPTH_RETRY_S = 2.0
 # out a fraction of a volt, so left unexplained it looks like a flat battery and
 # sends somebody to the charger instead of to the switch.
 BATTERY_NOTES = {"absent": "no pack fitted, or the main switch is off"}
+# How often to ask which agents want the rover kept switched on. A file read on
+# the rover, and the answer changes when an agent sets or releases a hold, a few
+# times a day; five seconds is so that one set while the owner is looking shows
+# before they have reached the switch.
+HOLDS_POLL_S = 5.0
 
 # How often to ask which access point the rover is on. The signal strength in that
 # answer is live -- the daemon reads it out of /proc for nothing -- while the list

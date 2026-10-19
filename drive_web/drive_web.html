@@ -77,32 +77,32 @@
         </svg>
       </div>
       <div class="turn-wing turn-right" id="turnRight" role="group" aria-label="turn right"></div>
-
     </div>
-
   </section>
 
   <!-- The microphone, the face detector, the lamps and the battery are one card:
        four short controls that each need three lines, and four separate cards to
-       hold them was mostly borders. -->
-  <section id="boardCard">
+       hold them was mostly borders. A table, each name beside its controls,
+       because a heading over each spent a line on the heading alone. -->
+  <section id="boardCard" class="board">
     <h2>talk to it</h2>
-    <div class="row">
-      <button id="micButton">start talking</button>
-      <span id="voiceState" class="mono">off</span>
+    <div>
+      <div class="row">
+        <button id="micButton">start talking</button>
+        <span id="voiceState" class="mono">off</span>
+      </div>
+      <p id="voiceHeard" class="hint"></p>
+      <p id="voiceSaid" class="hint"></p>
+      <p id="voiceError"></p>
+      <p id="voiceNote"></p>
     </div>
-    <p id="voiceHeard" class="hint"></p>
-    <p id="voiceSaid" class="hint"></p>
-    <p id="voiceError"></p>
-    <p id="voiceNote"></p>
-
-    <h2 style="margin-top:14px">face tracking</h2>
+    <h2>face tracking</h2>
     <div class="row">
       <button data-track="start_tracking">start</button>
       <button data-track="stop_tracking">stop</button>
       <span id="tracking" class="mono">-</span>
     </div>
-    <h2 style="margin-top:14px">headlights</h2>
+    <h2>headlights</h2>
     <div class="row">
       <button data-light="on">on</button>
       <button data-light="off">off</button>
@@ -113,15 +113,17 @@
          switch any more -- the wheels do, in rover_daemon/rover_depth.py -- so
          what is left on screen is which way it went. Hidden until the rover says
          it has a depth camera and has said what it is doing. -->
-    <h2 style="margin-top:14px">battery<span id="depthLamp" class="lamp" hidden>
+    <h2>battery<span id="depthLamp" class="lamp" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M9.2 4.3 8.2 6.4H4.2a1.7 1.7 0 0 0-1.7 1.7v9.6a1.7 1.7 0
                  0 0 1.7 1.7h15.6a1.7 1.7 0 0 0 1.7-1.7V8.1a1.7 1.7 0 0
                  0-1.7-1.7h-4l-1-2.1z"/>
         <circle cx="12" cy="12.8" r="3.7"/>
       </svg></span></h2>
-    <div id="battery" class="reading">-</div>
-    <p id="batteryNote" class="hint"></p>
+    <div>
+      <div id="battery" class="reading">-</div>
+      <p id="batteryNote" class="hint"></p>
+    </div>
   </section>
 
   <section id="networkCard">
@@ -135,6 +137,17 @@
       <button id="wifiScan">look for networks</button>
     </div>
     <p id="wifiNote" class="hint"></p>
+  </section>
+
+  <!-- Which agents want the rover kept switched on, for now or for something
+       planned: theirs to set and release (rover_daemon/rover_holds.py), the
+       owner's to read before reaching for the switch. Off the page on a rover
+       whose daemon does not keep them. -->
+  <section id="holdsCard" hidden>
+    <h2>keep it on</h2>
+    <div id="holdList" class="board"></div>
+    <div id="holdsNone" class="reading">nobody</div>
+    <p id="holdsNote" class="bad"></p>
   </section>
 </div>
 

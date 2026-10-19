@@ -52,9 +52,21 @@ Manual controls send bounded actions through the daemon on TCP 8769. The console
 does not open the driver-board UART or talk directly to ROS. It displays the
 daemon's navigation, battery, link, camera and movement state.
 
-On a three-column screen, driving, voice, face tracking, headlights, battery and
-network controls sit on the left; the map is in the centre; camera, depth and
+On a three-column screen, driving, voice, face tracking, headlights, battery,
+network and "keep it on" sit on the left; the map is in the centre; camera, depth and
 navigation status sit on the right. The same stacks wrap on narrower screens.
+Voice, face tracking, headlights and battery share one card laid out as a table,
+each name on the left and its controls or reading on the right, which on
+2026-10-19 took 97 px off that card; the drive pad lost an empty ninth row (40 px)
+that reverse, stopping at 0.5 m, never filled.
+
+"Keep it on" lists the agents that want the rover kept switched on
+([R-CTL-12](../docs/requirements/control.md#r-ctl-12)): who, whether for now
+(amber) or for something planned, what for, when it was set and when it lapses.
+"nobody" when there are none. The card reads the daemon's `power_holds` every
+five seconds and has no controls -- agents set and release their own holds with
+`power_hold` ([the daemon](../rover_daemon/README.md#control-calls-not-shown-to-the-model)) --
+and it is off the page on a rover whose daemon does not keep them.
 
 The drive pad surrounds a top view of the rover. Turns run horizontally, from
 15 degrees nearest the centre to 45, 90 and 180 degrees farther out; left is on

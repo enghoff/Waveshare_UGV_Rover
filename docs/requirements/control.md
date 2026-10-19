@@ -163,3 +163,20 @@ still to come. The table that converts volts to percent lives in
 `rover_daemon/board_link.py`. On 2026-10-10 it called about half a charge "10%
 or less"
 ([the finding](../progress/2026-10-10-battery-reading-hides-half-the-pack.md)).
+
+<a id="r-ctl-12"></a>
+### R-CTL-12 — An agent that needs the rover switched on says so where the owner looks before switching it off
+
+- **State:** settled
+- **Evidence:** [rover_daemon/rover_holds.py](../../rover_daemon/rover_holds.py)
+  and its self-test; the console's "keep it on" card
+  ([drive_web/README.md](../../drive_web/README.md))
+
+The owner switches the rover off by hand, and an agent working on it from
+elsewhere -- now, or tomorrow on a plan -- had nowhere to say so but a
+conversation the owner might not be reading. A hold names the agent, says
+whether the need is now or planned and what it is for, and is on the console
+until the agent releases it or it lapses. It is a request and not a lock:
+nothing refuses to power down because of one. A file the rover cannot read is
+shown as an error, never as nobody, because nobody is the answer the switch is
+reached for on.

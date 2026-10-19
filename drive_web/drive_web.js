@@ -123,6 +123,7 @@ function render(next) {
   drawDepthPicture(next.depth, next.depth_picture);
 
   drawWifi(next.wifi);
+  drawHolds(next.holds);
   drawNotice(next.notice);
   drawWorld(next.world);
   drawSnapshots(next.snapshots);
@@ -605,6 +606,35 @@ function wireDepth() {
     readDepth();
   });
   shot.addEventListener("pointerleave", () => { depthPointer = null; readDepth(); });
+}
+
+// Which agents want the rover kept switched on. Redrawn only when a hold
+// changes, since the state arrives ten times a second and a list rebuilt on
+// every one of them is a list nobody can select text in.
+function drawHolds(holds) {
+  if (!holds) return;
+  $("holdsCard").hidden = holds.supported !== true;
+  const list = $("holdList");
+  const key = JSON.stringify(holds.rows);
+  if (list.dataset.key !== key) {
+    list.dataset.key = key;
+    list.replaceChildren(...holds.rows.flatMap((row) => {
+      const who = document.createElement("span");
+      who.className = "who";
+      who.textContent = row.who;
+      const cell = document.createElement("div");
+      const when = document.createElement("span");
+      when.className = "hold-when" + (row.when === "now" ? " now" : "");
+      when.textContent = row.when;
+      const times = document.createElement("p");
+      times.className = "hint";
+      times.textContent = row.times;
+      cell.append(when, document.createTextNode(row.what), times);
+      return [who, cell];
+    }));
+  }
+  $("holdsNone").hidden = holds.rows.length > 0 || !!holds.note;
+  $("holdsNote").textContent = holds.note;
 }
 
 function drawWifi(wifi) {

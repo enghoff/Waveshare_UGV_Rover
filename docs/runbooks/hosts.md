@@ -100,7 +100,12 @@ These files are intentionally outside source deployment:
 ~/.ugv/tls/
 ~/.ugv/deploy-state.json
 ~/.ugv/world/
+~/.ugv/power_holds.json
 ```
+
+`power_holds.json` is the agents' requests to keep the rover switched on
+([R-CTL-12](../requirements/control.md#r-ctl-12)), written by the daemon's
+`power_hold`; delete it and every hold is gone.
 
 `~/ugv/odometry.json` is the chassis calibration and survives because flattened
 component deployment is additive. It is the only host-side file that should be

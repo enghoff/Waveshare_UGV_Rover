@@ -137,7 +137,11 @@ def test_schemas():
                # whatever to start one. See rover_autonomy.py.
                "autonomy_start", "autonomy_enable", "autonomy_stop",
                "autonomy_permit", "autonomy_release", "autonomy_act",
-               "autonomy_status"]
+               "autonomy_status",
+               # Agents saying they need the rover kept switched on. Whether it
+               # may be switched off is the owner's question, answered between
+               # the owner and the agents; see rover_holds.py.
+               "power_hold", "power_holds"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)

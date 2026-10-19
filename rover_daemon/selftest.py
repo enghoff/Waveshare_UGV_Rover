@@ -40,6 +40,7 @@ from test_camera import TESTS as CAMERA_TESTS
 from test_depth import TESTS as DEPTH_TESTS
 from test_exposure import TESTS as EXPOSURE_TESTS
 from test_harness import FAIL, PASS, SKIP
+from test_holds import TESTS as HOLD_TESTS
 from test_map import TESTS as MAP_TESTS
 from test_recall import TESTS as RECALL_TESTS
 from test_ros_nav import TESTS as ROS_NAV_TESTS
@@ -62,7 +63,7 @@ def main():
                  *MAP_TESTS, *WIFI_TESTS, *WORLD_TESTS, *SCRIPTING_TESTS,
                  *AIMING_TESTS, *ROS_NAV_TESTS, *RECALL_TESTS,
                  *DEPTH_TESTS, *AUTONOMY_TESTS, *AUTONOMY_REGRESSIONS,
-                 *INSPECTION_LIMIT_TESTS, *SNAPSHOT_TESTS):
+                 *INSPECTION_LIMIT_TESTS, *SNAPSHOT_TESTS, *HOLD_TESTS):
         try:
             test()
         except Exception as exc:

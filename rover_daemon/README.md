@@ -508,6 +508,13 @@ model choice, for example:
 - detector diagnostics such as running YuNet over a supplied known image;
 - the semantic world state -- `world_inspect`, `world_state_summary` and the rest;
 - the snapshot calls above, one of which replaces the map and the world at once;
+- `power_hold {who, what, when: "now" | "planned", hours?}` and `power_holds {}`:
+  an agent saying it needs the rover kept switched on, one hold per `who`,
+  replaced by setting again, taken back with `release: true`, lapsing after
+  `hours` if given. Kept in `~/.ugv/power_holds.json` so a planned hold outlives
+  restarts, and drawn on the console's "keep it on" card
+  ([R-CTL-12](../docs/requirements/control.md#r-ctl-12)). A request, not a lock:
+  nothing refuses to power down because of one. See [`rover_holds.py`](rover_holds.py);
 - `get_depth_power`, which reports whether the OAK is awake and cannot set it,
   and `depth_map`, its depth in millimetres for the console, which cannot wake
   it either;

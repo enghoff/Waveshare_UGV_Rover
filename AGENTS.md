@@ -35,6 +35,18 @@ state should remain for handover. Do not ask the owner to disconnect the charger
 then leave the rover waiting while you finish preparations. This rule does not grant
 motion authority: obtain the required handover before driving.
 
+**Say when you need the rover kept switched on.** The owner switches it off by
+hand and looks at the console's "keep it on" card first. Put a hold there before
+you depend on the rover being up -- now, or for something planned -- and release
+it when you are done; give `hours` when you might not be around to release it:
+
+    {"call": "power_hold", "arguments": {"who": "<your session name>",
+      "what": "<what for, one line>", "when": "now" | "planned", "hours": 3}}
+    {"call": "power_hold", "arguments": {"who": "<your session name>", "release": true}}
+
+Sent as one line to the daemon on `192.168.1.80:8769`. A hold is a request, not a
+lock ([R-CTL-12](docs/requirements/control.md#r-ctl-12)).
+
 ## Reproduce faults before fixing them
 
 **A fix for a fault nobody reproduced is a guess.** Replay the reproduction first,

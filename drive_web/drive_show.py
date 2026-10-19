@@ -34,6 +34,19 @@ def _number(value: Any, fallback):
         return fallback
 
 
+def _clock(stamp: Any) -> str:
+    """A wall-clock time the short way: "10:14" today, "Tue 10:14" within the
+    week either side, "21 Oct 10:14" further off."""
+    if not isinstance(stamp, (int, float)):
+        return "?"
+    when = time.localtime(stamp)
+    days = abs(time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+               - time.mktime(when[:3] + (0, 0, 0, 0, 0, -1))) / 86400
+    if days < 0.5:
+        return time.strftime("%H:%M", when)
+    return time.strftime("%a %H:%M" if days < 6.5 else "%d %b %H:%M", when)
+
+
 class SessionShow:
     """Renderers mixed into Session."""
 
@@ -306,6 +319,30 @@ class SessionShow:
             return
         self.depth.update({"supported": True,
                            "power": str(body.get("power") or ""), "note": ""})
+
+    def show_holds(self, body: dict[str, Any]) -> None:
+        """Which agents want the rover kept switched on, as rows for the card.
+
+        The times are the rover's clock, the owner's, said the short way: a time
+        alone today, the weekday within the week, the date past that. A file the
+        rover could not read is said as such with no rows under it, rather than
+        as nobody, because nobody is the answer somebody switches it off on.
+        """
+        if not body.get("ok"):
+            error = str(body.get("error", "no answer"))
+            supported = False if "no such tool" in error else True
+            self.holds = {"supported": supported, "rows": [],
+                          "note": "" if supported is False else error}
+            return
+        rows = []
+        for hold in body.get("holds") or []:
+            times = f"since {_clock(hold.get('since'))}"
+            if hold.get("until"):
+                times += f", until {_clock(hold['until'])}"
+            rows.append({"who": str(hold.get("who", "")),
+                         "when": str(hold.get("when") or "now"),
+                         "what": str(hold.get("what", "")), "times": times})
+        self.holds = {"supported": True, "rows": rows, "note": ""}
 
     def show_depth_map(self, body: dict[str, Any]) -> None:
         """The depth map, still compressed, for the page to colour and read.

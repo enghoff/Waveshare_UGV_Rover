@@ -12,7 +12,7 @@ import _paths  # noqa: F401 — rover_tools and console_model
 import rover_tools
 from console_model import (
     BATTERY_POLL_S, Channel, DEPTH_POLL_S, DEPTH_RETRY_S, DEPTH_WAKING_POLL_S,
-    MAP_STALE_S, MOVE_TIMEOUT_S,
+    HOLDS_POLL_S, MAP_STALE_S, MOVE_TIMEOUT_S,
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
     SLOW_PICTURE_S, POLL_S, Reply, TRACK_POLL_S, WIFI_POLL_S,
     WIFI_SCAN_TIMEOUT_S, WORLD_OPEN_POLL_S, WORLD_RETRY_S, WORLD_TIMEOUT_S,
@@ -213,6 +213,12 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         self.battery_outstanding = False
         self.battery_at = 0.0
         self.battery: dict[str, Any] = {"text": "-", "state": "", "note": ""}
+        # Which agents want the rover kept switched on (rover_holds.py). Not a
+        # model tool, so support is found by asking, as for the depth camera: a
+        # daemon too old to know the call takes the card off the page.
+        self.holds_outstanding = False
+        self.holds_at = 0.0
+        self.holds: dict[str, Any] = {"supported": None, "rows": [], "note": ""}
 
         # Whether the depth camera is awake, which the lamp on the battery
         # heading is coloured from. `supported` is None until the rover has been
@@ -356,6 +362,7 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
                                f"{'on' if self.light_level else 'off'} "
                                f"({self.light_level})"},
             "battery": self.battery,
+            "holds": self.holds,
             # Beside the battery because that is the question it answers: what
             # this rover is spending.
             "depth": dict(self.depth),
@@ -540,6 +547,12 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
             self.depth_outstanding = True
             self.depth_at = now
             self.watch.submit("get_depth_power")
+        if (self.watch is not None and self.holds["supported"] is not False
+                and not self.holds_outstanding
+                and now - self.holds_at > HOLDS_POLL_S):
+            self.holds_outstanding = True
+            self.holds_at = now
+            self.watch.submit("power_holds")
         # The network, on the same connection. Only once the rover has answered one
         # of these successfully, so a daemon that has never heard of them is asked
         # exactly once rather than every five seconds for the rest of the session.
@@ -708,7 +721,8 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         self.track_outstanding = False
         self.battery_outstanding = False
         self.depth_outstanding = False
-        # For the same reason as the six above, and it matters more: this one is
+        self.holds_outstanding = False
+        # For the same reason as the ones above, and it matters more: this one is
         # a button that stays greyed out and saying "refitting..." for the rest of
         # the session rather than a picture that stops arriving.
         self.refitting = False
@@ -893,6 +907,10 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         if name == "get_depth_power":
             self.depth_outstanding = False
             self.show_depth(body)
+            return
+        if name == "power_holds":
+            self.holds_outstanding = False
+            self.show_holds(body)
             return
         if name == "wifi_status":
             self.wifi_outstanding = False
