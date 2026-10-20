@@ -1719,7 +1719,12 @@ owner. In order from here:
    them: a wider tie breaks three of the six controls first
    ([2026-10-20](../progress/2026-10-20-recency-does-not-let-a-record-give-way.md)).
    The world model has to file a moved thing's pictures to the record it
-   already has (R-WS-17).
+   already has (R-WS-17). On the benchmark's two days it did so once in five
+   ([2026-10-20](../progress/2026-10-20-where-the-benchmark-days-pictures-went.md)):
+   a thing's own old records crowded out the red bean bag's move, which a
+   candidate rule for version 5 mends; the black bean bag and the stool look as
+   much like other things as like themselves; and the two stale records need
+   a place the lidar can judge and absence judged over the whole visit.
 4. **The owner's choice on running unattended.** No milestone reaches the
    design's goal of a rover left to occupy itself: R-SAFE-6 is open and nothing
    docks the rover ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).
