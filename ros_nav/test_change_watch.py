@@ -123,19 +123,60 @@ def test_a_person_walking_through_is_not_a_change() -> None:
 
 
 def test_a_room_is_not_compared_with_itself() -> None:
-    """A move made while the rover is still in the room ends no visit, so it is
-    not reported until the place has been left and come back to. Reported at
-    once, the visit's first half would be the rover's own reference, and a
-    person standing still for a while would be a change every time."""
+    """A move made in the rover's first visit to a room is compared with
+    nothing: the visit's own first half is never the reference, or a person
+    standing still for a while would be a change every time. What the visit
+    leaves as the reference is how the room was when it ended."""
     section("a change made during one visit")
     watch = new_watch()
     visit(watch, ROOM + box(2.0, 2.0), t0=0.0, seconds=60.0)
     visit(watch, ROOM + box(4.0, 2.0), t0=60.0, seconds=60.0)
     check("nothing is reported within the visit", kinds(watch.changes()), [])
     visit(watch, ROOM + box(4.0, 2.0), t0=3600.0)
-    check("the next visit, compared with one that saw both, claims nothing: "
-          "neither place was clearly one thing then",
+    check("the next visit, with the box where the last one left it, claims "
+          "nothing", kinds(watch.changes(), large=False), [])
+
+
+def test_a_move_made_in_sight_is_compared_with_the_visit_before() -> None:
+    """2026-10-20: the black bean bag was moved 2 m beside the charger while
+    the rover watched, and the watch never reported it: a visit lasts as long
+    as a place stays in sight, and its place read solid for part of the visit
+    and seen through for the rest, which is neither. Now a cell the visit
+    cannot call is called what its last two minutes say, when those differ
+    from the rest of the visit by half the beams or more, and is compared with
+    the visit before."""
+    section("a move made while the rover watches")
+    watch = new_watch()
+    visit(watch, ROOM + box(2.0, 2.0), t0=0.0)
+    visit(watch, ROOM + box(2.0, 2.0), t0=3600.0, seconds=150.0)
+    check("the box where it was: nothing", kinds(watch.changes()), [])
+    visit(watch, ROOM + box(4.0, 2.0), t0=3750.0, seconds=150.0)
+    found = watch.changes(large_only=True)
+    check("moved in sight, it is found gone and new against the visit before",
+          sorted(c["kind"] for c in found), ["GONE", "NEW"])
+    # Placed from the cells the last two minutes saw, which is the box's near
+    # sides rather than all of it.
+    check("...within half a metre of where it was and where it went",
+          [math.hypot(c["x_m"] - (2.0 if c["kind"] == "GONE" else 4.0), c["y_m"] - 2.0)
+           < 0.5 for c in sorted(found, key=lambda c: c["kind"])], [True, True])
+    check("...the evidence dated from when the place changed, not from when "
+          "the visit began", min(c["seen_from"] for c in found) >= 3700.0, True)
+    visit(watch, ROOM + box(4.0, 2.0), t0=7200.0)
+    check("the visit after, with the box where it was left, claims nothing",
           kinds(watch.changes(), large=False), [])
+
+
+def test_a_place_that_comes_and_goes_all_visit_is_not_called_anything() -> None:
+    """A thing hit from one place and seen past from another, or a person in
+    and out of a doorway, leaves a visit mixed throughout: its last two
+    minutes are as mixed as the rest, and nothing is claimed."""
+    section("a place that comes and goes")
+    watch = new_watch()
+    visit(watch, ROOM, t0=0.0)
+    for k in range(30):
+        visit(watch, ROOM + (box(3.0, 2.0) if k % 2 else []), t0=3600.0 + 8.0 * k,
+              seconds=8.0)
+    check("nothing is reported", kinds(watch.changes(), large=False), [])
 
 
 def test_what_it_remembers_survives_a_restart() -> None:
@@ -152,6 +193,11 @@ def test_what_it_remembers_survives_a_restart() -> None:
     visit(back, ROOM + box(4.0, 2.0), t0=3600.0)
     check("and a move after the restart is still found",
           sorted(c["kind"] for c in back.changes(large_only=True)), ["GONE", "NEW"])
+    back.save(path, map_id="abc")
+    again, _ = cw.ChangeWatch.load(path)
+    check("...with the visit's last two minutes kept as well",
+          [int(getattr(again, name).sum()) for name in ("win_hits", "old_hits")],
+          [int(getattr(back, name).sum()) for name in ("win_hits", "old_hits")])
     check("a file that is not there is no watch", cw.ChangeWatch.load(path + "x"),
           (None, None))
 
@@ -388,6 +434,8 @@ TESTS = (
     test_the_same_room_twice_is_no_change,
     test_a_person_walking_through_is_not_a_change,
     test_a_room_is_not_compared_with_itself,
+    test_a_move_made_in_sight_is_compared_with_the_visit_before,
+    test_a_place_that_comes_and_goes_all_visit_is_not_called_anything,
     test_what_it_remembers_survives_a_restart,
 )
 

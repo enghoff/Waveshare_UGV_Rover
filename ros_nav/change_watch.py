@@ -23,6 +23,13 @@ next to something the other visit also had counts. Changed cells are grouped,
 and a group is reported only once its evidence spans `PERSIST_S`, so a person
 walking past is not a change, though one who stands still for a while is.
 
+A visit lasts as long as the place stays in sight, so a thing moved beside the
+parked rover leaves its place solid for part of the visit and seen through for
+the rest. Such a cell is called what the visit's last two `RECENT_S` windows say
+when they differ from the rest of the visit by `FLIP` of the beams, and is
+compared with the visit before; the visit's own first half is never the
+reference.
+
 **What it does not do.** It moves nothing and decides nothing. Saying which
 thing a change is -- the armchair, a door -- is for whoever reads the report
 and knows where things are; the clusters carry where and how big. Things above
@@ -63,6 +70,22 @@ PERSIST_S = 20.0
 VIEW_SPREAD_M = 0.5
 VIEW_ARRAYS = ("hit_x0", "hit_x1", "hit_y0", "hit_y1",
                "pass_x0", "pass_x1", "pass_y0", "pass_y1")
+#: **A visit that disagrees with itself is judged on its recent evidence.** A
+#: visit lasts as long as a place stays in sight, so a thing moved in front of
+#: the parked rover leaves its place solid for part of the visit and seen
+#: through for the rest, which is neither, and nothing was reported: on
+#: 2026-10-20 the black bean bag was moved 2 m beside the charger with the rover
+#: watching, and neither its old place nor its new one was ever logged. So each
+#: cell also keeps its last two windows of this length, and a cell the whole
+#: visit cannot call solid or clear is called what those windows say.
+RECENT_S = 60.0
+#: How far apart the share of beams ending in a cell has to be, between its
+#: recent windows and the visit before them, for it to have flipped. On
+#: 2026-10-20 the black bean bag's new place read 0.10 to 0.25 before the
+#: windows, since it arrived a minute before they began, and 0.66 to 1.0 in
+#: them.
+FLIP = 0.5
+RECENT_ARRAYS = ("win_hits", "win_pass", "win_first", "old_hits", "old_pass", "old_first")
 MIN_CELLS = 6
 #: Groups this long or longer are the size of furniture; smaller ones on those
 #: recordings were doors in the wall lines.
@@ -126,6 +149,24 @@ def _dilate(mask, cells):
     return out
 
 
+def _flipped(hits, passes, recent_hits, recent_passes):
+    """(solid, clear): cells whose visit is neither as a whole but whose recent
+    windows are the one, and whose share of beams ending in them is FLIP more
+    or less than in the visit before those windows -- a place that changed
+    while in sight. A visit mixed throughout, as a thin thing hit from one
+    place and seen past from another is, is not called anything."""
+    def share_of(h, p):
+        seen = h + p
+        return h / np.maximum(seen, 1), seen >= MIN_OBS
+    share, judged = share_of(hits, passes)
+    mixed = judged & (share < SOLID) & (share > CLEAR)
+    r_share, r_judged = share_of(recent_hits, recent_passes)
+    e_share, e_judged = share_of(hits - recent_hits, passes - recent_passes)
+    both = mixed & r_judged & e_judged
+    return (both & (r_share >= SOLID) & (r_share - e_share >= FLIP),
+            both & (r_share <= CLEAR) & (e_share - r_share >= FLIP))
+
+
 def _groups(mask):
     """Eight-connected groups of the True cells, as lists of (row, column)."""
     todo = set(zip(*np.nonzero(mask)))
@@ -166,6 +207,14 @@ class ChangeWatch:
         for name in VIEW_ARRAYS:
             setattr(self, name, np.full(shape, np.inf if name.endswith("0") else -np.inf,
                                         np.float32))
+        # The last two RECENT_S windows of the visit in progress, the newer
+        # first: what a cell the whole visit cannot call is judged on.
+        self.win_hits = np.zeros(shape, np.int32)
+        self.win_pass = np.zeros(shape, np.int32)
+        self.win_first = np.full(shape, np.nan)
+        self.old_hits = np.zeros(shape, np.int32)
+        self.old_pass = np.zeros(shape, np.int32)
+        self.old_first = np.full(shape, np.nan)
         self.scans = 0
         self.refused = 0
         self.off_map = 0
@@ -203,7 +252,7 @@ class ChangeWatch:
         dx = int(round((self.x0 - x0) / self.res))
         dy = int(round((self.y0 - y0) / self.res))
         for name in ("cur_hits", "cur_pass", "cur_first", "cur_last",
-                     "ref_hits", "ref_pass", "ref_time") + VIEW_ARRAYS:
+                     "ref_hits", "ref_pass", "ref_time") + VIEW_ARRAYS + RECENT_ARRAYS:
             getattr(bigger, name)[dy:dy + self.ny, dx:dx + self.nx] = getattr(self, name)
         bigger.scans = self.scans
         bigger._map = self._map
@@ -277,19 +326,50 @@ class ChangeWatch:
         passes = self._cells(px[inside], py[inside])
         touched = np.union1d(hits, passes)
         # A cell not seen for VISIT_GAP_S starts a new visit, and the one it
-        # ends becomes what the next is compared with -- if it saw enough.
+        # ends becomes what the next is compared with -- if it saw enough. One
+        # that flipped while in sight is taken as its recent windows say, so the
+        # next visit is compared with how the place was left.
         lapsed = touched[(t - self.cur_last.flat[touched]) > VISIT_GAP_S]
         if lapsed.size:
-            seen = self.cur_hits.flat[lapsed] + self.cur_pass.flat[lapsed]
-            judged = lapsed[seen >= MIN_OBS]
-            self.ref_hits.flat[judged] = self.cur_hits.flat[judged]
-            self.ref_pass.flat[judged] = self.cur_pass.flat[judged]
-            self.ref_time.flat[judged] = self.cur_last.flat[judged]
+            hits_was = self.cur_hits.flat[lapsed]
+            pass_was = self.cur_pass.flat[lapsed]
+            recent_hits = self.old_hits.flat[lapsed] + self.win_hits.flat[lapsed]
+            recent_pass = self.old_pass.flat[lapsed] + self.win_pass.flat[lapsed]
+            r_solid, r_clear = _flipped(hits_was, pass_was, recent_hits, recent_pass)
+            recent = r_solid | r_clear
+            whole = (hits_was + pass_was >= MIN_OBS) & ~recent
+            for take, h, p in ((whole, hits_was, pass_was), (recent, recent_hits, recent_pass)):
+                cells = lapsed[take]
+                self.ref_hits.flat[cells] = h[take]
+                self.ref_pass.flat[cells] = p[take]
+                self.ref_time.flat[cells] = self.cur_last.flat[cells]
             self.cur_hits.flat[lapsed] = 0
             self.cur_pass.flat[lapsed] = 0
             self.cur_first.flat[lapsed] = t
             for name in VIEW_ARRAYS:
                 getattr(self, name).flat[lapsed] = np.inf if name.endswith("0") else -np.inf
+            for name in ("win_hits", "win_pass", "old_hits", "old_pass"):
+                getattr(self, name).flat[lapsed] = 0
+            self.win_first.flat[lapsed] = t
+            self.old_first.flat[lapsed] = np.nan
+        # The recent windows move on: the newer becomes the older, or, if the
+        # cell went unseen for longer than both, neither is kept.
+        began = self.win_first.flat[touched]
+        rolled = touched[np.isnan(began) | ((t - began) > RECENT_S)]
+        if rolled.size:
+            gone_by = np.isnan(self.win_first.flat[rolled]) | (
+                (t - self.win_first.flat[rolled]) > 2 * RECENT_S)
+            keep = rolled[~gone_by]
+            drop = rolled[gone_by]
+            self.old_hits.flat[keep] = self.win_hits.flat[keep]
+            self.old_pass.flat[keep] = self.win_pass.flat[keep]
+            self.old_first.flat[keep] = self.win_first.flat[keep]
+            self.old_hits.flat[drop] = 0
+            self.old_pass.flat[drop] = 0
+            self.old_first.flat[drop] = np.nan
+            self.win_hits.flat[rolled] = 0
+            self.win_pass.flat[rolled] = 0
+            self.win_first.flat[rolled] = t
         for kind, cells in (("hit", hits), ("pass", passes)):
             for axis, at in (("x", x), ("y", y)):
                 low = getattr(self, "%s_%s0" % (kind, axis))
@@ -298,6 +378,8 @@ class ChangeWatch:
                 high.flat[cells] = np.maximum(high.flat[cells], at)
         self.cur_hits.flat[hits] += 1
         self.cur_pass.flat[passes] += 1
+        self.win_hits.flat[hits] += 1
+        self.win_pass.flat[passes] += 1
         self.cur_last.flat[touched] = t
         self.scans += 1
         self._known_age += 1
@@ -326,6 +408,20 @@ class ChangeWatch:
         judged = seen >= MIN_OBS
         return judged & (share >= SOLID), judged & (share <= CLEAR)
 
+    def _present(self):
+        """(solid, clear, since): each cell's state in the visit in progress,
+        and since when the evidence for it was gathered. The whole visit's,
+        unless it disagrees with itself because the place flipped: then its
+        last two windows'."""
+        solid, clear = self._states(self.cur_hits, self.cur_pass)
+        r_solid, r_clear = _flipped(self.cur_hits, self.cur_pass,
+                                    self.old_hits + self.win_hits,
+                                    self.old_pass + self.win_pass)
+        recent_since = np.where(self.old_hits + self.old_pass > 0,
+                                self.old_first, self.win_first)
+        since = np.where(r_solid | r_clear, recent_since, self.cur_first)
+        return solid | r_solid, clear | r_clear, since
+
     def changes(self, large_only=False):
         """What differs between each cell's last visit and its present one.
 
@@ -333,7 +429,7 @@ class ChangeWatch:
         now) or NEW (the other way round), where, how big, when the present
         evidence was gathered and when the place was last seen otherwise."""
         was_solid, was_clear = self._states(self.ref_hits, self.ref_pass)
-        is_solid, is_clear = self._states(self.cur_hits, self.cur_pass)
+        is_solid, is_clear, since = self._present()
         found = []
         for kind, mask in (
                 ("GONE", was_solid & is_clear & ~_dilate(is_solid, SLACK_CELLS)),
@@ -343,7 +439,7 @@ class ChangeWatch:
                     continue
                 rows = np.array([g[0] for g in group])
                 cols = np.array([g[1] for g in group])
-                first = float(np.nanmin(self.cur_first[rows, cols]))
+                first = float(np.nanmin(since[rows, cols]))
                 last = float(np.max(self.cur_last[rows, cols]))
                 if last - first < PERSIST_S:
                     continue
@@ -415,7 +511,7 @@ class ChangeWatch:
             tmp, cur_hits=self.cur_hits, cur_pass=self.cur_pass,
             cur_first=self.cur_first, cur_last=self.cur_last,
             ref_hits=self.ref_hits, ref_pass=self.ref_pass, ref_time=self.ref_time,
-            **{name: getattr(self, name) for name in VIEW_ARRAYS},
+            **{name: getattr(self, name) for name in VIEW_ARRAYS + RECENT_ARRAYS},
             meta=np.array(json.dumps({
                 "x0": self.x0, "y0": self.y0, "nx": self.nx, "ny": self.ny,
                 "res": self.res, "scans": self.scans, "saved_at": time.time(),
@@ -431,7 +527,7 @@ class ChangeWatch:
             meta = json.loads(str(data["meta"]))
             watch = cls(meta["x0"], meta["y0"], meta["nx"], meta["ny"], meta["res"])
             for name in ("cur_hits", "cur_pass", "cur_first", "cur_last",
-                         "ref_hits", "ref_pass", "ref_time") + VIEW_ARRAYS:
+                         "ref_hits", "ref_pass", "ref_time") + VIEW_ARRAYS + RECENT_ARRAYS:
                 # A file from before 2026-10-11 has no viewpoints: the visit in
                 # progress has to be seen from two places again.
                 if name in data.files:

@@ -202,6 +202,21 @@ and was gathered from places at least 0.5 m apart. On 2026-10-11 the rover stood
 27 s with its pose 10 cm and 3 degrees out and beams running along a hall wall
 passed through it, all from within 0.30 m: from one spot a change is a reason to
 look again, not a claim.
+
+**A move made in the watch's sight is compared with the visit before**, since
+2026-10-20. A visit lasts as long as a place stays in sight, so a thing moved
+beside the parked rover left its place solid for part of the visit and seen
+through for the rest, which is neither: on 2026-10-20 the black bean bag was
+set down 2.6 m from the charger with the rover watching, and neither the
+watch nor the run after it ever heard of it
+([2026-10-20](../docs/progress/2026-10-20-why-autonomy-hardly-went-to-look.md)).
+So each cell also keeps the visit's last two minute-long windows, and a cell the
+whole visit cannot call is called what those say, when their share of beams
+ending in it differs from the rest of the visit's by half or more; a visit that
+ends that way leaves the windows' state as the reference. Replayed through both
+benchmark mornings, the bean bag is reported furniture-sized as the rover
+drives off; through the nine M5 sessions in order, 12 more changes at staged
+things are logged and 2 more small ones elsewhere, none furniture-sized.
 Groups 0.6 m or longer are marked furniture-sized; on the recordings it was
 measured on, smaller ones were doors. Replayed through today's recordings in
 order, it reported nothing for three runs with the armchair moved and then, on

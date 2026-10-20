@@ -1696,12 +1696,13 @@ owner. In order from here:
    sight ([why](../progress/2026-10-20-why-autonomy-hardly-went-to-look.md)).
    Since 2026-10-20 a run waits for the watch to report on where it last
    stopped before it ends, and a change smaller than furniture is a goal, its
-   value its size, with the marked doorways refused. What is left is the watch:
-   it compares one visit to a place with the next, and a place kept in sight
-   while something is moved there is one visit, so the move is never reported;
-   with the rover parked at its charger most of the day, that is the ordinary
-   case. A second round waits on that and on item 3. Its two days are fresh
-   drives items 1 and 3 can use.
+   value its size, with the marked doorways refused. And since the same day
+   the change watch reports a thing moved in its sight, judging a place the
+   visit cannot call on its last two minutes
+   ([2026-10-20](../progress/2026-10-20-a-move-made-in-the-watchs-sight.md));
+   replayed, day 2's black bean bag is reported as the rover drives off. A
+   second round waits on item 3. Its two days are fresh drives items 1 and 3
+   can use.
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). The look trial's misses were mostly not a second record
    of one object: a third were aimed at records of no object -- bare floor,
