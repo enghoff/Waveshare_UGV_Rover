@@ -62,7 +62,9 @@ that reverse, stopping at 0.5 m, never filled.
 
 "Keep it on" lists the agents that want the rover kept switched on
 ([R-CTL-12](../docs/requirements/control.md#r-ctl-12)): who, whether for now
-(amber) or for something planned, what for, when it was set and when it lapses.
+(amber) or for something planned, what for, when it began and when it lapses.
+A planned hold whose time has not come says when the rover is needed and that it
+can be off until then; once that time comes it is drawn as a hold for now.
 "nobody" when there are none. The card reads the daemon's `power_holds` every
 five seconds and has no controls -- agents set and release their own holds with
 `power_hold` ([the daemon](../rover_daemon/README.md#control-calls-not-shown-to-the-model)) --

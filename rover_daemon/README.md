@@ -508,10 +508,12 @@ model choice, for example:
 - detector diagnostics such as running YuNet over a supplied known image;
 - the semantic world state -- `world_inspect`, `world_state_summary` and the rest;
 - the snapshot calls above, one of which replaces the map and the world at once;
-- `power_hold {who, what, when: "now" | "planned", hours?}` and `power_holds {}`:
+- `power_hold {who, what, when: "now" | "planned", from?, hours?}` and `power_holds {}`:
   an agent saying it needs the rover kept switched on, one hold per `who`,
   replaced by setting again, taken back with `release: true`, lapsing after
-  `hours` if given. Kept in `~/.ugv/power_holds.json` so a planned hold outlives
+  `hours` if given. A planned hold must say `from`, when the rover is needed
+  ("2026-10-21 09:00" in the rover's clock, or epoch seconds), and its `hours`
+  count from then. Kept in `~/.ugv/power_holds.json` so a planned hold outlives
   restarts, and drawn on the console's "keep it on" card
   ([R-CTL-12](../docs/requirements/control.md#r-ctl-12)). A request, not a lock:
   nothing refuses to power down because of one. See [`rover_holds.py`](rover_holds.py);

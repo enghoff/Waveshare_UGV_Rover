@@ -30,12 +30,13 @@ def test_holds_are_set_replaced_released_and_outlive_a_restart():
             rover = _rover(root)
             check("nobody holds a new rover", rover.call("power_holds", {}),
                   {"ok": True, "holds": []})
+            start = time.time() + 3 * 3600
             set_ = rover.call("power_hold", {"who": "ugv-rover-d7",
                                              "what": "multi-day benchmark, day 2",
-                                             "when": "planned"})
-            check("a hold is set", [(h["who"], h["when"], h["until"])
+                                             "when": "planned", "from": start})
+            check("a hold is set", [(h["who"], h["when"], h["from"], h["until"])
                                     for h in set_["holds"]],
-                  [("ugv-rover-d7", "planned", None)])
+                  [("ugv-rover-d7", "planned", round(start), None)])
             rover.call("power_hold", {"who": "codex", "what": "a replay",
                                       "hours": 2})
             again = rover.call("power_hold", {"who": "ugv-rover-d7",
@@ -70,6 +71,31 @@ def test_holds_are_set_replaced_released_and_outlive_a_restart():
             check("a lapsed hold is not shown",
                   [h["who"] for h in rover.call("power_holds", {})["holds"]],
                   ["ugv-rover-d7"])
+
+            tomorrow = time.strftime("%Y-%m-%d %H:%M",
+                                     time.localtime(time.time() + 86400))
+            planned = rover.call("power_hold", {"who": "p", "what": "a run",
+                                                "when": "planned",
+                                                "from": tomorrow, "hours": 2})
+            mine = [h for h in planned["holds"] if h["who"] == "p"][0]
+            check("a planned hold starts at a time in the rover's own clock, "
+                  "and its hours count from then",
+                  (round((mine["from"] - time.time()) / 3600),
+                   round((mine["until"] - mine["from"]) / 3600, 1)), (24, 2.0))
+            bare = rover.call("power_hold", {"who": "x", "what": "y",
+                                             "when": "planned"})
+            check("a planned hold that does not say when is refused",
+                  (bare["ok"], "`from`" in bare["error"]), (False, True))
+            for name, arguments in (
+                    ("one already past", {"when": "planned",
+                                          "from": time.time() - 60}),
+                    ("one with no date in it", {"when": "planned",
+                                                "from": "tomorrow at nine"}),
+                    ("a hold for now with a later start",
+                     {"when": "now", "from": time.time() + 3600})):
+                check(f"...and so is {name}",
+                      rover.call("power_hold", {"who": "x", "what": "y",
+                                                **arguments})["ok"], False)
 
             refused = rover.call("power_hold", {"who": "x", "what": "y",
                                                 "when": "soon"})

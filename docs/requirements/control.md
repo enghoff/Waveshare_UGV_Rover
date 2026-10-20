@@ -176,7 +176,10 @@ The owner switches the rover off by hand, and an agent working on it from
 elsewhere -- now, or tomorrow on a plan -- had nowhere to say so but a
 conversation the owner might not be reading. A hold names the agent, says
 whether the need is now or planned and what it is for, and is on the console
-until the agent releases it or it lapses. It is a request and not a lock:
+until the agent releases it or it lapses. A planned hold says when it begins,
+and until then the console says the rover may be off: a hold that could only
+mean "from now" kept the rover on overnight for a run in the morning on
+2026-10-20. It is a request and not a lock:
 nothing refuses to power down because of one. A file the rover cannot read is
 shown as an error, never as nobody, because nobody is the answer the switch is
 reached for on.

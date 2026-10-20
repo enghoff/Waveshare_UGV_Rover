@@ -327,6 +327,10 @@ class SessionShow:
         alone today, the weekday within the week, the date past that. A file the
         rover could not read is said as such with no rows under it, rather than
         as nobody, because nobody is the answer somebody switches it off on.
+
+        A planned hold whose time has not come says the rover may be off until
+        then, since that is the question the owner reads it for; once it has
+        come it is drawn as a hold for now.
         """
         if not body.get("ok"):
             error = str(body.get("error", "no answer"))
@@ -335,12 +339,22 @@ class SessionShow:
                           "note": "" if supported is False else error}
             return
         rows = []
+        now = time.time()
         for hold in body.get("holds") or []:
-            times = f"since {_clock(hold.get('since'))}"
-            if hold.get("until"):
-                times += f", until {_clock(hold['until'])}"
-            rows.append({"who": str(hold.get("who", "")),
-                         "when": str(hold.get("when") or "now"),
+            when = str(hold.get("when") or "now")
+            start = hold.get("from")
+            if isinstance(start, (int, float)) and start > now:
+                times = f"needed from {_clock(start)}"
+                if hold.get("until"):
+                    times += f" until {_clock(hold['until'])}"
+                times += "; it can be off until then"
+            else:
+                if isinstance(start, (int, float)):
+                    when = "now"
+                times = f"since {_clock(start or hold.get('since'))}"
+                if hold.get("until"):
+                    times += f", until {_clock(hold['until'])}"
+            rows.append({"who": str(hold.get("who", "")), "when": when,
                          "what": str(hold.get("what", "")), "times": times})
         self.holds = {"supported": True, "rows": rows, "note": ""}
 

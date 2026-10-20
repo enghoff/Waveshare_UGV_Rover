@@ -2,23 +2,30 @@
 
 The owner switches the rover off by hand -- to carry it, to stop the battery
 draining overnight -- and agents working on it from elsewhere had no way to say
-"not now, I am using it" or "leave it on, I need it tomorrow morning" except in
-a conversation the owner might not be reading. On 2026-10-18 and again on
-10-19 a session found the rover gone and spent its time working out why.
+"not now, I am using it" or "have it on at nine tomorrow" except in a
+conversation the owner might not be reading. On 2026-10-18 and again on 10-19 a
+session found the rover gone and spent its time working out why.
 
 So an agent puts a hold here, and the console draws every hold in a card of its
 own where the owner looks before reaching for the switch. A hold is a request,
 not a lock: nothing on the rover refuses to power down because of one, and the
 owner is free to ignore it.
 
-    power_hold   {who, what, when: "now" | "planned", hours?}   set or replace
-    power_hold   {who, release: true}                           take it back
-    power_holds  {}                                             every live hold
+    power_hold   {who, what, when: "now", hours?}                set or replace
+    power_hold   {who, what, when: "planned", from, hours?}      ...for later
+    power_hold   {who, release: true}                            take it back
+    power_holds  {}                                              every live hold
 
 One hold per `who`, so setting again replaces it rather than stacking a second.
 `hours` makes it lapse by itself, which is what keeps a session that died
 without releasing from holding the rover forever; without it a hold stands until
 it is released. Both answer with the whole list.
+
+A planned hold says when the rover is needed -- `from`, "2026-10-21 09:00" in
+the rover's own clock or seconds since the epoch -- and its `hours` count from
+then. Until then the owner may switch the rover off. On 10-20 a planned hold had
+no start, so a run the next morning read as "keep it on until 11:00 tomorrow",
+which is a night of battery spent on nothing.
 
 Kept in a file under `~/.ugv`, because a planned hold has to outlive the daemon
 restarts every deploy makes -- `UGV_HOLDS_FILE` moves it for the tests. Neither
@@ -91,6 +98,29 @@ def _text(value: Any, name: str, limit: int) -> str:
     return text
 
 
+def _start(value: Any, now: float) -> float:
+    """When a planned hold begins, as seconds since the epoch. A plan without
+    one is refused: "planned" alone can only be read as "from now", which is
+    the owner leaving the rover on all night for a run in the morning."""
+    if value is None or value == "":
+        raise ValueError("a planned hold needs `from`, when the rover is needed: "
+                         "\"2026-10-21 09:00\" in the rover's clock, or epoch seconds")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        start = float(value)
+    else:
+        text = str(value).strip().replace("T", " ")
+        try:
+            start = time.mktime(time.strptime(text, "%Y-%m-%d %H:%M"))
+        except ValueError:
+            raise ValueError(f"`from` {value!r} is not \"YYYY-MM-DD HH:MM\"") from None
+    if start <= now:
+        raise ValueError("`from` has already passed; a hold from now is "
+                         "`when: \"now\"`")
+    if start > now + 14 * 86400:
+        raise ValueError("`from` is more than 14 days away")
+    return start
+
+
 class RoverHolds:
     """The two calls, mixed into Rover."""
 
@@ -110,12 +140,19 @@ class RoverHolds:
                     raise ValueError(f"`when` is one of {', '.join(WHENS)}")
                 hold = {"who": who, "what": what, "when": when,
                         "since": round(now), "until": None}
+                start = now
+                if when == "planned":
+                    start = _start(arguments.get("from"), now)
+                    hold["from"] = round(start)
+                elif arguments.get("from") is not None:
+                    raise ValueError("a hold for now starts now; a later one is "
+                                     "`when: \"planned\"`")
                 hours = arguments.get("hours")
                 if hours is not None:
                     hours = float(hours)
                     if not 0 < hours <= 24 * 14:
                         raise ValueError("`hours` is more than 0 and at most 336")
-                    hold["until"] = round(now + hours * 3600)
+                    hold["until"] = round(start + hours * 3600)
                 holds.append(hold)
             _write(holds)
         return {"ok": True, "holds": holds}

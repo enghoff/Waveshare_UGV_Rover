@@ -41,11 +41,16 @@ you depend on the rover being up -- now, or for something planned -- and release
 it when you are done; give `hours` when you might not be around to release it:
 
     {"call": "power_hold", "arguments": {"who": "<your session name>",
-      "what": "<what for, one line>", "when": "now" | "planned", "hours": 3}}
+      "what": "<what for, one line>", "when": "now", "hours": 3}}
+    {"call": "power_hold", "arguments": {"who": "<your session name>",
+      "what": "<what for, one line>", "when": "planned",
+      "from": "2026-10-21 09:00", "hours": 2}}
     {"call": "power_hold", "arguments": {"who": "<your session name>", "release": true}}
 
 Sent as one line to the daemon on `192.168.1.80:8769`. A hold is a request, not a
-lock ([R-CTL-12](docs/requirements/control.md#r-ctl-12)).
+lock ([R-CTL-12](docs/requirements/control.md#r-ctl-12)). A planned hold says when
+the rover is needed, in the rover's clock, and the owner may switch it off until
+then: a run tomorrow morning is not a reason to leave it on overnight.
 
 ## Reproduce faults before fixing them
 
