@@ -1714,6 +1714,12 @@ owner. In order from here:
    ([2026-10-18](../progress/2026-10-18-records-of-people-are-not-looked-at.md));
    a classifier of every kind of non-object failed its blind tests. What is
    left is the views through doorways, and records that outlive their things.
+   The multi-day benchmark's two wrong answers in every state were of the
+   second kind, and preferring the newer record at answer time does not mend
+   them: a wider tie breaks three of the six controls first
+   ([2026-10-20](../progress/2026-10-20-recency-does-not-let-a-record-give-way.md)).
+   The world model has to file a moved thing's pictures to the record it
+   already has (R-WS-17).
 4. **The owner's choice on running unattended.** No milestone reaches the
    design's goal of a rover left to occupy itself: R-SAFE-6 is open and nothing
    docks the rover ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).
