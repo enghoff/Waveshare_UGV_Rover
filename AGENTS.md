@@ -35,10 +35,16 @@ state should remain for handover. Do not ask the owner to disconnect the charger
 then leave the rover waiting while you finish preparations. This rule does not grant
 motion authority: obtain the required handover before driving.
 
-**Say when you need the rover kept switched on.** The owner switches it off by
-hand and looks at the console's "keep it on" card first. Put a hold there before
-you depend on the rover being up -- now, or for something planned -- and release
-it when you are done; give `hours` when you might not be around to release it:
+**Say when you need the rover kept switched on, and only for as long as you
+do.** The owner switches it off by hand and looks at the console's "keep it on"
+card first. Put a hold there before you depend on the rover being up -- now, or
+for something planned. Release it as soon as your next step no longer needs the
+rover, not when the task ends: once the copy is on the desktop, the analysis
+that follows is no reason to keep the rover on. If you expect to come back to
+it, replace the hold with a planned one from when you expect to be back, so the
+owner can decide about the gap. Keep `what` true as the use changes -- setting a
+hold again replaces it -- and give `hours` for the time you expect to need, not a
+round number, so a forgotten hold lapses soon after:
 
     {"call": "power_hold", "arguments": {"who": "<your session name>",
       "what": "<what for, one line>", "when": "now", "hours": 3}}
