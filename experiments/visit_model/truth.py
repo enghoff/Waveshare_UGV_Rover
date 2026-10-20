@@ -68,6 +68,15 @@ SESSIONS = [
     ("session 8", os.path.join(TMP, "session8-1018", "session8-1018.json"),
      os.path.join(MAIN, "experiments", "m5_changes", "staged", "session8-1018.json"),
      os.path.join(HERE, "labels", "session8-1018.json"), "session 8"),
+    # The multi-day benchmark's two days (2026-10-19, 20): version 4 as the
+    # rover ran it, the things set out before each day's record began; where
+    # each day's pictures of them went is R-WS-17's question.
+    ("md day 1", os.path.join(TMP, "md-days", "md-day1-1019.json"),
+     os.path.join(HERE, "staged", "md-day1-1019.json"),
+     os.path.join(HERE, "labels", "md-day1-1019.json"), "md days"),
+    ("md day 2", os.path.join(TMP, "md-days", "md-day2-1020.json"),
+     os.path.join(HERE, "staged", "md-day2-1020.json"),
+     os.path.join(HERE, "labels", "md-day2-1020.json"), "md days"),
 ]
 #: Labels for a session made later than its own file, for things a later
 #: session carried in again (session 5's box, stool and step ladder were

@@ -1,0 +1,44 @@
+{
+ "note": "The multi-day benchmark's day 1 (2026-10-19), labelled by the coding agent on 2026-10-20 from sheets.py's candidates drawn from the full-size photographs where kept: regions whose sight line passes within 0.9 m of each thing's spot, 07:20-08:10, at least 0.45 alike to seed pictures (sessions 7 and 8's labels). The live filing was read before labelling (the benchmark's diagnosis, docs/progress/2026-10-20-recency-does-not-let-a-record-give-way.md), so these are not blind to it. Left out: of the red bean bag, two slivers at a picture's edge (112571, 112615); of the black bean bag, between the two armchairs with the owner sitting in one, every armchair, the floor, glare, a cushion, regions taking in an armchair as well as the bag (112640, 112916) and three too dark or cut to tell (112606, 112677, 112686, 112969); of the stool, every dining chair and two regions that take in a chair as well as the stool (112665, 112891). 112454 was taken at 07:53:39, before the record began, with the rover booting on its charger (staged file: began).",
+ "things": {
+  "red bean bag": [
+   112454,
+   112522,
+   112545,
+   112553,
+   112561,
+   112592,
+   112625,
+   112670,
+   112683,
+   112895,
+   112908,
+   112935,
+   112955,
+   112960,
+   112983,
+   112990,
+   113034,
+   113051
+  ],
+  "black bean bag": [
+   112484,
+   112492,
+   112511,
+   112582,
+   112632,
+   112926,
+   112968,
+   112974,
+   113002,
+   113009,
+   113038
+  ],
+  "stool": [
+   112619,
+   112652,
+   112906,
+   112946
+  ]
+ }
+}

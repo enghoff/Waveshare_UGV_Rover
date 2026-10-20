@@ -158,6 +158,28 @@ CAM_CONE_DEG = 45.0
 CAM_PICTURES = 3
 CAM_EMPTY_VISITS = int(os.environ.get("CAM_EMPTY_VISITS", 0))
 CAM_THERE_M = 0.5
+#: Candidates for version 5, off unless set (2026-10-20, R-WS-17).
+#: SOLID_BY_VISIT: whether the lidar hit an object filed in a visit is judged
+#: over every scan while its pictures were taken (SOLID_PAD_S either side), not
+#: one scan at one picture's time, which can pass between a stool's legs or
+#: find no return and counts either as empty. On the multi-day benchmark's day 1
+#: the stool's place was hit 23 to 75 times in each visit and judged not solid
+#: every time, so the lidar's 400 passes through it on day 2 never made the
+#: record gone. A visit judged on fewer than SOLID_MIN scans is not counted.
+SOLID_BY_VISIT = os.environ.get("SOLID_BY_VISIT", "0") == "1"
+SOLID_PAD_S = 5.0
+SOLID_MIN = 3
+#: ONE_THING_RIVALS: a gone record that looks like the leading candidate for a
+#: move by DOUBLE_COS or more, with matching colours and never in one picture
+#: with it, is the same thing recorded twice, not a rival, and the lead is
+#: taken over the best candidate that is not. On day 1 the red bean bag's
+#: arrival scored 0.809, 0.772 and 0.770 against its own three gone records and
+#: was made a new record for want of a 0.04 lead. Over every labelled record
+#: to 2026-10-20 (pair_likeness), records of two things never in one picture,
+#: of one height and colour, scored 0.63 at most, and 27 of 98 pairs of
+#: records of one thing 0.70 or more.
+ONE_THING_RIVALS = os.environ.get("ONE_THING_RIVALS", "0") == "1"
+DOUBLE_COS = float(os.environ.get("DOUBLE_COS", 0.70))
 #: The end of development: M5 session 2's last labelled look was before this
 #: (2026-10-14 13:00 local). Development runs see nothing after it.
 DEVELOPMENT_END = 1791963000.0
@@ -600,7 +622,8 @@ def reconcile(L, mem, clusters, t, decisions):
         best = sorted(((mem.likeness(vecs, o), k) for k, o in enumerate(gone)
                        if _heights_agree(o["z"], p["z"]) and mem.colour(cols, o) >= COLOUR_MIN),
                       reverse=True)
-        lead = best[0][0] - best[1][0] if len(best) > 1 else 1.0
+        rivals = _without_doubles(best, gone)
+        lead = rivals[0][0] - rivals[1][0] if len(rivals) > 1 else 1.0
         pick = _move_choice(best, gone, t) if len(m) >= 2 else None
         if pick is None and not DEFER_OLD_MOVES and len(m) >= 2 and best and (
                 (best[0][0] >= MOVE_COS and lead >= MOVE_MARGIN) or
@@ -669,6 +692,15 @@ def solid_votes(L, mem, filed, recs):
             continue
         t = float(a["t"][members[len(members) // 2]])
         if recorded.for_time(recs, t) is None:
+            continue
+        if SOLID_BY_VISIT:
+            ts = a["t"][members]
+            passes, hits = lidar.outcomes(recs, np.array([o["x"]]), np.array([o["y"]]),
+                                          float(ts.min()) - SOLID_PAD_S, float(ts.max()) + SOLID_PAD_S)
+            if passes[0] + hits[0] < SOLID_MIN:
+                continue
+            o["solid_judged"] += 1
+            o["solid_hits"] += int(hits[0] > passes[0])
             continue
         o["solid_judged"] += 1
         o["solid_hits"] += int(lidar.solid(recs, t, o["x"], o["y"]))
@@ -859,11 +891,28 @@ def consolidate(mem, touched, t, decisions):
             o = keep
 
 
-def _clear_winner(best, strong, margin):
+def _one_thing(o0, o1):
+    """Two gone records of one thing: never in one picture, of one height and
+    colour, and alike."""
+    return not (o0["frames"] & o1["frames"]) and _heights_agree(o0["z"], o1["z"]) and \
+        _object_colour(o0, o1) >= COLOUR_MIN and _object_likeness(o0, o1) >= DOUBLE_COS
+
+
+def _without_doubles(best, cands):
+    """best, [(likeness, k)] sorted with k indexing cands, less every later
+    candidate that is the leader's double (ONE_THING_RIVALS)."""
+    if not ONE_THING_RIVALS or len(best) < 2:
+        return best
+    leader = cands[best[0][1]]
+    return best[:1] + [b for b in best[1:] if not _one_thing(leader, cands[b[1]])]
+
+
+def _clear_winner(best, strong, margin, cands):
     """The index of a candidate that wins: alike enough and ahead of the rest."""
     if not best:
         return None
-    lead = best[0][0] - best[1][0] if len(best) > 1 else 1.0
+    rivals = _without_doubles(best, cands)
+    lead = rivals[0][0] - rivals[1][0] if len(rivals) > 1 else 1.0
     if (best[0][0] >= strong and lead >= margin) or (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD):
         return best[0][1]
     return None
@@ -875,7 +924,7 @@ def _move_choice(best, gone, t):
     if RECENT_GONE_S > 0:
         recent = [b for b in best if gone[b[1]].get("gone_at") is not None
                   and t - gone[b[1]]["gone_at"] <= RECENT_GONE_S]
-        k = _clear_winner(recent, MOVE_COS, MOVE_MARGIN)
+        k = _clear_winner(recent, MOVE_COS, MOVE_MARGIN, gone)
         if k is not None:
             return k
     return None
@@ -894,7 +943,8 @@ def settle_pending(mem, t, decisions):
         best = sorted(((_object_likeness(o, g), k) for k, g in enumerate(gone)
                        if g["since"] < o["since"] and _heights_agree(o["z"], g["z"])
                        and _object_colour(o, g) >= COLOUR_MIN), reverse=True)
-        lead = best[0][0] - best[1][0] if len(best) > 1 else 1.0
+        rivals = _without_doubles(best, gone)
+        lead = rivals[0][0] - rivals[1][0] if len(rivals) > 1 else 1.0
         k = _move_choice(best, gone, t)
         if k is None and best and ((best[0][0] >= PENDING_COS and lead >= MOVE_MARGIN) or
                                    (best[0][0] >= MOVE_LEAD_COS and lead >= MOVE_LEAD)):

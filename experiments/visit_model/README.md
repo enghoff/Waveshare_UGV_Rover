@@ -275,3 +275,38 @@ labelled picture, every labelled object keeping its main record. The rover's
 model counts the close visits (`world_state/visit_model/model.py`,
 `looked_for`) and the daemon applies the rule
 (docs/progress/2026-10-18-records-not-found-again-are-set-aside.md).
+
+## The multi-day benchmark's two days (2026-10-20)
+
+`truth.py` takes the benchmark's days 1 and 2 (role `md days`): the three
+things set out before each day's record began (`staged/`), labelled from
+contact sheets drawn from the full-size photographs (`labels/md-day*.json`;
+day 2's stool is in no region). The looks file is every picture to 2026-10-20
+(`tmp/visit-model/looks-md-1020.npz`), with the two days' drive recordings
+and the M10 trial's of 2026-10-18 added to the usual ones. Frozen version 4
+over it gives the record the rover gave for 98.6% of the two days' regions.
+
+Version 4 kept 1 of the 5 judgeable trials: every thing already had three to
+five records before the benchmark began. `probe_alike.py` shows, for a visit,
+how alike each labelled thing's regions are to every record then.
+`pair_likeness.py` measures how alike records of one thing and of two things
+are after a whole run. `false_gone.py` counts gone calls on records of things
+that never moved. `score_all.py` sets several filings side by side, every role
+at once. `draws_seq.sh` is `run_draws.sh` one run at a time.
+
+Two switches in `model.py`, off unless set, the filing version 4's with both off:
+
+- `ONE_THING_RIVALS` (with `DOUBLE_COS`, 0.70): in a move, a gone record as
+  alike to the leader as records of one thing are and never in one picture with
+  it is not a rival. Over every labelled pair of records, two things matched at
+  0.63 at most, one thing's records 27 times in 98 at 0.70 or more. It follows
+  the red bean bag on day 1 (0.809 against its own 0.772 and 0.770) and changes
+  no trial on any earlier session.
+- `SOLID_BY_VISIT`: hits against passes over the visit's scans rather than one
+  scan, which passed between the stool's legs. It calls the stool's day-1
+  record gone on day 2, but adds 41 gone calls over the history, one of them on
+  the rug's record (what the lidar hit stood on the rug), and loses session 2's
+  cabinet. Not adopted.
+
+docs/progress/2026-10-20-where-the-benchmark-days-pictures-went.md has the
+numbers.

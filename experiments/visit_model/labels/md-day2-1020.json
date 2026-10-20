@@ -1,0 +1,37 @@
+{
+ "note": "The multi-day benchmark's day 2 (2026-10-20), labelled as day 1 was (same rules, 07:10-07:56). Left out: of the red bean bag, a sliver at a picture's edge (113260); of the black bean bag, beside the black cabinet with the owner sitting in the armchair next to it, every armchair, the floor, a sliver (113212), the bag cut at a picture's edge (113642) and regions taking in the armchair as well (113262, 113615, 113721). The stool at P3 is in no region: 33 candidates within 1.5 m of the spot at likeness 0.3 or more are dining chairs, the ceiling fan, a doorway, the rug and a picture, so day 2 has no stool trial.",
+ "things": {
+  "red bean bag": [
+   113214,
+   113239,
+   113253,
+   113268,
+   113285,
+   113300,
+   113356,
+   113545,
+   113589,
+   113605,
+   113626,
+   113634,
+   113680,
+   113699,
+   113730
+  ],
+  "black bean bag": [
+   113221,
+   113225,
+   113315,
+   113362,
+   113530,
+   113561,
+   113568,
+   113604,
+   113609,
+   113645,
+   113675,
+   113684
+  ],
+  "stool": []
+ }
+}

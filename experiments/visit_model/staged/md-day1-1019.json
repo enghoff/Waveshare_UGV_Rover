@@ -1,0 +1,42 @@
+{
+ "note": "The multi-day benchmark's day 1, 2026-10-19 (experiments/multiday/benchmark.json): the owner set the three things out at their places with the rover on its charger before the day's record began, as asked (days/day1-truth.json). Places are the benchmark's own spots, not measured from the photographs. Autonomy 07:54:22-07:55:22, the fixed loop 07:55:22-08:03:53.",
+ "staged_in": "start",
+ "added": [
+  {
+   "what": "red bean bag",
+   "at": [
+    -20.2,
+    -12.55
+   ],
+   "moved_at_step": "start"
+  },
+  {
+   "what": "black bean bag",
+   "at": [
+    -17.9,
+    -16.55
+   ],
+   "moved_at_step": "start"
+  },
+  {
+   "what": "stool",
+   "at": [
+    -17.45,
+    -13.4
+   ],
+   "moved_at_step": "start"
+  }
+ ],
+ "moves": [],
+ "removed": [],
+ "doors": [],
+ "rooms": [
+  "living"
+ ],
+ "reset_rooms": [
+  "living"
+ ],
+ "also_moved": [],
+ "bad": [],
+ "began": "07:45:00"
+}
