@@ -151,6 +151,22 @@ IDLE_S = 30.0
 #: ended the run. A third of the lease leaves two missed naps of margin.
 IDLE_NAP_S = permission.PERMIT_TTL_S / 3.0
 
+#: **A run does not end before the change watch has reported on where it last
+#: stopped.** The watch reports a change once the visit's evidence for it spans
+#: 20 s (`ros_nav/change_watch.py`, PERSIST_S), in a report written every 30 s,
+#: so what the rover sees from a new place reaches a decision up to 50 s after it
+#: stops. In the multi-day benchmark's first round, on 2026-10-19, the run
+#: decided it had nothing left worth doing 10 s after its one drive, on a report
+#: from 29 s before; the next report, a second later, held the stool's old and
+#: new places and the red bean bag's new one, and the run was already driving
+#: home. So with nothing to do, a run that has moved waits for a report written
+#: this long after its last drive ended, and decides again.
+WATCH_SETTLE_S = 20.0
+
+#: And waits no longer than this for it: a watch that has stopped writing
+#: reports is not a reason to stand about on a draining battery.
+WATCH_WAIT_GIVE_UP_S = 90.0
+
 #: The trigger and the goal of the last episode of a run that ran out of things
 #: worth doing, which drives back to where the run started.
 RETURN_TRIGGER = "the run had nothing left worth doing and went back to where it started"
@@ -253,6 +269,11 @@ class Executive:
         #: Since when every turn has been refused by the rover's own state, or
         #: None while it is not.
         self._gated_since: float | None = None
+        #: When this run's last drive ended, or None before its first: what the
+        #: change watch has to have reported on before the run may end.
+        self._moved_at: float | None = None
+        #: Since when the run has had nothing to do but wait for that report.
+        self._watch_wait_since: float | None = None
         #: Set when the run went back and ended itself; the loop is over.
         self.finished = False
         #: What the run was opened for, if it is an M4 trial: `targets`, the
@@ -348,11 +369,21 @@ class Executive:
         chose = decision.get("chose")
         if not chose:
             why = decision.get("why_nothing") or "nothing worth doing"
+            behind = "" if decision.get("gate") else self._watch_behind(here)
+            if behind:
+                why = f"{why}; {behind}"
             self.store.close_episode(episode, "abandoned", detail=why)
             self.log(f"nothing to do: {why}")
             gates = [one for one in decision.get("gate") or []
                      if one.get("gate") not in RUN_GATES]
-            if not decision.get("gate"):
+            if behind:
+                # Not yet nothing: what the last stop showed the lidar has not
+                # reached a report. A nap at a time, so the next report is read
+                # within a nap of being written.
+                if self._watch_wait_since is None:
+                    self._watch_wait_since = self.now()
+                self.idle(IDLE_NAP_S)
+            elif not decision.get("gate"):
                 # **Nothing worth doing anywhere, so the run is over.** The
                 # scorer has already looked further afield (`go_further`); what
                 # is left is standing about on a draining battery, which the
@@ -374,6 +405,7 @@ class Executive:
                 self.idle(IDLE_S)
             return {"episode": episode, "acted": False, "why": why}
         self._gated_since = None
+        self._watch_wait_since = None
 
         candidate = decision["preferred"]["candidate"]
         inspecting = candidate["type"] == hypotheses.GOAL_TYPE
@@ -681,6 +713,10 @@ class Executive:
                 if isinstance(exc, client_mod.Unreachable):
                     raise Aborted(str(exc), "connection lost") from exc
                 raise
+        if step["action"] == "drive_to":
+            # Arrived or not, the rover is somewhere the lidar has not yet been
+            # watched from for long.
+            self._moved_at = self.now()
         self.store.append(episode, events.call(
             step["action"], params, ok=bool(result.get("ok")),
             result={"action_id": action_id,
@@ -1092,6 +1128,28 @@ class Executive:
                 "ended": self.ended, "state": self.state}
 
     # --- reading ------------------------------------------------------------
+
+    def _watch_behind(self, here: situation_mod.Situation) -> str:
+        """Why the run should not end yet, or "" when it may: it has driven,
+        and the change watch's newest report was written too soon after the
+        drive to hold what the rover can see from where it stopped. Never
+        longer than `WATCH_WAIT_GIVE_UP_S`, and never for a watch that is not
+        counting, which has nothing coming."""
+        if self._moved_at is None:
+            return ""
+        if (self._watch_wait_since is not None
+                and self.now() - self._watch_wait_since >= WATCH_WAIT_GIVE_UP_S):
+            return ""
+        report = here.change_report
+        at = report.get("at")
+        if not report.get("counting") or at is None:
+            return ""
+        if float(at) >= self._moved_at + WATCH_SETTLE_S:
+            return ""
+        return (f"but the change watch's newest report was written "
+                f"{float(at) - self._moved_at:+.0f} s from the end of the run's "
+                f"last drive, and what is there takes {WATCH_SETTLE_S:.0f} s of "
+                f"watching to report, so it waits for the next")
 
     def _read(self) -> situation_mod.Situation:
         here = situation_mod.Situation.read(self.rover, at=self.now())

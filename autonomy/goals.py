@@ -227,6 +227,13 @@ LOOK_TILTS_DEG = (20.0, 0.0)
 #: first, so what is dropped is the smallest.
 CHANGE_LIMIT = 6
 
+#: A change smaller than furniture this near a larger one is a part of the same
+#: occasion, and the look at the larger one is the look at it. In M5 session 8
+#: the red bean bag's arrival was reported 1.05 m across with a 0.30 m piece of
+#: it 0.69 m away; a look aimed at either from the certified band has both in
+#: the gimbal camera's picture, so a second look would be the same picture.
+FOLD_M = 0.8
+
 #: A record this near a change names it. The change watch places a change at
 #: the middle of the cells that changed; on 2026-10-10 the armchair moved was
 #: found 0.1 m from its record, and an armchair is about this across.
@@ -906,7 +913,7 @@ def _fold(degrees: float) -> float:
 # --- going back to where something changed ----------------------------------
 
 def investigate_change(situation: Situation) -> list[Candidate]:
-    """A look at each furniture-sized change the change watch reports.
+    """A look at each change the change watch reports.
 
     **The scan says that something changed; a look says what.** The change
     watch (`ros_nav/change_watch.py`) finds a place solid in one visit and seen
@@ -924,22 +931,58 @@ def investigate_change(situation: Situation) -> list[Candidate]:
     `CHANGE_ATTEMPTS` the change waits for the watch to report it anew. Read
     from `situation.examined`, so a replay refuses what the run refused.
 
-    Only furniture-sized changes, the ones M5 counts: smaller ones are mostly
-    doors and the edges of things, and a rover that went to look at each would
-    look at nothing else.
+    **Changes smaller than furniture are offered too, and are worth less**,
+    since the value is the change's size. Until 2026-10-20 only the
+    furniture-sized ones were, and the multi-day benchmark's first round
+    failed on it: the bean bags and the stool the owner moved were reported
+    0.25 to 0.55 m across, no goal at all, and autonomy answered 1 of 6
+    questions about them where the survey loop answered 4
+    (docs/progress/2026-10-20-the-multi-day-benchmark-ends-after-two-days.md).
+    In the M5 sessions of 2026-10-14 to 18, 40 of the 63 small changes the
+    watch reported were within a metre of something staged that session or
+    the one before, 8 were on the doors the owner marked and 15 were neither. A change in a marked doorway
+    is offered and refused as the door (`scoring.vetoes`); one within
+    `FOLD_M` of a larger change is folded into that one's goal, unless the
+    larger one was looked at before this one was seen.
     """
     reach = situation.reach
     if reach is None:
         return []
     report = situation.change_report
-    found = [one for one in situation.changes
-             if one.get("large") and one.get("x_m") is not None]
+    found = [one for one in situation.changes if one.get("x_m") is not None]
     found.sort(key=lambda one: (-float(one.get("extent_m") or 0.0),
                                 float(one["x_m"]), float(one["y_m"])))
+    kept: list[dict[str, Any]] = []
+    for change in found:
+        into = _folded_into(situation, change, kept)
+        if into is None:
+            kept.append({**change, "folded": []})
+        else:
+            into["folded"].append({key: change.get(key) for key in
+                                   ("kind", "x_m", "y_m", "extent_m")})
     generation = (situation.world_generation
                   if situation.world_generation != refs.UNKNOWN else None)
     return [_change_goal(situation, reach, change, report, generation)
-            for change in found[:CHANGE_LIMIT]]
+            for change in kept[:CHANGE_LIMIT]]
+
+
+def _folded_into(situation: Situation, change: dict[str, Any],
+                 kept: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The larger change, already kept, whose look is the look at this one, or
+    None. Only a change smaller than furniture is folded, and not into one
+    looked at before it was seen: that look could not have seen it."""
+    if change.get("large"):
+        return None
+    x, y = float(change["x_m"]), float(change["y_m"])
+    since = change.get("seen_from")
+    for bigger in kept:
+        if math.hypot(float(bigger["x_m"]) - x, float(bigger["y_m"]) - y) > FOLD_M:
+            continue
+        looked_at = _last_look(situation, bigger)
+        if looked_at is not None and since is not None and looked_at < float(since):
+            continue
+        return bigger
+    return None
 
 
 def _change_goal(situation: Situation, reach: mapgrid.Reach,
@@ -961,9 +1004,14 @@ def _change_goal(situation: Situation, reach: mapgrid.Reach,
         what = "something"
     seen_s = (situation.at - float(change["seen_from"])
               if change.get("seen_from") is not None and situation.at else None)
+    folded = list(change.get("folded") or [])
     why = (f"{what} {'gone from' if kind == 'GONE' else 'new at'} "
            f"({x:.2f}, {y:.2f}), {extent:.2f} m across"
+           + ("" if change.get("large") else ", smaller than furniture")
            + (f", seen so for {seen_s / 60:.0f} min" if seen_s is not None else ""))
+    if folded:
+        why += (f"; the look takes in {len(folded)} smaller change"
+                f"{'s' if len(folded) > 1 else ''} within {FOLD_M} m")
     if len(near) > 1:
         why += f"; named after the nearest of {len(near)} records within {NAME_M} m"
     if looked:
@@ -972,7 +1020,8 @@ def _change_goal(situation: Situation, reach: mapgrid.Reach,
     elif tries:
         why += f"; {tries} attempt{'s' if tries > 1 else ''} took no look"
     detail = {"kind": kind, "change_at": {"x_m": round(x, 3), "y_m": round(y, 3)},
-              "extent_m": extent, "named": named["id"] if named else None,
+              "extent_m": extent, "large": bool(change.get("large")),
+              "folded": folded, "named": named["id"] if named else None,
               "named_label": named["label"] if named else None,
               "named_at_m": named["gap_m"] if named else None,
               "records_near": near[:4],
@@ -1068,6 +1117,26 @@ def _records_near(situation: Situation, x: float, y: float) -> list[dict[str, An
                         "looks": entity.get("observation_count")})
     out.sort(key=lambda one: (one["gap_m"], one["id"]))
     return out
+
+
+def _last_look(situation: Situation, change: dict[str, Any]) -> float | None:
+    """When the newest look at this change since the watch began seeing it so
+    was taken, or None if none has been."""
+    since = change.get("seen_from")
+    since = float(since) if since is not None else None
+    newest = None
+    for one in situation.examined:
+        if (one.get("outcome") != "looked" or one.get("kind") != change.get("kind")
+                or one.get("x_m") is None):
+            continue
+        if math.hypot(float(one["x_m"]) - float(change["x_m"]),
+                      float(one["y_m"]) - float(change["y_m"])) > EXAMINED_M:
+            continue
+        at = float(one.get("at") or 0.0)
+        if since is not None and at < since:
+            continue
+        newest = at if newest is None else max(newest, at)
+    return newest
 
 
 def _attempts_at(situation: Situation, change: dict[str, Any]) -> tuple[bool, int]:

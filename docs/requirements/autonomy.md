@@ -270,7 +270,10 @@ nothing nearby is worth its cost, it takes the goal whose only fault is the trip
 vetoes and the minimum gain still apply. When nothing anywhere is worth doing, it
 drives back to where the rover stood when the run was started, on that map, and
 ends the run without latching. A rover that cannot act at all waits two minutes,
-then does the same. A run that stood about on a draining battery, or ended
+then does the same. A run that has driven first waits, at most 90 s, for the
+change watch to report on where it stopped, since what the rover sees from a
+new place takes up to 50 s to reach a report
+([2026-10-20](../progress/2026-10-20-why-autonomy-hardly-went-to-look.md)). A run that stood about on a draining battery, or ended
 somewhere nobody chose while it could still get back, would violate this.
 
 **Shown on the rover on 2026-10-06.** The daemon keeps where each run started;

@@ -1,4 +1,5 @@
-"""Places on a map where a run may drive but must not choose to stop.
+"""Places on a map where a run may drive but must not choose to stop, and the
+doorways, where a change is the door.
 
 **Not a no-go zone.** Navigation still plans across these, and a person can
 still send the rover onto one; what they refuse is a run *choosing* one as the
@@ -18,6 +19,15 @@ the name the record gives it and why it is there.
 rover's centre, and in M3 session 13 the run chose spots 0.1-0.2 m outside
 the rug's edge, among the chair legs, where the tracks sat on the rug and the
 rover wedged. So a box refuses goals within `BODY_REACH_M` of it as well.
+
+**A doorway is a box of the other kind** (`"kind": "door"`): a place to stop
+like any other, and a place where a change the watch reports is the door
+opening or shutting rather than a thing worth a look. A shut door is a short
+stretch of new wall across a doorway, under the 0.6 m the watch calls
+furniture, and in the M5 sessions of 2026-10-14 to 18 eight of the small
+changes it reported were on the four doors the owner marked on 2026-10-11
+(`experiments/m5_changes/score_session.py`, `DOORS`, from which these are
+drawn, 0.2 m round each).
 """
 
 from __future__ import annotations
@@ -60,9 +70,22 @@ def refusal(goal: dict[str, Any] | None,
         return ""
     x, y = float(goal["x_m"]), float(goal["y_m"])
     for area in areas:
+        if area.get("kind") == "door":
+            continue
         if (area["min_x_m"] - reach_m <= x <= area["max_x_m"] + reach_m
                 and area["min_y_m"] - reach_m <= y <= area["max_y_m"] + reach_m):
             return ("the place it would drive to is on %s, which is not a place "
                     "to stop: %s" % (area.get("name", "a marked area"),
                                      area.get("why", "marked by the owner")))
     return ""
+
+
+def door_at(x: float, y: float, areas: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The doorway marked at this point, or None. The box is the door's own,
+    with its margin already drawn in: a change is a place, not a body."""
+    for area in areas:
+        if (area.get("kind") == "door"
+                and area["min_x_m"] <= x <= area["max_x_m"]
+                and area["min_y_m"] <= y <= area["max_y_m"]):
+            return area
+    return None

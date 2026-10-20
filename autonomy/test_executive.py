@@ -590,6 +590,76 @@ def test_a_run_with_nothing_left_worth_doing_goes_back_and_ends():
     session.close()
 
 
+#: A room long enough to look across: the rover at one end, mapped floor three
+#: metres long, nothing else in it.
+LONG = ["##############################",
+        "#............................#",
+        "#..R.........................#",
+        "#............................#",
+        "##############################"]
+
+
+def test_a_run_waits_for_the_change_watch_on_where_it_stopped_before_ending():
+    """The multi-day benchmark's day 1, 2026-10-19: the run decided it had
+    nothing left 10 s after its one drive, on a report from before it; the
+    next report held the moved things, and the run was already going home.
+    Here a change appears in the first report written 20 s after the drive."""
+    rover = test_fakes.ActingRover(room=LONG, entities=[])
+    session = Session(rover=rover)
+    session.executive.weights = scoring.Weights(investigate_changes=True,
+                                                go_further=True)
+    _arriving(session)
+    stopped = rover.clock()
+    session.executive._moved_at = stopped
+    change = _a_change_beside(rover, dx=1.2, extent_m=0.3, large=False)
+    plain = rover._nav_changes
+
+    def late(arguments):
+        got = plain(arguments)
+        if got["at"] < stopped + executive_mod.WATCH_SETTLE_S:
+            got["changes"] = []
+        else:
+            got["changes"] = [change]
+        return got
+    rover._nav_changes = late
+    first = session.executive.once()
+    check("with nothing in the report yet, the run does not end",
+          (first["acted"], rover.permission.status()["enabled"]), (False, True))
+    check("...saying it waits for the watch", "change watch" in first["why"], True)
+    check("...in a nap short enough to renew through",
+          max(session.slept) <= executive_mod.IDLE_NAP_S, True)
+    session.executive.loop()
+    marked = decide_mod.examined(session.store)
+    check("once the report has it, the run goes and looks at it",
+          [(one["kind"], one["outcome"]) for one in marked], [(change["kind"], "looked")])
+    check("...and then the run ends", rover.permission.status()["enabled"],
+          False)
+    session.close()
+
+
+def test_a_run_waits_for_the_change_watch_no_longer_than_its_limit():
+    rover = test_fakes.ActingRover(room=EMPTY, entities=[])
+    session = Session(rover=rover)
+    start = rover.permission.run.start
+    rover.at = (start["x_m"] + 0.5, start["y_m"])
+    _arriving(session)
+    session.executive._moved_at = rover.clock()
+    plain = rover._nav_changes
+
+    def stuck(arguments):
+        got = plain(arguments)
+        got["at"] = session.executive._moved_at - 5.0
+        return got
+    rover._nav_changes = stuck
+    summary = session.executive.loop()
+    check("a watch that writes no new report holds the run a while",
+          sum(session.slept) >= executive_mod.WATCH_WAIT_GIVE_UP_S, True)
+    check("...then it goes back and ends",
+          ("nothing left worth doing" in summary["ended"],
+           rover.permission.status()["enabled"]), (True, False))
+    session.close()
+
+
 def test_a_run_already_where_it_started_ends_without_driving():
     rover = test_fakes.ActingRover(room=EMPTY, entities=[])
     session = Session(rover=rover)
@@ -1077,6 +1147,8 @@ TESTS = (test_an_m4_trial_copies_the_store_and_looks_again_from_where_it_stands,
     test_a_look_refused_while_the_rovers_own_runs_is_asked_again,
     test_every_movement_names_the_episode_and_the_action_that_asked_for_it,
     test_a_run_with_nothing_left_worth_doing_goes_back_and_ends,
+    test_a_run_waits_for_the_change_watch_on_where_it_stopped_before_ending,
+    test_a_run_waits_for_the_change_watch_no_longer_than_its_limit,
     test_a_run_already_where_it_started_ends_without_driving,
     test_a_run_that_cannot_act_waits_a_while_then_goes_back,
     test_standing_still_is_not_mistaken_for_a_dead_executive,

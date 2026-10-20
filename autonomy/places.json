@@ -9,6 +9,50 @@
       "min_y_m": -13.6,
       "max_y_m": -11.8,
       "drawn_from": "a 6 x 8 ft rug centred on the table, whose legs and chairs ring (-18.4, -12.7) on the map"
+    },
+    {
+      "kind": "door",
+      "name": "the door at (-10.7, -12.6)",
+      "why": "one of the four doors the owner keeps shut, marked on the console's map on 2026-10-11",
+      "added": "2026-10-20",
+      "min_x_m": -11.42,
+      "max_x_m": -10.02,
+      "min_y_m": -13.27,
+      "max_y_m": -11.91,
+      "drawn_from": "experiments/m5_changes/score_session.py DOORS, 0.2 m round the door"
+    },
+    {
+      "kind": "door",
+      "name": "the door at (-12.4, -12.8)",
+      "why": "one of the four doors the owner keeps shut, marked on the console's map on 2026-10-11",
+      "added": "2026-10-20",
+      "min_x_m": -13.05,
+      "max_x_m": -11.67,
+      "min_y_m": -13.31,
+      "max_y_m": -12.21,
+      "drawn_from": "experiments/m5_changes/score_session.py DOORS, 0.2 m round the door"
+    },
+    {
+      "kind": "door",
+      "name": "the door at (-13.9, -14.3)",
+      "why": "one of the four doors the owner keeps shut, marked on the console's map on 2026-10-11",
+      "added": "2026-10-20",
+      "min_x_m": -14.71,
+      "max_x_m": -13.17,
+      "min_y_m": -14.91,
+      "max_y_m": -13.73,
+      "drawn_from": "experiments/m5_changes/score_session.py DOORS, 0.2 m round the door"
+    },
+    {
+      "kind": "door",
+      "name": "the bathroom door",
+      "why": "one of the four doors the owner keeps shut, marked on the console's map on 2026-10-11",
+      "added": "2026-10-20",
+      "min_x_m": -15.14,
+      "max_x_m": -13.90,
+      "min_y_m": -13.95,
+      "max_y_m": -12.91,
+      "drawn_from": "experiments/m5_changes/score_session.py DOORS, 0.2 m round the door"
     }
   ]
 }

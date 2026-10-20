@@ -199,9 +199,9 @@ DEFAULTS: dict[str, Any] = {
     "useful_uncertainty_m": 0.30,
     # 0.6 m is the change watch's own line for furniture (`LARGE_M` in
     # ros_nav/change_watch.py): a change that size, not yet looked at, is worth
-    # half a unit, as a small room of new floor is. Nothing measured yet says
-    # how often a change looked at turns out worth knowing; when the M5
-    # sessions do, this is where it goes.
+    # half a unit, as a small room of new floor is, and a stool's 0.3 m a
+    # third. Nothing measured yet says how often a change looked at turns out
+    # worth knowing; when the M5 sessions do, this is where it goes.
     "useful_change_m": 0.60,
     "time_scale_s": 60.0,
     "travel_scale_m": 10.0,
@@ -347,11 +347,20 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
                                       _geofence(situation, weights))
     if outside:
         out.append({"veto": "outside the safe area", "why": outside})
+    if areas is None:
+        areas = places.areas_for(situation.nav.get("map_id"))
     marked = places.refusal(
-        facts.get("goal") if facts.get("needs_movement", True) else None,
-        places.areas_for(situation.nav.get("map_id")) if areas is None else areas)
+        facts.get("goal") if facts.get("needs_movement", True) else None, areas)
     if marked:
         out.append({"veto": "not a place to stop", "why": marked})
+    change = facts.get("change") or {}
+    if (candidate.type == "investigate_change" and change.get("x_m") is not None):
+        door = places.door_at(float(change["x_m"]), float(change["y_m"]), areas)
+        if door:
+            out.append({"veto": "a door",
+                        "why": f"the change is in {door.get('name', 'a doorway')}, "
+                               f"so it is the door opening or shutting rather "
+                               f"than a thing worth a look"})
     cool = cooling.cooling(situation.cooled, candidate.target, now=situation.at)
     if cool:
         out.append({"veto": "cooling off", "why": str(cool.get("why") or

@@ -1689,11 +1689,19 @@ owner. In order from here:
 2. **A moved thing worth a look.** The multi-day benchmark's first round
    failed on 2026-10-20
    ([the result](../progress/2026-10-20-the-multi-day-benchmark-ends-after-two-days.md)):
-   autonomy counted the moved bean bags and stool as small changes below its
-   minimum and ended within a minute, while the fixed loop found four of six
-   moved placements. A second round waits on autonomy treating a moved thing
-   as worth a look, and on item 3. Its two days are fresh drives items 1 and 3
-   can use.
+   autonomy hardly went to look, while the fixed loop found four of six moved
+   placements. Replayed from the rover's record of each decision, on day 1 the
+   run ended a second before the change watch reported the moved things, and on
+   day 2 the watch never reported them, because the owner moved them in its
+   sight ([why](../progress/2026-10-20-why-autonomy-hardly-went-to-look.md)).
+   Since 2026-10-20 a run waits for the watch to report on where it last
+   stopped before it ends, and a change smaller than furniture is a goal, its
+   value its size, with the marked doorways refused. What is left is the watch:
+   it compares one visit to a place with the next, and a place kept in sight
+   while something is moved there is one visit, so the move is never reported;
+   with the rover parked at its charger most of the day, that is the ordinary
+   case. A second round waits on that and on item 3. Its two days are fresh
+   drives items 1 and 3 can use.
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). The look trial's misses were mostly not a second record
    of one object: a third were aimed at records of no object -- bare floor,

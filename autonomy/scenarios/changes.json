@@ -179,15 +179,67 @@
       }
     },
     {
-      "name": "a change smaller than furniture is not offered",
-      "why": "Doors and the edges of things: M5 counts furniture-sized changes, and a rover that went to look at every small one would look at nothing else.",
+      "name": "a change smaller than furniture is looked at",
+      "why": "The bean bags and the stool the owner moves read 0.25 to 0.55 m across to the watch. Until 2026-10-20 nothing that small was offered, and in the multi-day benchmark's first round autonomy answered 1 of 6 questions about moved things where the survey loop answered 4.",
       "map": "flat",
       "weights": {"investigate_changes": true},
       "changes": [
         {"kind": "GONE", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.4, "area_m2": 0.04, "large": false,
          "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
       ],
-      "expect": {"chose": "nothing", "not_offered": [{"type": "investigate_change"}]}
+      "expect": {
+        "chose": {"type": "investigate_change", "target": "change:GONE@2.5,1.0"},
+        "terms": [{"match": {"type": "investigate_change"}, "field": "gain", "at_most": 0.41},
+                  {"match": {"type": "investigate_change"}, "field": "gain", "at_least": 0.39}]
+      }
+    },
+    {
+      "name": "a change smaller than furniture is worth less than furniture",
+      "why": "Both 2 m away and in view: what the watch says is larger is looked at first, since its value is its size.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "NEW", "x_m": 2.5, "y_m": 1.0, "extent_m": 0.3, "area_m2": 0.03, "large": false,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0},
+        {"kind": "NEW", "x_m": 2.5, "y_m": 1.9, "extent_m": 0.7, "area_m2": 0.12, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {
+        "chose": {"type": "investigate_change", "target": "change:NEW@2.5,1.9"},
+        "order": [{"target": "change:NEW@2.5,1.9"}, {"target": "change:NEW@2.5,1.0"}]
+      }
+    },
+    {
+      "name": "a smaller change beside a larger one is taken in by the same look",
+      "why": "M5 session 8: the red bean bag's arrival was reported 1.05 m across with a 0.30 m piece of it 0.69 m away. A look at the one has the other in its picture, so the piece is not a goal of its own.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "NEW", "x_m": 2.5, "y_m": 1.0, "extent_m": 1.05, "area_m2": 0.2, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0},
+        {"kind": "NEW", "x_m": 2.5, "y_m": 1.69, "extent_m": 0.3, "area_m2": 0.03, "large": false,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "expect": {
+        "chose": {"type": "investigate_change", "target": "change:NEW@2.5,1.0"},
+        "not_offered": [{"target": "change:NEW@2.5,1.7"}]
+      }
+    },
+    {
+      "name": "a smaller change seen after the larger one was looked at is a goal of its own",
+      "why": "The look at the larger change was taken before the watch began seeing this one, so it showed the place as it was.",
+      "map": "flat",
+      "weights": {"investigate_changes": true},
+      "changes": [
+        {"kind": "NEW", "x_m": 2.5, "y_m": 1.0, "extent_m": 1.05, "area_m2": 0.2, "large": true,
+         "seen_from": 1757320500.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0},
+        {"kind": "NEW", "x_m": 2.5, "y_m": 1.69, "extent_m": 0.3, "area_m2": 0.03, "large": false,
+         "seen_from": 1757320700.0, "seen_until": 1757320790.0, "was_otherwise_at": 1757310000.0}
+      ],
+      "examined": [
+        {"kind": "NEW", "x_m": 2.5, "y_m": 1.0, "at": 1757320600.0, "outcome": "looked"}
+      ],
+      "expect": {"chose": {"type": "investigate_change", "target": "change:NEW@2.5,1.7"}}
     },
     {
       "name": "a change in the shut cupboard is offered and refused",

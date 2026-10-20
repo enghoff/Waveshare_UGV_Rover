@@ -266,8 +266,17 @@ is the best this rover has ever managed on a tape-measured pair.
 since the place was last seen (`ros_nav/change_watch.py`, read through the
 daemon's `nav_changes`). The scan says that something changed and nothing about
 what; a look aimed at the place says what, and puts the lidar on it from a
-viewpoint of its own. Only furniture-sized changes are offered, the ones M5
-counts. Each is named after the record placed nearest it, within 0.6 m, or is
+viewpoint of its own. **Changes of every size are offered, the smaller worth
+less**, since 2026-10-20: until then only furniture-sized ones were, and in the
+multi-day benchmark's first round the bean bags and stool the owner moved were
+reported 0.25 to 0.55 m across, no goal at all, so autonomy hardly went to look
+([the result](../docs/progress/2026-10-20-the-multi-day-benchmark-ends-after-two-days.md)).
+In the M5 sessions, 40 of the 63 small changes the watch reported were at
+something staged; most of the rest were doors and the corridor's clutter. A
+change in one of the doorways the owner marked (`places.json`, `"kind":
+"door"`) is offered and refused as the door, and a small change within 0.8 m of
+a larger one is taken in by that one's look (`goals.FOLD_M`), unless that look
+came before the small one was seen. Each is named after the record placed nearest it, within 0.6 m, or is
 something unknown -- and the name is a guess: on 2026-10-11 the store held 663
 unlabelled records and each change in scene 1 had three or four within 0.35 m,
 the same object recorded several times over (R-WS-17), so every record within
@@ -390,6 +399,18 @@ hands the run back. The trip is an episode of its own, with the decision
 untrusted pose) waits instead, in naps that keep the lease, and gives up the same
 way after two minutes. See
 [the decision](../docs/decisions/a-run-with-nothing-to-do-goes-home.md).
+
+**But not before the change watch has reported on where the run last stopped**
+(`executive.WATCH_SETTLE_S`), since 2026-10-20. The watch reports a change once
+it has 20 s of evidence for it, every 30 s, so what the rover can see from a
+new place reaches a decision up to 50 s after it stops. In the multi-day
+benchmark's first round the run decided it had nothing left 10 s after its one
+drive, on a report from before it; the next, a second later, held the stool's
+old and new places and the red bean bag's new one, and the run was driving
+home ([2026-10-20](../docs/progress/2026-10-20-why-autonomy-hardly-went-to-look.md)).
+So a run that has driven waits, a nap at a time, for a report written 20 s
+after its last drive ended, and decides again; never longer than 90 s, and not
+at all for a watch that is not counting.
 
 **The rover's own frontier `explore` is deliberately not used**, even for a
 frontier goal. Two reasons, and the second is the one that would matter anyway:
@@ -590,7 +611,7 @@ else.
 | [`goals.py`](goals.py) | what could usefully be done next, and what each would cost |
 | [`hypotheses.py`](hypotheses.py) | which placed things to check are really there, and from where (M0a) |
 | [`scoring.py`](scoring.py) | what each is worth, what refuses it, and which one wins |
-| [`places.py`](places.py) | places a run may cross but must not choose to drive to, per map (`places.json`): the rug under the dining table |
+| [`places.py`](places.py) | places a run may cross but must not choose to drive to, per map (`places.json`): the rug under the dining table; and the doorways, where a change is the door |
 | [`cooling.py`](cooling.py) | what is not worth looking at again just now, and when that lapses |
 | [`decide.py`](decide.py) | one deliberation, recorded; `python3 decide.py` says what it would do |
 | [`executive.py`](executive.py) | the loop that carries one out, under a permit the daemon can take back |

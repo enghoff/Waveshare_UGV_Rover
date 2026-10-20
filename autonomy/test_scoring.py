@@ -262,6 +262,39 @@ def test_a_marked_place_is_not_chosen_as_a_drive_target() -> None:
           (True, []))
 
 
+def test_a_change_in_a_doorway_is_the_door() -> None:
+    """A shut door is a short stretch of new wall across a doorway, under the
+    size the watch calls furniture; since small changes are goals (2026-10-20),
+    one in a doorway the owner marked is offered and refused as the door."""
+    import places
+    x, y = _situation().where
+    at = 1757320800.0
+    change = {"kind": "NEW", "x_m": round(x + 1.0, 2), "y_m": round(y, 2),
+              "extent_m": 0.4, "area_m2": 0.04, "large": False,
+              "seen_from": at - 300.0, "seen_until": at - 10.0}
+    here = _situation(changes={"at": at - 10.0, "age_s": 10.0, "counting": True,
+                               "paused": "", "changes": [change]})
+    candidate = goals.investigate_change(here)[0]
+    door = [{"kind": "door", "name": "the bathroom door", "why": "kept shut",
+             "min_x_m": x + 0.7, "max_x_m": x + 1.3,
+             "min_y_m": y - 0.3, "max_y_m": y + 0.3}]
+    refused = scoring.vetoes(candidate, here, areas=door)
+    check("a change in a marked doorway is refused as the door",
+          [one["veto"] for one in refused], ["a door"])
+    check("...saying which door", "the bathroom door" in refused[0]["why"], True)
+    elsewhere = [{**door[0], "min_x_m": x + 2.0, "max_x_m": x + 3.0}]
+    check("...and one outside it is not",
+          scoring.vetoes(candidate, here, areas=elsewhere), [])
+    check("a doorway is still a place to stop",
+          places.refusal({"x_m": x + 1.0, "y_m": y}, door), "")
+    on_file = places.areas_for("7da19bef3888")
+    check("the four doors the owner marked are on file for the flat's map",
+          sum(1 for one in on_file if one.get("kind") == "door"), 4)
+    check("...and the bathroom door's is where the M5 count put it",
+          (places.door_at(-14.52, -13.43, on_file) or {}).get("name"),
+          "the bathroom door")
+
+
 def test_two_equal_candidates_break_the_same_way_twice() -> None:
     here = _situation(entities=[_a_thing_worth_looking_at(),
                                 a_thing("object:9", 2.2, 1.0,
@@ -367,6 +400,7 @@ TESTS = (
     test_a_thing_that_has_been_put_aside_is_refused_with_its_reason,
     test_a_safe_area_refuses_what_is_outside_it,
     test_a_marked_place_is_not_chosen_as_a_drive_target,
+    test_a_change_in_a_doorway_is_the_door,
     test_two_equal_candidates_break_the_same_way_twice,
     test_the_weights_can_be_changed_without_changing_the_code,
     test_an_m4_trial_considers_its_targets_however_well_they_are_placed,
