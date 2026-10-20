@@ -4,7 +4,9 @@ Status: agreed with the owner on 2026-10-18 -- the budget and leaving out the
 map reset -- and written before the first day was run. It sizes and judges the
 plan's
 [multi-day usefulness benchmark](../plans/autonomous-curiosity.md#multi-day-usefulness-benchmark)
-for its first round.
+for its first round. That round ran on 2026-10-19 and 2026-10-20 and was
+stopped after two days by the owner, once criterion 3 could no longer be met;
+it fails ([the result](../progress/2026-10-20-the-multi-day-benchmark-ends-after-two-days.md)).
 
 ## What is compared
 

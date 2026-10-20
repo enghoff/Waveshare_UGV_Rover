@@ -13,7 +13,7 @@ now been driven, which replaced a count of twenty on 2026-10-07
 of them and the re-drives on 2026-10-10 ([sessions 14 to 19](../progress/2026-10-10-m3-sessions-14-to-19.md)).
 The run owed on the fix for the fault session 17 found ([session 20](../progress/2026-10-10-m3-session-20.md)) found nothing new, so all twelve criteria read as met, and the owner signed M3 off on 2026-10-10. M4 was [revised on 2026-10-09](../decisions/m4-measures-where-things-are.md) to what the hardware and vision models measure, where things are against tape, judged against a re-look; it needs a new taped set and two small pieces of code before its attempts. The same day every remaining gate was tied to what it is for ([agreed](../decisions/every-gate-says-what-it-is-for.md)): M5 starts from false alarms on unchanged scenes, M6 and M7 wait until there is a skill to learn, M10 can follow M4. Seventeen development attempts then found a look from where the rover stood doing as well as the chosen viewpoint for things in reach, so M4 now asks only of things out of reach and the rest are turned to and looked at ([agreed](../decisions/m4-asks-of-things-out-of-reach.md)). Thirteen development attempts out of reach then found the chosen viewpoint improving its thing five times against the re-look's once ([2026-10-09](../progress/2026-10-09-m4-out-of-reach.md)). M5 was measured on 2026-10-14 ([the result](../progress/2026-10-14-m5-measured.md)): 9 of 16 staged changes found, none of 20 room-controls with a false alarm that held up, the rover looking at changes first and leaving them once looked at; it fails criterion 4, a record holding both armchairs. The cause, pictures filed by bearing alone with the depth camera asleep, is answered by a lidar range for each such region, deployed the same day; replayed, no record holds both armchairs ([2026-10-14](../progress/2026-10-14-identity-with-lidar-ranges.md)), and in M5 session 3 on 2026-10-15 two of three moved things kept their
 records with no record taking two things; the step that moves a record with its
-thing changed nothing there ([2026-10-15](../progress/2026-10-15-m5-session-3.md)). On 2026-10-16 the two black armchairs were counted as things nothing the rover has can tell apart ([agreed](../decisions/the-two-armchairs-cannot-be-told-apart.md)); with them set aside no record in the counted sessions held two things, so every M5 criterion read as met, and the owner signed M5 off the same day. That recount compared pictures within each session only: counted across sessions, two records took the black bean bag in the shakedown and the red bean bag in session 1 as ordinary matches, so criterion 4 fails after all ([2026-10-16](../progress/2026-10-16-m5-session-5.md#a-correction-m5s-criterion-4-was-not-met)), and the owner withdrew the sign-off the same day. On 2026-10-18 session 8 judged it again on the world model kept per visit, every criterion read as met ([session 8](../progress/2026-10-18-m5-session-8.md)), and the owner signed M5 off. The multi-day benchmark has not run. Later phases remain proposed. This is the
+thing changed nothing there ([2026-10-15](../progress/2026-10-15-m5-session-3.md)). On 2026-10-16 the two black armchairs were counted as things nothing the rover has can tell apart ([agreed](../decisions/the-two-armchairs-cannot-be-told-apart.md)); with them set aside no record in the counted sessions held two things, so every M5 criterion read as met, and the owner signed M5 off the same day. That recount compared pictures within each session only: counted across sessions, two records took the black bean bag in the shakedown and the red bean bag in session 1 as ordinary matches, so criterion 4 fails after all ([2026-10-16](../progress/2026-10-16-m5-session-5.md#a-correction-m5s-criterion-4-was-not-met)), and the owner withdrew the sign-off the same day. On 2026-10-18 session 8 judged it again on the world model kept per visit, every criterion read as met ([session 8](../progress/2026-10-18-m5-session-8.md)), and the owner signed M5 off. The multi-day benchmark's first round ran two days and was stopped on 2026-10-20 when its third could no longer change the verdict: it fails, autonomy answering no better than the fixed loop, while the memory held across a restart ([2026-10-20](../progress/2026-10-20-the-multi-day-benchmark-ends-after-two-days.md)). Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -1097,7 +1097,15 @@ Keep acceptance objects/runs separate from tuning data.
 **Planned 2026-10-18 for a first round of three days**, the budget agreed with
 the owner and the map reset left out until the world model's records can cross
 maps ([the decision](../decisions/the-multi-day-benchmark-is-judged-so.md);
-[the daily run](../runbooks/daily-benchmark-run.md)).
+[the daily run](../runbooks/daily-benchmark-run.md)). **The first round failed
+on 2026-10-20 after two of its three days**
+([the result](../progress/2026-10-20-the-multi-day-benchmark-ends-after-two-days.md)).
+The memory held across a restart and nothing stale drove a goal, but autonomy
+answered 13 of 18 right against the fixed loop's 16, and since the controls
+were right every time the third day could at best have drawn level. Autonomy
+hardly went to look: it counted the moved things as small changes and ended
+within a minute. A second round waits on a moved thing becoming worth a look,
+and on records giving way when their thing is seen elsewhere.
 
 State its budget in charges and owner hours before planning it. R-SAFE-6 is open
 and nothing docks the rover, so every minute of it is supervised and every charge
@@ -1658,7 +1666,7 @@ the problem.
 | M3 (passed 2026-10-10) | bounded autonomous loop | a supervised session in each listed condition, then the current code over the conditions its changes touched; measured stops, permission expiry and failure tests |
 | M4 (passed 2026-10-10) | active perception | placement against tape: chosen viewpoints beat a paired re-look, mean gain positive, claims honest, over a predeclared attempt set sized for it; the rover's own gain checked against the tape |
 | M5 (passed 2026-10-18) | temporal curiosity | false alarms on replayed unchanged revisits within a budget set from the flat's change rate, then scripted changed/unchanged scenes |
-| M1-M5 usefulness | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted; budget stated in charges and owner hours |
+| M1-M5 usefulness (first round failed 2026-10-20) | memory improves useful answers over days | >=3 days, an equal-budget fixed-schedule baseline, restarts/reset, all attempts counted; budget stated in charges and owner hours |
 | M6 (on evidence) | restricted skill substrate | malicious/invalid rejection + reference skill equal to the executive in replay and stopping on the rover |
 | M7 (on evidence) | autonomous skill acquisition | proposed -> replayed -> at least as good as the executive on the rover, paired -> reused skill |
 | M8 (optional) | self-generated curriculum | competence-progress beats random baseline |
@@ -1678,11 +1686,14 @@ owner. In order from here:
    and 4 ([2026-10-18](../progress/2026-10-18-m10-look-trial.md)): with one
    look in nine landing there is little for a predictor to separate, so a second
    trial waits on item 3.
-2. **The multi-day usefulness benchmark.** Planned on 2026-10-18 and ready
-   to run: three days, about 20 minutes of driving and 45 minutes of the
-   owner's time each, the owner saying "do the daily run"
-   ([the decision](../decisions/the-multi-day-benchmark-is-judged-so.md)). Its
-   days also give the fresh drives items 1 and 3 need.
+2. **A moved thing worth a look.** The multi-day benchmark's first round
+   failed on 2026-10-20
+   ([the result](../progress/2026-10-20-the-multi-day-benchmark-ends-after-two-days.md)):
+   autonomy counted the moved bean bags and stool as small changes below its
+   minimum and ended within a minute, while the fixed loop found four of six
+   moved placements. A second round waits on autonomy treating a moved thing
+   as worth a look, and on item 3. Its two days are fresh drives items 1 and 3
+   can use.
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). The look trial's misses were mostly not a second record
    of one object: a third were aimed at records of no object -- bare floor,

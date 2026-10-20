@@ -6,6 +6,11 @@ the tools are in `experiments/multiday/`, staged on the rover in `~/multiday`
 (copied, not deployed: `scp experiments/multiday/*.py experiments/multiday/*.json experiments/multiday/*.sh orin:multiday/`
 after any change). Three days in all.
 
+**The first round is over.** It was stopped after day 2 on 2026-10-20, once
+its verdict was fixed ([the result](../progress/2026-10-20-the-multi-day-benchmark-ends-after-two-days.md)).
+Until a second round is planned there is no daily run: say so if asked, and
+point to the result.
+
 ## 1. Which day
 
 The next day is one more than the `dayN-answers.json` files in
