@@ -1,0 +1,92 @@
+{
+ "name": "md-day2-1020-restart",
+ "entries": [
+  {
+   "step": "restart",
+   "at": 1792462024.1,
+   "asked_before": {
+    "red bean bag": [
+     -16.38,
+     -11.64
+    ],
+    "black bean bag": [
+     -16.13,
+     -10.95
+    ],
+    "stool": [
+     -17.3,
+     -13.33
+    ],
+    "the bed": [
+     -8.72,
+     -11.17
+    ],
+    "the wardrobe": [
+     -6.93,
+     -10.26
+    ],
+    "the floor lamp": [
+     -16.26,
+     -17.94
+    ],
+    "the black cabinet": [
+     -19.94,
+     -15.08
+    ],
+    "the portrait in the bedroom": [
+     -6.16,
+     -11.75
+    ],
+    "the snowy-tree painting": [
+     -20.57,
+     -15.05
+    ]
+   }
+  },
+  {
+   "step": "restart",
+   "at": 1792462102.9,
+   "asked_after": {
+    "red bean bag": [
+     -16.38,
+     -11.64
+    ],
+    "black bean bag": [
+     -16.13,
+     -10.95
+    ],
+    "stool": [
+     -17.3,
+     -13.33
+    ],
+    "the bed": [
+     -8.72,
+     -11.17
+    ],
+    "the wardrobe": [
+     -6.93,
+     -10.26
+    ],
+    "the floor lamp": [
+     -16.26,
+     -17.94
+    ],
+    "the black cabinet": [
+     -19.94,
+     -15.08
+    ],
+    "the portrait in the bedroom": [
+     -6.16,
+     -11.75
+    ],
+    "the snowy-tree painting": [
+     -20.57,
+     -15.05
+    ]
+   },
+   "same": true,
+   "settled": true,
+   "trusted": true
+  }
+ ]
+}
