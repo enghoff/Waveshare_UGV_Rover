@@ -1706,9 +1706,11 @@ owner. In order from here:
    rover's sight were reported once it drove off, and a run went to look at
    each at once and waited for the watch before it ended
    ([2026-10-21](../progress/2026-10-21-the-fixes-on-the-floor.md)). Parked,
-   the watch reports nothing, so a run that starts on the charger after things
-   were moved in its sight still has nothing to go on: an autonomy arm that
-   starts there needs a first look round.
+   the watch reports nothing, so a run that started on the charger had nothing
+   to go on; since the same day what it has seen from one place is a goal,
+   looked at from 0.7 m or more away
+   ([2026-10-21](../progress/2026-10-21-a-run-from-the-charger-has-something-to-look-at.md)),
+   deployed and not yet seen on the floor.
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). The look trial's misses were mostly not a second record
    of one object: a third were aimed at records of no object -- bare floor,
