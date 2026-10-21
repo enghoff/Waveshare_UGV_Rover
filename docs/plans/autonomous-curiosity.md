@@ -1709,8 +1709,10 @@ owner. In order from here:
    the watch reports nothing, so a run that started on the charger had nothing
    to go on; since the same day what it has seen from one place is a goal,
    looked at from 0.7 m or more away
-   ([2026-10-21](../progress/2026-10-21-a-run-from-the-charger-has-something-to-look-at.md)),
-   deployed and not yet seen on the floor.
+   ([2026-10-21](../progress/2026-10-21-a-run-from-the-charger-has-something-to-look-at.md)).
+   On the floor that evening a run from the parking spot went straight to a
+   bean bag set down in sight, and the watch confirmed it after the look
+   ([2026-10-21](../progress/2026-10-21-a-run-from-the-parking-spot-on-the-floor.md)).
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). The look trial's misses were mostly not a second record
    of one object: a third were aimed at records of no object -- bare floor,
