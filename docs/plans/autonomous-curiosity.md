@@ -1733,6 +1733,11 @@ owner. In order from here:
    candidate rule for version 5 mends; the black bean bag and the stool look as
    much like other things as like themselves; and the two stale records need
    a place the lidar can judge and absence judged over the whole visit.
+   Four rules tried on 2026-10-20 and 21 each changed which of a thing's
+   records answers and none reduced how many it has; placing a low thing by
+   the lidar, the last of them, left the black bean bag answering from another
+   of its old records and broke a control
+   ([2026-10-21](../progress/2026-10-21-placing-low-things-by-the-lidar.md)).
 
 Running unattended is not on this list: on 2026-10-21 the owner said it needs no
 gate ([the decision](../decisions/every-gate-says-what-it-is-for.md#running-unattended-needs-no-gate)).
