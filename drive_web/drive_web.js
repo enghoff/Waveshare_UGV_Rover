@@ -167,7 +167,6 @@ function render(next) {
   // toggle drawn from anything else would be a button disagreeing with the room.
   const explore = $("explore");
   explore.classList.toggle("on", next.exploring);
-  explore.textContent = next.exploring ? "stop exploring" : "explore";
   explore.disabled = !next.link.can_drive
       || !next.link.tools.includes("explore")
       || (next.busy !== null && !next.exploring);
@@ -177,7 +176,6 @@ function render(next) {
   // because an agent can start a run too.
   const run = $("run"), running = !!next.autonomy;
   run.classList.toggle("on", running);
-  run.textContent = running ? "end run" : "run";
   run.disabled = !next.link.can_drive || (next.busy !== null && !running);
 }
 

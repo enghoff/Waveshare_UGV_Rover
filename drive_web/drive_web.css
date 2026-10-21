@@ -62,14 +62,22 @@
      without looking, so it keeps the corner it has always had -- a button that
      pushed it along would be a stop button in a different place every time the
      header's contents changed. */
-  #explore {
+  #run, #explore {
     padding: 9px 14px; font-size: 14px; font-weight: 600; border-radius: 6px;
+    display: inline-grid;
   }
-  /* On, rather than merely pressed: while this is running the rover is driving
-     itself somewhere nobody chose, and the header should say so from across the
-     room. */
-  #explore.on {
-    background: var(--accent); color: #fff; border-color: var(--accent);
+  /* Both labels in one cell and one of them hidden, so the button is as wide
+     as its longer label whether on or off: starting a run does not push STOP
+     onto a second row. */
+  #run > span, #explore > span { grid-area: 1 / 1; }
+  #run:not(.on) > span + span, #explore:not(.on) > span + span,
+  #run.on > span:first-child, #explore.on > span:first-child { visibility: hidden; }
+  /* On, rather than merely pressed: while either is running the rover is
+     driving itself somewhere nobody chose, and the header should say so from
+     across the room. The two look and behave alike because they are the same
+     kind of control: press to start, press again to end. */
+  #run.on, #explore.on {
+    background: var(--accent); color: var(--card); border-color: var(--accent);
   }
 
   /* --- the world-state popup --------------------------------------------- */

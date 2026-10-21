@@ -41,12 +41,12 @@ restarting something.
 
 ## Starting a run
 
-**From the console:** press **run**, next to **world**. Nothing is asked. The run
+**From the console:** press **autonomous run**, next to **world**. Nothing is asked. The run
 has no limit on time, travel or actions, ends after three failures in a row, and
 may go anywhere on the mapped floor. When nothing is left worth doing anywhere, it
 drives back to where it was started and ends by itself, so start it where you want
-the rover to finish, beside the charger. The button reads **end run** while it is
-going, and pressing it is the ordinary stop. A refusal appears on the notice line,
+the rover to finish, beside the charger. The button reads **end autonomous run** while it
+is going, and pressing it is the ordinary stop. A refusal appears on the notice line,
 for example when the rover has not confirmed where it is.
 
 **From an agent:** call `autonomy_start` over the daemon's protocol, with what the
@@ -104,7 +104,7 @@ the first session of the day.
 
 Any of these, and the first is the one to reach for:
 
-- **the console's stop button** or its **end run**, or closing the last console
+- **the console's stop button** or its **end autonomous run**, or closing the last console
   tab for a run started from the console;
 - **saying so out loud** to the voice model, which calls the same `stop_driving`;
 - **driving it by hand** from the console, which is a takeover and ends the run;
@@ -151,7 +151,7 @@ distance the rover actually travelled after it was told.
 
 | It says | What it means |
 |---|---|
-| `autonomy is not enabled` | no run is open; **run** or `autonomy_start` opens one |
+| `autonomy is not enabled` | no run is open; **autonomous run** or `autonomy_start` opens one |
 | a reason, under `latched` | somebody stopped the rover; starting a run again clears it |
 | `the rover has not confirmed where it is on the map` | refused before opening; see step 2 above |
 | `the run ended: ...` | a budget or the watchdog closed it — open a new one |
