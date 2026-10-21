@@ -180,6 +180,15 @@ SOLID_MIN = 3
 #: records of one thing 0.70 or more.
 ONE_THING_RIVALS = os.environ.get("ONE_THING_RIVALS", "0") == "1"
 DOUBLE_COS = float(os.environ.get("DOUBLE_COS", 0.70))
+#: LIDAR_LOW_M (tried 2026-10-21, 0 is off): a low region's depth place that
+#: runs this far past the lidar's return along its bearing at its shutter is
+#: put at the return plus LIDAR_BEHIND_M, the median by which depth runs past
+#: the lidar on things standing on the floor (depth_vs_lidar.py). The black
+#: bean bag's record v1470 was placed 2 m beyond the bag on one 4.9 m depth box
+#: where the lidar said 2.4-2.8 m.
+LIDAR_LOW_M = float(os.environ.get("LIDAR_LOW_M", 0))
+LIDAR_LOW_Z = float(os.environ.get("LIDAR_LOW_Z", 0.8))
+LIDAR_BEHIND_M = 0.15
 #: The end of development: M5 session 2's last labelled look was before this
 #: (2026-10-14 13:00 local). Development runs see nothing after it.
 DEVELOPMENT_END = 1791963000.0
@@ -964,7 +973,35 @@ def settle_pending(mem, t, decisions):
             o["settled"] = True
 
 
+def lidar_low(a, recs, over_m=None):
+    """The looks with LIDAR_LOW_M's rule applied, and the indices it moved."""
+    over_m = LIDAR_LOW_M if over_m is None else over_m
+    a = dict(a)
+    src = np.array([str(s) for s in a["place_from"]])
+    z = a["range"] * np.tan(np.radians(np.nan_to_num(a["elevation"])))
+    cand = np.flatnonzero(np.isin(src, ("outline", "box")) & np.isfinite(a["px"]) &
+                          (np.nan_to_num(z, nan=99.0) < LIDAR_LOW_Z))
+    px, py, rng = a["px"].copy(), a["py"].copy(), a["range"].copy()
+    moved = []
+    for k in cand:
+        p = lidar.place(recs, float(a["shutter"][k]), float(a["bearing"][k]), float(a["span"][k]))
+        if p is None:
+            continue
+        lr = math.hypot(p[0] - a["cx"][k], p[1] - a["cy"][k])
+        if a["range"][k] - lr < over_m:
+            continue
+        b = math.radians(a["bearing"][k])
+        d = lr + LIDAR_BEHIND_M
+        px[k], py[k], rng[k] = a["cx"][k] + d * math.cos(b), a["cy"][k] + d * math.sin(b), d
+        moved.append(int(k))
+    a["px"], a["py"], a["range"] = px, py, rng
+    return a, moved
+
+
 def run(a, recs):
+    if LIDAR_LOW_M and recs:
+        a, moved = lidar_low(a, recs)
+        print("lidar_low: %d regions placed by the lidar" % len(moved), file=sys.stderr)
     L = Looks(a)
     mem = Memory()
     filing, decisions = {}, []
