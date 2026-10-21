@@ -250,6 +250,20 @@ EXAMINED_M = 0.5
 #: the watch reports it anew; each halves what the next is worth.
 CHANGE_ATTEMPTS = 2
 
+#: **A change seen from one place only is looked at from another.** The watch
+#: reports a change once it has seen it from places VIEW_SPREAD_M (0.5 m) apart,
+#: so a parked rover reports none, and a run started on the charger had nothing
+#: to go on: on 2026-10-21 two bean bags set down beside it were seen so for two
+#: minutes and reported only once a fixed drive had moved it. Such a sighting
+#: is a goal whose look is taken from at least this far from where the watch
+#: saw it, which is what lets the watch see it from a second place.
+CONFIRM_FROM_M = 0.7
+#: ... worth this share of its size. Replayed over the nine M5 sessions, 16 of
+#: the 21 groups seen from one place only were within a metre of something
+#: staged or were seen from a second place later; four of the other five were
+#: one stretch of the balcony window, seen from one spot in sessions 3 and 4.
+UNCONFIRMED_SHARE = 0.75
+
 
 class Candidate:
     """One thing the rover could do, with everything a decision needs about it.
@@ -944,6 +958,13 @@ def investigate_change(situation: Situation) -> list[Candidate]:
     is offered and refused as the door (`scoring.vetoes`); one within
     `FOLD_M` of a larger change is folded into that one's goal, unless the
     larger one was looked at before this one was seen.
+
+    **So is a change the watch has seen from one place only**, which it does
+    not report until it has seen it from a second: everything a parked rover
+    sees. Its look is taken `CONFIRM_FROM_M` or more from where the watch saw
+    it, so that the drive there is the second place, and it is worth
+    `UNCONFIRMED_SHARE` of its size. Once the watch reports it, the look
+    already taken is the look at it.
     """
     reach = situation.reach
     if reach is None:
@@ -960,6 +981,16 @@ def investigate_change(situation: Situation) -> list[Candidate]:
         else:
             into["folded"].append({key: change.get(key) for key in
                                    ("kind", "x_m", "y_m", "extent_m")})
+    # Seen from one place only: a goal of its own unless a reported change of
+    # the same kind is near enough that its look is the look at this one.
+    for change in situation.unconfirmed_changes:
+        if change.get("x_m") is None or any(
+                other.get("kind") == change.get("kind")
+                and math.hypot(float(other["x_m"]) - float(change["x_m"]),
+                               float(other["y_m"]) - float(change["y_m"])) <= FOLD_M
+                for other in found):
+            continue
+        kept.append({**change, "folded": [], "unconfirmed": True})
     generation = (situation.world_generation
                   if situation.world_generation != refs.UNKNOWN else None)
     return [_change_goal(situation, reach, change, report, generation)
@@ -997,7 +1028,15 @@ def _change_goal(situation: Situation, reach: mapgrid.Reach,
     near = _records_near(situation, x, y)
     named = near[0] if near else None
     looked, tries = _attempts_at(situation, change)
-    gain = 0.0 if looked else extent * 0.5 ** tries
+    unconfirmed = bool(change.get("unconfirmed"))
+    gain = 0.0 if looked else extent * 0.5 ** tries * (UNCONFIRMED_SHARE if unconfirmed else 1.0)
+    # Where the watch saw it from, for a look from somewhere else; a group
+    # without it was seen from where the rover stands.
+    seen_at = change.get("viewed_from") or (situation.where if unconfirmed else None)
+
+    def far_enough(view_x: float, view_y: float) -> bool:
+        return (not unconfirmed or seen_at is None
+                or math.hypot(view_x - float(seen_at[0]), view_y - float(seen_at[1])) >= CONFIRM_FROM_M)
     if named:
         what = named["id"] + (f" ({named['label']})" if named["label"] else "")
     else:
@@ -1012,6 +1051,9 @@ def _change_goal(situation: Situation, reach: mapgrid.Reach,
     if folded:
         why += (f"; the look takes in {len(folded)} smaller change"
                 f"{'s' if len(folded) > 1 else ''} within {FOLD_M} m")
+    if unconfirmed:
+        why += (f"; seen from one place only, so it is looked at from {CONFIRM_FROM_M} m "
+                "or more from there, where the watch sees it from a second")
     if len(near) > 1:
         why += f"; named after the nearest of {len(near)} records within {NAME_M} m"
     if looked:
@@ -1030,7 +1072,8 @@ def _change_goal(situation: Situation, reach: mapgrid.Reach,
               "was_otherwise_at": change.get("was_otherwise_at"),
               "watch_counting": report.get("counting"),
               "report_age_s": report.get("age_s"),
-              "looked_at_since": looked, "attempts_since": tries}
+              "looked_at_since": looked, "attempts_since": tries,
+              "unconfirmed": unconfirmed, "viewed_from": seen_at}
     ident = f"investigate_change:{kind}@{x:.2f},{y:.2f}"
     common = dict(type="investigate_change", target=f"change:{kind}@{x:.1f},{y:.1f}",
                   refs=[refs.world(generation, named["id"])] if named else (),
@@ -1063,7 +1106,7 @@ def _change_goal(situation: Situation, reach: mapgrid.Reach,
     if where is not None:
         hx, hy = where
         range_m = math.hypot(x - hx, y - hy)
-        if (BAND_NEAR_M <= range_m <= REACH_FAR_M
+        if (BAND_NEAR_M <= range_m <= REACH_FAR_M and far_enough(hx, hy)
                 and reach.clear_line(hx, hy, x, y, ignore_within_m=SURFACE_M)):
             return goal(hx, hy, 0.0, range_m,
                         f"a look aimed at ({x:.2f}, {y:.2f}), {range_m:.1f} m "
@@ -1075,6 +1118,8 @@ def _change_goal(situation: Situation, reach: mapgrid.Reach,
     for view_x, view_y, walk_m in reach.ring(x, y, SEARCH_NEAR_M, SEARCH_FAR_M):
         range_m = _gap((view_x, view_y, walk_m), x, y)
         if not BAND_NEAR_M <= range_m <= BAND_FAR_M:
+            continue
+        if not far_enough(view_x, view_y):
             continue
         if not reach.clear_line(view_x, view_y, x, y, ignore_within_m=SURFACE_M):
             continue

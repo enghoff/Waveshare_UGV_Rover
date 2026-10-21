@@ -276,7 +276,19 @@ something staged; most of the rest were doors and the corridor's clutter. A
 change in one of the doorways the owner marked (`places.json`, `"kind":
 "door"`) is offered and refused as the door, and a small change within 0.8 m of
 a larger one is taken in by that one's look (`goals.FOLD_M`), unless that look
-came before the small one was seen. Each is named after the record placed nearest it, within 0.6 m, or is
+came before the small one was seen. **A change the watch has seen from one place
+only is offered as well**, since 2026-10-21 (the report's `unconfirmed`): the
+watch reports nothing until it has seen a change from two places 0.5 m apart, so
+a run started on the charger had nothing to go on, though two bean bags set down
+beside it that morning had been in view for two minutes. Its look is taken 0.7 m
+or more from where the watch saw it (`goals.CONFIRM_FROM_M`), which gives the
+watch its second place, and it is worth three-quarters of its size
+(`UNCONFIRMED_SHARE`): of 21 such groups in the M5 sessions, 16 were real. One
+near a reported change of its kind is that change's look. Re-decided from that
+morning's first decision with the rover put back on the charger and the watch's
+replayed report, the deployed code went to a record across the corridor; this
+goes to the black bean bag first, from 0.74 m off the charger, then the red
+one. Each is named after the record placed nearest it, within 0.6 m, or is
 something unknown -- and the name is a guess: on 2026-10-11 the store held 663
 unlabelled records and each change in scene 1 had three or four within 0.35 m,
 the same object recorded several times over (R-WS-17), so every record within

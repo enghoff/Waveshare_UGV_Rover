@@ -201,7 +201,15 @@ is reported once its evidence spans 20 s, so a person walking past is not one,
 and was gathered from places at least 0.5 m apart. On 2026-10-11 the rover stood
 27 s with its pose 10 cm and 3 degrees out and beams running along a hall wall
 passed through it, all from within 0.30 m: from one spot a change is a reason to
-look again, not a claim.
+look again, not a claim. **Since 2026-10-21 the report carries those too**, under
+`unconfirmed`, with where they were seen from (`viewed_from`, and `spread_m` on
+every group), never logged: a parked rover sees nothing else, and that morning two
+bean bags set down beside it were held so for two minutes and reported only once
+it drove off. Autonomy looks at one from somewhere else
+([autonomy/README.md](../autonomy/README.md)). Replayed through the nine M5
+sessions in order, 21 groups were seen from one place only; 16 were within a
+metre of something staged or were reported from a second place later, and four
+of the other five were one stretch of the balcony window seen from one spot.
 
 **A move made in the watch's sight is compared with the visit before**, since
 2026-10-20. A visit lasts as long as a place stays in sight, so a thing moved

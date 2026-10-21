@@ -66,7 +66,8 @@ PERSIST_S = 20.0
 #: its pose 10 cm and 3 degrees out, and beams running along a hall wall passed
 #: through it: 0.7 m of wall reported gone, every scan behind it taken within
 #: 0.30 m. The armchair moved the day before was seen from across the room. From
-#: one spot a change is a reason to look again; from two it is reported.
+#: one spot a change is a reason to look again (`changes(unconfirmed=True)`,
+#: the report's `unconfirmed`); from two it is reported.
 VIEW_SPREAD_M = 0.5
 VIEW_ARRAYS = ("hit_x0", "hit_x1", "hit_y0", "hit_y1",
                "pass_x0", "pass_x1", "pass_y0", "pass_y1")
@@ -422,12 +423,19 @@ class ChangeWatch:
         since = np.where(r_solid | r_clear, recent_since, self.cur_first)
         return solid | r_solid, clear | r_clear, since
 
-    def changes(self, large_only=False):
+    def changes(self, large_only=False, unconfirmed=False):
         """What differs between each cell's last visit and its present one.
 
         A list of groups, largest first: `kind` GONE (solid then, seen through
         now) or NEW (the other way round), where, how big, when the present
-        evidence was gathered and when the place was last seen otherwise."""
+        evidence was gathered, when the place was last seen otherwise, and
+        from where (`viewed_from`, the middle of the viewpoints, and `spread_m`,
+        how far apart they were). With `unconfirmed`, instead the groups seen
+        from one place only, closer together than VIEW_SPREAD_M: not reported
+        as changes, but a reason to look from somewhere else. A parked rover
+        sees nothing else, and on 2026-10-21 two bean bags set down beside it
+        were among them for two minutes before it drove off, and reported only
+        once it had."""
         was_solid, was_clear = self._states(self.ref_hits, self.ref_pass)
         is_solid, is_clear, since = self._present()
         found = []
@@ -452,11 +460,11 @@ class ChangeWatch:
                 known = np.isfinite(x0)
                 if not known.any():
                     continue
-                spread = math.hypot(
-                    float(getattr(self, by + "_x1")[rows, cols][known].max() - x0[known].min()),
-                    float(getattr(self, by + "_y1")[rows, cols][known].max()
-                          - getattr(self, by + "_y0")[rows, cols][known].min()))
-                if spread < VIEW_SPREAD_M:
+                vx0, vx1 = float(x0[known].min()), float(getattr(self, by + "_x1")[rows, cols][known].max())
+                vy0 = float(getattr(self, by + "_y0")[rows, cols][known].min())
+                vy1 = float(getattr(self, by + "_y1")[rows, cols][known].max())
+                spread = math.hypot(vx1 - vx0, vy1 - vy0)
+                if (spread < VIEW_SPREAD_M) != unconfirmed:
                     continue
                 extent = self.res * max(np.ptp(cols) + 1, np.ptp(rows) + 1)
                 if large_only and extent < LARGE_M:
@@ -471,6 +479,8 @@ class ChangeWatch:
                     "seen_from": round(first, 1),
                     "seen_until": round(last, 1),
                     "was_otherwise_at": round(float(np.nanmax(self.ref_time[rows, cols])), 1),
+                    "viewed_from": [round((vx0 + vx1) / 2.0, 2), round((vy0 + vy1) / 2.0, 2)],
+                    "spread_m": round(spread, 2),
                 })
         found.sort(key=lambda g: -g["area_m2"])
         return found

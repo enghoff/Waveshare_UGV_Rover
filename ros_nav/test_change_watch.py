@@ -364,15 +364,26 @@ def test_a_change_seen_from_one_place_is_not_reported() -> None:
         r = scan(1.0, 1.0, 0.3 * i, seen)
         watch.add_scan(1.0, 1.0, 0.3 * i, r, BEAMS, 3600.0 + i / 3.0)
     check("a minute standing in one place reports nothing", kinds(watch.changes()), [])
+    once = watch.changes(unconfirmed=True)
+    check("...but holds both ends as seen from one place, and from where (2026-10-21: a "
+          "parked rover has nothing else to go on)",
+          (sorted(c["kind"] for c in once if c["large"]),
+           all(c["spread_m"] < cw.VIEW_SPREAD_M and c["viewed_from"] == [1.0, 1.0] for c in once)),
+          (["GONE", "NEW"], True))
     visit(watch, seen, t0=3660.0, seconds=30.0)
     check("driving round the room then reports it",
           sorted(c["kind"] for c in watch.changes(large_only=True)), ["GONE", "NEW"])
+    check("...seen from places apart, and no longer as seen from one",
+          (all(c["spread_m"] >= cw.VIEW_SPREAD_M for c in watch.changes()),
+           [c for c in watch.changes(unconfirmed=True) if c["large"]]),
+          (True, []))
     # A file saved before the viewpoints were kept loads with none: unknown is
     # not yet seen from two places. Deployed on 2026-10-11 it read as seen from
     # everywhere, and the wall from control 3 was back in the report.
     for name in cw.VIEW_ARRAYS:
         getattr(watch, name)[...] = np.inf if name.endswith("0") else -np.inf
-    check("a visit whose viewpoints are not known reports nothing", watch.changes(), [])
+    check("a visit whose viewpoints are not known reports nothing, from one place or two",
+          (watch.changes(), watch.changes(unconfirmed=True)), ([], []))
 
 
 def walls_grid(segments, x0=-0.5, y0=-0.5, w=7.0, h=5.0, res=0.05):

@@ -155,6 +155,13 @@ class Situation:
         return list(self.change_report.get("changes") or [])
 
     @property
+    def unconfirmed_changes(self) -> list[dict[str, Any]]:
+        """Groups the watch has seen from one place only, which it does not
+        report as changes until it has seen them from a second: what a parked
+        rover sees. Empty in a report from before 2026-10-21."""
+        return list(self.change_report.get("unconfirmed") or [])
+
+    @property
     def examined(self) -> list[dict[str, Any]]:
         """Every look at a change attempted lately, as `decide.prepare` read
         them from the record: which change, when, and whether the look was
@@ -431,7 +438,7 @@ class Situation:
         # rather than an empty house.
         report = _try(client, "nav_changes")
         body["changes"] = ({key: report.get(key) for key in
-                            ("at", "age_s", "counting", "paused", "changes")}
+                            ("at", "age_s", "counting", "paused", "changes", "unconfirmed")}
                            if report.get("ok") else
                            {"error": report.get("error")
                                      or "the change watch did not answer"})

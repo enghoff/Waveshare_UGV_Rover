@@ -225,7 +225,10 @@ class ChangeNode(Node):
                   "counting": self.believed, "paused": self.why_paused,
                   "scans": self.watch.scans, "refused": self.watch.refused,
                   "off_map": self.watch.off_map,
-                  "before_clock_set": self.watch.stale, "changes": found}
+                  "before_clock_set": self.watch.stale, "changes": found,
+                  # Seen from one place only: a reason to look from another,
+                  # never logged (change_watch.VIEW_SPREAD_M).
+                  "unconfirmed": self.watch.changes(unconfirmed=True)}
         tmp = self.path("json") + ".tmp"
         with open(tmp, "w") as out:
             json.dump(report, out)

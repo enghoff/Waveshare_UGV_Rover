@@ -726,6 +726,47 @@ def test_a_change_is_named_after_the_record_nearest_it() -> None:
           (None, True))
 
 
+def test_a_change_seen_from_one_place_is_looked_at_from_another() -> None:
+    """On 2026-10-21 two bean bags set down beside the parked rover were seen by
+    the change watch from one place only, so not reported, and a run started
+    there would have had nothing to go on. Such a sighting is a goal of its own,
+    looked at from far enough away for the watch to see it from a second place."""
+    def with_unconfirmed(unconfirmed, changes=()):
+        here = _with_changes(list(changes))
+        body = here.as_dict()
+        body["changes"]["unconfirmed"] = unconfirmed
+        return Situation(body)
+    where = _with_changes([]).where
+    one = _a_change(kind="NEW", x=where[0] + 1.2, y=where[1], extent=0.5,
+                    viewed_from=[where[0], where[1]], spread_m=0.0)
+    found = goals.investigate_change(with_unconfirmed([one]))
+    check("a change seen from where the rover stands is a goal", len(found), 1)
+    goal = found[0].constraints["goal"]
+    check("...whose look is taken from 0.7 m or more from there, though the place is "
+          "in view from where it stands",
+          (found[0].constraints["needs_movement"],
+           math.hypot(goal["x_m"] - where[0], goal["y_m"] - where[1]) >= goals.CONFIRM_FROM_M),
+          (True, True))
+    check("...worth three-quarters of its size, and said so",
+          (round(found[0].gain_value, 3), "seen from one place only" in found[0].why,
+           found[0].gain_detail["unconfirmed"]),
+          (round(0.5 * goals.UNCONFIRMED_SHARE, 3), True, True))
+    elsewhere = {**one, "viewed_from": [where[0] + 2.0, where[1] + 1.0]}
+    found = goals.investigate_change(with_unconfirmed([elsewhere]))
+    check("seen from somewhere else, it is looked at from where the rover stands",
+          found[0].constraints["needs_movement"], False)
+    reported = _a_change(kind="NEW", x=where[0] + 1.3, y=where[1] + 0.2, extent=0.6)
+    found = goals.investigate_change(with_unconfirmed([one], [reported]))
+    check("one near a reported change of its kind is that change's look",
+          [one_goal.gain_detail["unconfirmed"] for one_goal in found], [False])
+    gone = {**one, "kind": "GONE"}
+    found = goals.investigate_change(with_unconfirmed([gone], [reported]))
+    check("...but one of the other kind is a goal of its own",
+          sorted(one_goal.gain_detail["unconfirmed"] for one_goal in found), [False, True])
+    check("a report from before 2026-10-21 has none",
+          goals.investigate_change(_with_changes([])), [])
+
+
 def test_a_change_is_looked_at_level_and_aimed_at_where_it_is() -> None:
     found = goals.investigate_change(_with_changes([_a_change()]))
     facts = found[0].constraints
