@@ -41,7 +41,7 @@ def main():
         for q, v in vectors.items():
             ans = search.rank_things(v, index)
             print("%s, day %s (floor %.3f):" % (q, day, ans["floor"]))
-            for m in (ans.get("matches") or [])[:6]:
+            for m in (ans.get("matches") or [])[:int(os.environ.get("DIAG_N", 6))]:
                 r = by_id.get(m["entity_id"]) or {}
                 held = Counter(label.get(i, "-") for i in r.get("observations", []))
                 print("  %-6s %.3f at (%.2f, %.2f) %-8s seen %s, %d pictures, labels %s" % (
