@@ -731,9 +731,9 @@ global_costmap:
         # the scanned wall's angle against the map's on that day's drive.
         wall_margin_per_m: 0.087
         # **The rover off by its own width, not by an angle** (2026-10-21).
-        # Between the mapper's corrections the pose is 10-30 cm out one time in
-        # ten, and parked or turning on the spot nothing corrects it; 20 cm out
-        # in an 80 cm doorway, the layer drew the furniture beside the rover as
+        # The mapper's corrections are usually a few centimetres, but it does
+        # go wrong by 20-35 cm now and then, and parked or turning on the spot
+        # nothing corrects that; 20 cm out in an 80 cm doorway, the layer drew the furniture beside the rover as
         # a line across it, and the rover was stuck there for five minutes. Each
         # update now finds the shift of the whole scan, up to this far and this
         # much turn, that lays the most of it on mapped walls, and when that

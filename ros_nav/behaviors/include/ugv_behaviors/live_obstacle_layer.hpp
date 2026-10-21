@@ -25,10 +25,10 @@
 // three metres, and those are the orange marks seen along the walls on the
 // console (docs/progress/2026-10-09-live-layer-marks.md).
 //
-// **A margin cannot cover a rover that is off by its own width.** Between the
-// mapper's corrections the rover's place on the map is 10 to 30 cm out one time
-// in ten (the recorded sessions of 2026-10-17 to 21), and parked or turning on
-// the spot nothing corrects it. On 2026-10-21 the rover stood 20 cm and 3.5
+// **A margin cannot cover a rover that is off by its own width.** The mapper's
+// corrections are usually a few centimetres, but it does go wrong by 20-35 cm
+// now and then, and parked or turning on the spot nothing corrects that. On
+// 2026-10-21 the rover stood 20 cm and 3.5
 // degrees off in an 80 cm doorway; the layer drew the furniture beside it as a
 // line of new obstacles 20 cm in front of where the map has it, the planner
 // found no way through, and the rover could not move far enough for the mapper

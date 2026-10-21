@@ -39,17 +39,30 @@ its narrowest, the same to the centimetre on all five saved grids.
   agreeing to 4 cm at 09:13:50. What blocked them is not known: the layer's marks
   were not recorded then.
 
-## A pose that far out is ordinary
+## A pose that far out is not ordinary
 
-Over the seven recorded sessions of 10-17 to 10-21 (`map -> odom` in their bags),
-the mapper's corrections were 4.5-6.6 cm at the median and 14-31 cm at the 90th
-percentile, the largest 26 cm to 1.5 m. So between corrections the rover is often
-10-30 cm off. The live layer's margin, 0.10 m plus 0.087 m a metre of range
-([2026-10-09](2026-10-09-live-layer-marks.md)), was sized for a heading a few
-degrees out and covers a 20 cm error only beyond about a metre. Driving, the
-mapper soon corrects the error. Parked, or turning on the spot, nothing does, and
-a rover the planner will not move cannot drive far enough for the mapper to put
-it right.
+*Corrected the same day.* This section first said the rover is often 10-30 cm
+off between corrections. That came from the size of the jumps in `map -> odom`
+itself, and a small turn of that frame about the map's origin, 15-20 m away,
+moves its translation a long way while moving the rover hardly at all. Measured
+on the rover's own pose, across the same seven sessions (736 corrections,
+`odom_error.py` in the session's scratch directory), each correction moved it a
+median 2 cm and 1 degree, 4-8 cm and 2-4 degrees at the 90th percentile. Turning
+on the spot, the correction was 0.3% of the turn at the median, so the gyro scale
+is right; driving straight, odometry under-read the distance by 1.3%.
+
+So 20-35 cm is a failure, not accumulation. The one at the charger followed our
+daemon restart, which cut odometry for several seconds. The one in the doorway
+built up during a single 6 m drive from the living room, 09:03:21-09:03:37,
+while the mapper was folding scans the whole way. It was sideways to the
+passage, which odometry's 1.3% along the way of travel cannot make. Why the
+mapper went wrong there is not known; the lidar log that covered it keeps 40
+minutes and had been overwritten by the time it was looked for. The live layer's
+margin, 0.10 m plus 0.087 m a metre of range
+([2026-10-09](2026-10-09-live-layer-marks.md)), covers a 20 cm error only beyond
+about a metre. Parked, or turning on the spot, nothing corrects the position,
+and a rover the planner will not move cannot drive far enough for the mapper to
+put it right.
 
 ## The change
 
