@@ -1,0 +1,339 @@
+{
+ "name": "insight-1021",
+ "entries": [
+  {
+   "step": "start",
+   "at": 1792548356.0,
+   "battery": 83,
+   "watch_counting": true,
+   "watch_paused": "",
+   "pose": {
+    "x_m": -16.894,
+    "y_m": -15.868,
+    "heading_deg": 115.4
+   },
+   "trusted": true,
+   "settled": true,
+   "drift_m": 0.028,
+   "drift_deg": 0.0,
+   "fit": 0.877,
+   "fit_here": 0.86
+  },
+  {
+   "step": "start",
+   "at": 1792548356.4,
+   "map_kept_in": "/home/jetson/.ugv/sessions/insight-1021-map",
+   "grid_kept": true
+  },
+  {
+   "step": "start",
+   "at": 1792548360.5,
+   "recording": "session-insight-1021",
+   "seconds": 4500
+  },
+  {
+   "step": "parked",
+   "at": 1792548360.5,
+   "begin": true,
+   "battery": 83,
+   "report": {
+    "at": 1792548353.607729,
+    "counting": true,
+    "changes": [
+     {
+      "kind": "NEW",
+      "x_m": -10.83,
+      "y_m": -12.3,
+      "extent_m": 0.35,
+      "large": false,
+      "seen_from": 1792462469.6,
+      "seen_until": 1792462643.7
+     }
+    ]
+   },
+   "start": {
+    "red bean bag": "P1",
+    "black bean bag": "P5",
+    "stool": "P3"
+   },
+   "moves": {
+    "red bean bag": [
+     "P1",
+     "P2"
+    ],
+    "black bean bag": [
+     "P5",
+     "P4"
+    ]
+   },
+   "until": "/home/jetson/.ugv/sessions/insight-1021.go or 30 min"
+  },
+  {
+   "step": "parked",
+   "at": 1792548426.5,
+   "end": true,
+   "go": true,
+   "waited_s": 66,
+   "battery": 80,
+   "report": {
+    "at": 1792548413.7136924,
+    "counting": true,
+    "changes": [
+     {
+      "kind": "NEW",
+      "x_m": -10.83,
+      "y_m": -12.3,
+      "extent_m": 0.35,
+      "large": false,
+      "seen_from": 1792462469.6,
+      "seen_until": 1792462643.7
+     }
+    ]
+   }
+  },
+  {
+   "step": "settle",
+   "at": 1792548426.5,
+   "begin": true,
+   "seconds": 180.0
+  },
+  {
+   "step": "settle",
+   "at": 1792548606.5,
+   "end": true,
+   "report": {
+    "at": 1792548593.5977948,
+    "counting": true,
+    "changes": [
+     {
+      "kind": "NEW",
+      "x_m": -10.83,
+      "y_m": -12.3,
+      "extent_m": 0.35,
+      "large": false,
+      "seen_from": 1792462469.6,
+      "seen_until": 1792462643.7
+     }
+    ]
+   }
+  },
+  {
+   "step": "off",
+   "at": 1792548611.6,
+   "leg": "living-3",
+   "goal": [
+    -18.1,
+    -14.1
+   ],
+   "seconds": 5.1,
+   "outcome": "arrived",
+   "travelled_m": 1.963,
+   "detail": "",
+   "at_pose": [
+    -18.01,
+    -14.247,
+    122.9
+   ]
+  },
+  {
+   "step": "off",
+   "at": 1792548671.9,
+   "dwelt_s": 60.0,
+   "report": {
+    "at": 1792548653.6034427,
+    "counting": true,
+    "changes": [
+     {
+      "kind": "NEW",
+      "x_m": -17.05,
+      "y_m": -13.42,
+      "extent_m": 0.5,
+      "large": false,
+      "seen_from": 1792548244.7,
+      "seen_until": 1792548653.2
+     },
+     {
+      "kind": "NEW",
+      "x_m": -17.62,
+      "y_m": -16.25,
+      "extent_m": 0.5,
+      "large": false,
+      "seen_from": 1792548490.2,
+      "seen_until": 1792548621.6
+     },
+     {
+      "kind": "NEW",
+      "x_m": -10.83,
+      "y_m": -12.3,
+      "extent_m": 0.35,
+      "large": false,
+      "seen_from": 1792462469.6,
+      "seen_until": 1792462643.7
+     },
+     {
+      "kind": "NEW",
+      "x_m": -17.62,
+      "y_m": -13.6,
+      "extent_m": 0.25,
+      "large": false,
+      "seen_from": 1792548545.7,
+      "seen_until": 1792548653.2
+     }
+    ]
+   },
+   "pose": {
+    "x_m": -18.077,
+    "y_m": -14.111,
+    "heading_deg": 124.3
+   },
+   "trusted": true,
+   "settled": true,
+   "drift_m": 0.028,
+   "drift_deg": -0.5,
+   "fit": 0.829,
+   "fit_here": 0.821
+  },
+  {
+   "step": "arm A",
+   "at": 1792548671.9,
+   "begin": true,
+   "battery": 79
+  },
+  {
+   "step": "run",
+   "at": 1792548671.9,
+   "begin": true,
+   "ok": true,
+   "error": null,
+   "run": "run/f284be3a/1",
+   "battery": 79
+  },
+  {
+   "step": "run",
+   "at": 1792548797.2,
+   "end": true,
+   "run": "run/f284be3a/1",
+   "report": {
+    "at": 1792548773.5919971,
+    "counting": true,
+    "changes": [
+     {
+      "kind": "NEW",
+      "x_m": -17.03,
+      "y_m": -13.38,
+      "extent_m": 0.45,
+      "large": false,
+      "seen_from": 1792548410.5,
+      "seen_until": 1792548773.2
+     },
+     {
+      "kind": "NEW",
+      "x_m": -10.83,
+      "y_m": -12.3,
+      "extent_m": 0.35,
+      "large": false,
+      "seen_from": 1792462469.6,
+      "seen_until": 1792462643.7
+     },
+     {
+      "kind": "NEW",
+      "x_m": -18.88,
+      "y_m": -16.29,
+      "extent_m": 0.2,
+      "large": false,
+      "seen_from": 1792548327.1,
+      "seen_until": 1792548738.1
+     }
+    ]
+   },
+   "path": [
+    [
+     -18.08,
+     -14.11
+    ],
+    [
+     -16.29,
+     -14.17
+    ],
+    [
+     -14.46,
+     -14.02
+    ],
+    [
+     -14.95,
+     -13.76
+    ],
+    [
+     -17.04,
+     -14.27
+    ],
+    [
+     -18.04,
+     -14.23
+    ]
+   ],
+   "why": "the last run ended: there was nothing left worth doing: nothing cleared its refusals: a door: the change is in the door at (-10.7, -12.6), so it is the door opening or shutting rather than a thing worth a look; it would gain 0.0, under the 0.15 minimum worth disturbing the rover for; it would gain 0",
+   "spent": {
+    "seconds": 125.3,
+    "travel_m": 7.82,
+    "actions": 11,
+    "consecutive_failures": 0
+   },
+   "battery": 65
+  },
+  {
+   "step": "arm A",
+   "at": 1792548797.2,
+   "end": true,
+   "minutes": 2.09,
+   "battery": 65
+  },
+  {
+   "step": "home",
+   "at": 1792548799.6,
+   "turn": -174.4,
+   "outcome": "arrived"
+  },
+  {
+   "step": "home",
+   "at": 1792548805.9,
+   "leg": "home",
+   "goal": [
+    -17.2,
+    -15.93
+   ],
+   "seconds": 6.3,
+   "outcome": "arrived",
+   "travelled_m": 1.777,
+   "detail": "the spot asked for is too close to something for the rover to stand in, so the goal was moved 10 cm to the nearest one it fits",
+   "at_pose": [
+    -17.229,
+    -15.882,
+    136.6
+   ]
+  },
+  {
+   "step": "home",
+   "at": 1792548806.1,
+   "battery": 65,
+   "pose": {
+    "x_m": -17.229,
+    "y_m": -15.882,
+    "heading_deg": 136.6
+   },
+   "trusted": true,
+   "settled": true,
+   "drift_m": 0.379,
+   "drift_deg": 7.0,
+   "fit": 0.708,
+   "fit_here": 0.549
+  },
+  {
+   "step": "insight",
+   "at": 1792548806.1,
+   "end": true,
+   "lidar_kept_in": "/home/jetson/.ugv/sessions/insight-1021-lidar",
+   "battery": 65
+  }
+ ]
+}

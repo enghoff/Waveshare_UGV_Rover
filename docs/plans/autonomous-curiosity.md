@@ -1702,10 +1702,13 @@ owner. In order from here:
    ([2026-10-20](../progress/2026-10-20-a-move-made-in-the-watchs-sight.md));
    replayed, day 2's black bean bag is reported as the rover drives off. A
    second round waits on item 3. Its two days are fresh drives items 1 and 3
-   can use. Neither fix has yet been seen on a real drive; one short session
-   is ready for that (`experiments/multiday/insight.py`): two bean bags moved
-   while the parked rover watches, then a run, judged on criteria fixed before
-   it.
+   can use. On the floor on 2026-10-21 both bean bags moved in the parked
+   rover's sight were reported once it drove off, and a run went to look at
+   each at once and waited for the watch before it ended
+   ([2026-10-21](../progress/2026-10-21-the-fixes-on-the-floor.md)). Parked,
+   the watch reports nothing, so a run that starts on the charger after things
+   were moved in its sight still has nothing to go on: an autonomy arm that
+   starts there needs a first look round.
 3. **Let looks reach their things.** This is the world state's work (R-WS-13,
    R-WS-17, R-WS-18). The look trial's misses were mostly not a second record
    of one object: a third were aimed at records of no object -- bare floor,

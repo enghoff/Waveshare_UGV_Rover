@@ -184,7 +184,7 @@ def run_events(t0, t1):
         if kind == "decision" and b.get("chose"):
             chose.append({"at": at, "chose": b["chose"]})
         elif kind == "closed":
-            closed.append({"at": at, "outcome": b.get("outcome"), "detail": str(b.get("detail") or "")[:300]})
+            closed.append({"at": at, "outcome": b.get("outcome"), "detail": str(b.get("detail") or "")})
     return chose, closed
 
 
@@ -228,7 +228,10 @@ def score(name):
                 at_moved.append({"goal": goal, "spots": spots, "after_s": round(c["at"] - run_begin["at"])})
         out["criteria"]["2 goes to look"] = {"pass": bool(at_moved), "goals_at_moved_things": at_moved,
                                              "every_goal": [c["chose"] for c in chose]}
-        waits = [c for c in closed if "change watch" in c["detail"]]
+        # The executive's own words for the wait (autonomy/executive.py,
+        # _watch_behind); "the change watch still reports it" ends every look
+        # at a change and is not one.
+        waits = [c for c in closed if "so it waits for the next" in c["detail"]]
         spent = run_end.get("spent") or {}
         whole = (spent.get("seconds") or 0) >= 60 * RUN_MINUTES - 5
         out["criteria"]["3 waits for the watch"] = {"pass": bool(waits) or whole, "waits": len(waits),

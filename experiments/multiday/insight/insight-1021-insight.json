@@ -1,0 +1,142 @@
+{
+ "name": "insight-1021",
+ "criteria": {
+  "1 seen in its sight": {
+   "pass": false,
+   "found": {
+    "NEW at P2": [
+     [
+      -17.15,
+      -13.52,
+      0.6,
+      true,
+      -48
+     ],
+     [
+      -17.62,
+      -13.6,
+      0.25,
+      false,
+      -18
+     ]
+    ],
+    "NEW at P4": [
+     [
+      -17.62,
+      -16.25,
+      0.5,
+      false,
+      -48
+     ]
+    ],
+    "GONE at P5": []
+   },
+   "logged while still parked": 0
+  },
+  "2 goes to look": {
+   "pass": true,
+   "goals_at_moved_things": [
+    {
+     "goal": "investigate_change:NEW@-17.05,-13.42",
+     "spots": [
+      "P2"
+     ],
+     "after_s": 3
+    },
+    {
+     "goal": "investigate_change:NEW@-17.62,-16.25",
+     "spots": [
+      "P4"
+     ],
+     "after_s": 9
+    },
+    {
+     "goal": "investigate_change:NEW@-18.88,-16.27",
+     "spots": [
+      "P5"
+     ],
+     "after_s": 35
+    }
+   ],
+   "every_goal": [
+    "investigate_change:NEW@-17.05,-13.42",
+    "investigate_change:NEW@-17.62,-16.25",
+    "improve_geometry:v1422@-18.05,-14.22",
+    "investigate_change:NEW@-18.88,-16.27",
+    "improve_geometry:v2009@-18.09,-14.13",
+    "improve_geometry:v495@-14.37,-13.94",
+    "nothing",
+    "nothing",
+    "nothing",
+    "return_to_start"
+   ]
+  },
+  "3 waits for the watch": {
+   "pass": true,
+   "waits": 2,
+   "whole_budget": false,
+   "why_it_ended": "the last run ended: there was nothing left worth doing: nothing cleared its refusals: a door: the change is in the door at (-10.7, -12.6), so it is the door opening or shutting rather than a thing worth a look; it would gain 0.0, under the 0.15 minimum worth disturbing the rover for; it would gain 0"
+  },
+  "4 nothing less safe": {
+   "pass": true,
+   "stops": [],
+   "home": {
+    "x_m": -17.229,
+    "y_m": -15.882,
+    "heading_deg": 136.6
+   }
+  }
+ },
+ "logged": [
+  {
+   "kind": "NEW",
+   "x_m": -17.15,
+   "y_m": -13.52,
+   "extent_m": 0.6,
+   "large": true,
+   "logged_at": 1792548623.612115
+  },
+  {
+   "kind": "NEW",
+   "x_m": -17.62,
+   "y_m": -16.25,
+   "extent_m": 0.5,
+   "large": false,
+   "logged_at": 1792548623.612115
+  },
+  {
+   "kind": "NEW",
+   "x_m": -17.62,
+   "y_m": -13.6,
+   "extent_m": 0.25,
+   "large": false,
+   "logged_at": 1792548653.6034427
+  },
+  {
+   "kind": "NEW",
+   "x_m": -18.88,
+   "y_m": -16.27,
+   "extent_m": 0.15,
+   "large": false,
+   "logged_at": 1792548683.5926728
+  },
+  {
+   "kind": "NEW",
+   "x_m": -16.36,
+   "y_m": -11.69,
+   "extent_m": 0.2,
+   "large": false,
+   "logged_at": 1792548833.6109273
+  }
+ ],
+ "control": {
+  "pass": false,
+  "logged_at_P3": [
+   [
+    "NEW",
+    -16.36,
+    -11.69
+   ]
+  ]
+ }
+}
