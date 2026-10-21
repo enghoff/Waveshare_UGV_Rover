@@ -75,8 +75,13 @@ class Mapper:
         self.deserialize_client = types.SimpleNamespace(
             wait_for_service=lambda timeout_sec=None: True,
             call_async=lambda request: types.SimpleNamespace(done=lambda: self.answers))
+        #: Poses handed to the localizer, in order (`hand_pose`).
+        self.handed = []
 
     # --- what nav_map calls -------------------------------------------------
+    def hand_pose(self, pose):
+        self.handed.append(tuple(pose))
+
     def wait(self, _future, _limit_s):
         return self.answers
 
@@ -205,6 +210,35 @@ def _restore(poses, **fields):
         return nav_map.NavMap.load_graph(node, (2.0, 1.0, 30.0), drop_trail=True)
     finally:
         nav_map.time.monotonic, nav_map.time.sleep = real_monotonic, real_sleep
+
+
+def test_a_restore_hands_the_pose_over_before_the_graph() -> None:
+    """**The localizer owns where the rover is, and the mapper reads it** (since
+    2026-10-21). The mapper takes the localizer's pose as its odometry, so the
+    parked pose has to reach the localizer before the mapper anchors the graph
+    there, or it anchors the graph at wherever odometry happened to be."""
+    section("a restore hands the rover's place to the localizer first")
+    order = []
+    node = Mapper([PARKED])
+    node.hand_pose = lambda pose: order.append(("handed", tuple(pose)))
+    node.deserialize_client = types.SimpleNamespace(
+        wait_for_service=lambda timeout_sec=None: True,
+        call_async=lambda request: (order.append(("loaded", request.initial_pose.x))
+                                    or types.SimpleNamespace(done=lambda: True)))
+    real_monotonic, real_sleep = nav_map.time.monotonic, nav_map.time.sleep
+    nav_map.time.monotonic = lambda: node.clock
+
+    def sleep(seconds):
+        node.clock += seconds
+
+    nav_map.time.sleep = sleep
+    try:
+        nav_map.NavMap.load_graph(node, PARKED, drop_trail=True)
+    finally:
+        nav_map.time.monotonic, nav_map.time.sleep = real_monotonic, real_sleep
+    check("the parked pose goes to the localizer before the graph is loaded",
+          [kind for kind, _ in order], ["handed", "loaded"])
+    check("...and it is the parked pose", order[0][1], PARKED)
 
 
 def test_a_restore_that_lands_is_a_restore() -> None:
@@ -882,6 +916,15 @@ class Refitted(Mapper):
         self.landing = self.clock + self.after_s
         return object()
 
+    def hand_pose(self, pose):
+        """The localizer takes a handed pose a moment later (`after_s`), or --
+        `lands` False -- not at all."""
+        super().hand_pose(pose)
+        self.landing = self.clock + self.after_s
+
+    def wait_landed(self, pose, timeout_s=3.0):
+        return nav_map.NavMap.wait_landed(self, pose, timeout_s)
+
     def pose_deg(self):
         if self.lands and self.landing is not None and self.clock >= self.landing:
             return FITTED
@@ -896,6 +939,7 @@ class Refitted(Mapper):
                  "guess_score": 0.576}, fit, BELIEVED)
 
     def save_graph(self):
+        self.saves = getattr(self, "saves", 0) + 1
         return True, "the map is saved"
 
     def keep_pose(self, _odom=None):
@@ -944,14 +988,19 @@ def test_a_refit_reports_where_the_mapper_put_the_rover() -> None:
           node.map_settled, True)
     check("...and the lidar is asked again at once, so a stale 'off by' does "
           "not outlive the fix", node._map_drift_at, None)
+    check("...the pose handed to the localizer, which owns where the rover is",
+          node.handed, [FITTED])
+    check("...and no graph written or read for it, which is what grew the "
+          "mapper until it was killed for memory on 2026-10-21",
+          (getattr(node, "saves", 0), node.landing is not None), (0, True))
 
     node = Refitted(lands=False)
     began = node.clock
     answer = _refit(node)
     check("a fit the mapper did not apply is still reported as not fitted",
           answer["fitted"], False)
-    check("...saying the mapper kept the rover where it was",
-          "kept the rover where it was" in answer["why"], True)
+    check("...saying the rover's position did not move to it",
+          "did not move to it" in answer["why"], True)
     check("...after seconds of waiting, not the minute a boot is given",
           node.clock - began <= nav_map.MOVED_S + 1.0, True)
     check("...and nothing is written down", node.kept, [])
@@ -1052,4 +1101,5 @@ TESTS = (
     test_a_drive_sent_during_the_check_is_not_refused,
     test_a_refit_reports_where_the_mapper_put_the_rover,
     test_a_restore_is_believed_only_where_the_scan_fits,
+    test_a_restore_hands_the_pose_over_before_the_graph,
 )

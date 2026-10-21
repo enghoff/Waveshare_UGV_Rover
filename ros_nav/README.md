@@ -64,6 +64,20 @@ took the heading after a turn from 9 degrees typical and 16 at worst to 0.6 and
 
 ## Maps and localization
 
+**Where the rover is on the map is `localizer_node.py`'s answer, not the
+mapper's** (since 2026-10-21). Every fifth of a second it matches the scan
+against the map in a small window around where odometry says the rover went
+(`localizer.py`: 25 cm and 8 degrees, at most 10 cm and 3 degrees of correction a
+step, near returns counting a quarter, parked corrections only after three scans
+agree), and it is the one publisher of `map -> odom`. A restore and a refit hand
+it their pose on `initialpose`. slam_toolbox keeps mapping, but takes the
+localizer's pose as its odometry (`odom_frame: map`), keeps a frame of its own
+(`slam_map`) that it publishes nothing about, and puts its grid out on
+`slam_map`, which the localizer republishes as `map`; if its own estimate parts
+from the tracked pose by 30 cm or 8 degrees for 3 s it is paused until navigation
+is restarted. The localizer reports on `localizer/status`. Why the mapper lost
+the job is [docs/plans/continuous-localization.md](../docs/plans/continuous-localization.md).
+
 The stack periodically serializes its pose graph and last trusted pose under
 `~/.ugv/map/`, outside the deploy tree so a deploy cannot take the map with
 it. On restart it loads that graph and takes the rover to be standing where the

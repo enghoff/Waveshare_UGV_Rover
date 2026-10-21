@@ -9,14 +9,15 @@ am I on this map, really?" on demand. Both go through `slam_toolbox`'s own
 serialisation services, so nothing here has an opinion about the graph's format
 and nothing here publishes a transform.
 
-**`map -> odom` still has exactly one owner and it is still slam_toolbox.** That
-rule is why the answer is applied the way it is: this works out where the rover
-is, hands that pose to the mapper, and the mapper decides where the rover ends
-up. What it does with it is `ProcessAgainstNodesNearBy`, which matches the next
-scan against the graph near the pose it was given -- and which, in the version on
-this rover, does *not* add that scan to the graph. So a refit cannot damage the
-map. The worst a wrong one can do is move the rover, and pressing it again fixes
-that.
+**`map -> odom` has exactly one owner, and since 2026-10-21 it is
+localizer_node.py, not slam_toolbox.** So a restore and a refit hand their pose
+to the localizer (`hand_pose`), which takes it at once, and the mapper -- which
+takes the localizer's pose as its odometry -- follows. A restore still loads the
+graph into the mapper, with the pose handed over first so that the mapper reads
+it as it anchors; a refit no longer reloads anything, which is what kept a
+morning of refits from growing the mapper until it was killed for memory. A
+wrong refit moves the rover by at most the fit's window, and pressing it again
+fixes that.
 
 A mixin on `NavBridge` like `NavMoves` and `NavExplore`, because it needs the
 node's pose, its map and its service clients. The parts with no ROS in them are
@@ -377,6 +378,17 @@ class NavMap:
         self.deserialize_client = self.create_client(
             DeserializePoseGraph, "/slam_toolbox/deserialize_map",
             callback_group=self.group)
+        # Where the rover is on the map is localizer_node.py's to say since
+        # 2026-10-21, so a restore and a refit hand their pose to it. Latched, so
+        # that one sent before the localizer has subscribed is not lost at a boot.
+        # Imported here rather than at the top so that the selftest, which has
+        # no ROS, can still import this module.
+        from geometry_msgs.msg import PoseWithCovarianceStamped
+        from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+        self.hand_pub = self.create_publisher(
+            PoseWithCovarianceStamped, "initialpose",
+            QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                       reliability=QoSReliabilityPolicy.RELIABLE))
 
         # Its own thread rather than a node timer, and that is not a preference:
         # every call here waits on a service future, `wait` blocks the calling
@@ -727,6 +739,35 @@ class NavMap:
         with self.map_lock:
             return self.saved.note_pose(self.map_id, self.pose_deg(), odom)
 
+    def hand_pose(self, pose):
+        """Put the rover at `pose` (x_m, y_m, heading_deg) on the map, now.
+
+        The localizer owns `map -> odom` (localizer_node.py) and moves the rover
+        on the map only by tracking -- a few centimetres a step -- or when handed
+        a pose here, by a restore or by a fit somebody asked for (R-NAV-3).
+        Stamped zero, which the localizer reads as "where odometry is now"."""
+        from geometry_msgs.msg import PoseWithCovarianceStamped
+        msg = PoseWithCovarianceStamped()
+        msg.header.frame_id = self.args.map_frame
+        msg.pose.pose.position.x = float(pose[0])
+        msg.pose.pose.position.y = float(pose[1])
+        half = math.radians(float(pose[2])) / 2.0
+        msg.pose.pose.orientation.z = math.sin(half)
+        msg.pose.pose.orientation.w = math.cos(half)
+        self.hand_pub.publish(msg)
+
+    def wait_landed(self, pose, timeout_s=3.0):
+        """The rover's own pose once it is within a centimetre and a tenth of a
+        degree of `pose`, or the last one seen when `timeout_s` runs out."""
+        deadline = time.monotonic() + timeout_s
+        where = None
+        while time.monotonic() < deadline:
+            where = self.pose_deg()
+            if where is not None and not _moved(where, pose):
+                return where
+            time.sleep(0.05)
+        return where
+
     def load_graph(self, pose, drop_trail=False, stem=None):
         """Load the saved graph and put the rover on it near `pose`.
 
@@ -773,6 +814,10 @@ class NavMap:
             # near the pose asked for waits for the mapper to move it rather
             # than passing for landed -- see `MOVED_S`.
             before = self.pose_deg()
+            # The rover's place first, then the mapper's graph: the mapper takes
+            # the localizer's pose as its odometry (config/slam_toolbox.yaml), so
+            # it must already read `pose` when it anchors the graph there.
+            self.hand_pose(pose)
             filename = self.saved.stem if stem is None else stem
             # A load the mapper is still working through is waited for again,
             # not asked for a second time: each ask is a whole graph read on
@@ -1183,28 +1228,23 @@ class NavMap:
                 self.keep_pose(self.travelled_deg())
             return answer
 
-        saved, why = self.save_graph()
-        if not saved:
+        # **Handed to the localizer, not reloaded into the mapper.** Until
+        # 2026-10-21 a fit wrote the whole graph and read it back with the rover
+        # at the new pose: 20-40 s on a 370 MB graph, and each read on top of the
+        # last until, after a morning of fits, the mapper reached 4.5 GB and was
+        # killed for memory at 14:01. The localizer owns the rover's place now and
+        # takes the pose at once; the mapper, which takes the localizer's pose as
+        # its odometry, follows it on its next scan.
+        self.hand_pose((fit.x_m, fit.y_m, fit.heading_deg))
+        if self.wait_landed((fit.x_m, fit.y_m, fit.heading_deg)) is None:
             answer["fitted"] = False
-            answer["why"] = ("the rover is %.0f cm and %.1f degrees from where it "
-                             "thinks it is, and it was left there: %s, and moving "
-                             "it means loading the graph again"
-                             % (100.0 * fit.moved_m, fit.turned_deg, why))
+            answer["why"] = ("the fit was found but the rover's position never "
+                             "reached the transform tree")
             return answer
-        loaded, why, _landed = self.load_graph(
-            (fit.x_m, fit.y_m, fit.heading_deg))
-        if not loaded:
-            answer["fitted"] = False
-            answer["why"] = "the fit was found but not applied: %s" % (why,)
-            return answer
-        # Where the rover actually ended up, which is the mapper's answer and not
-        # this one. It matches the next scan against the graph near the pose it
-        # was handed and keeps its own result, so what is reported is what
-        # happened rather than what was asked for. A 2.5-degree correction once
-        # came back as no move at all, put down then to the mapper matching the
-        # scan against the node it had just made from it; until 2026-10-09 the
-        # load returned before the mapper had moved anything when the fit was
-        # inside `LANDED_DEG`, which reads the same way (see `MOVED_S`).
+        # Where the rover actually ended up, read back off the transform tree,
+        # so that what is reported is what happened rather than what was asked
+        # for -- which, with the mapper owning the pose until 2026-10-21, more
+        # than once differed (see `MOVED_S`).
         landed = self.pose_deg() or (fit.x_m, fit.y_m, fit.heading_deg)
         answer["pose"] = {"x_m": round(landed[0], 3), "y_m": round(landed[1], 3),
                           "heading_deg": round(landed[2], 1)}
@@ -1216,17 +1256,16 @@ class NavMap:
                 and abs(answer["turned_deg"]) < refit.SETTLED_DEG):
             answer["fitted"] = False
             answer["why"] = ("the scan fits the map %.0f cm and %.1f degrees "
-                             "from here, but the mapper matched it against its "
-                             "own graph and kept the rover where it was"
-                             % (100.0 * fit.moved_m, fit.turned_deg))
+                             "from here, but the rover's position did not move "
+                             "to it" % (100.0 * fit.moved_m, fit.turned_deg))
             return answer
         answer["fitted"] = True
         # The rover's place on the map has now been checked against a scan, so
-        # the keeper may write it down again -- and it must, straight away. The
-        # save above recorded where the rover was *before* the fit, which is the
+        # the keeper may write it down again -- and it must, straight away: the
+        # note on disk holds where the rover was *before* the fit, which is the
         # pose this has just proved wrong, and nothing else would rewrite it
-        # until the wheels turned: a rover that refitted and then sat still used
-        # to leave the wrong pose on disk for the next boot to restore at.
+        # until the wheels turned, so a rover that refitted and then sat still
+        # used to leave the wrong pose for the next boot to restore at.
         self.map_settled = True
         self.keep_pose(self.travelled_deg())
         # And the lidar asked again at the next tick rather than in five

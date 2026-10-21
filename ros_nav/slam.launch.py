@@ -29,7 +29,9 @@ What comes up, and why in this order:
 
   lidar_node   the D500 as /scan, and the room in words as /surroundings
   base_node    the driver board as /odom and the odom -> base_link transform
-  the mapper   /scan plus that transform as /map, and map -> odom on top
+  the mapper   /scan plus the localizer's pose as the map, on /slam_map
+  localizer    the map republished as /map, and map -> odom from matching
+               each scan against it
   nav_bridge   all of the above, served to the rover daemon on loopback 8773
   change_node  what has changed since each place was last seen, from the scan
 
@@ -93,8 +95,17 @@ def generate_launch_description():
              name="base_node", output="screen",
              arguments=[os.path.join(HERE, "base_node.py"), "--bridge-port", bridge_port]),
 
+        # Its grid on `slam_map`: the `map` everything reads is the localizer's
+        # copy of it, in the frame the localizer owns.
         Node(package="slam_toolbox", executable="async_slam_toolbox_node",
-             name="slam_toolbox", output="screen", parameters=[params]),
+             name="slam_toolbox", output="screen", parameters=[params],
+             remappings=[("map", "slam_map"), ("map_metadata", "slam_map_metadata")]),
+
+        # The rover's place on the map, scan by scan, and the one publisher of
+        # `map -> odom` -- see localizer_node.py for why it is not the mapper.
+        Node(executable=sys.executable,
+             name="localizer", output="screen",
+             arguments=[os.path.join(HERE, "localizer_node.py")]),
 
         # Not a lifecycle node and deliberately started before slam_toolbox has
         # finished coming up: everything it serves it serves by subscription, so

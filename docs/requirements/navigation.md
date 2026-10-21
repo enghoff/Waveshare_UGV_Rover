@@ -305,3 +305,19 @@ A refusal now carries the score where the rover believes it is, because "the
 lidar cannot say" on its own does not distinguish a rover standing where the map
 explains 94% of what it sees from one standing where it explains 30%, and only
 the second is worth getting up for.
+
+<a id="r-nav-15"></a>
+### R-NAV-15 — The rover's place on the map follows the map continuously, not only at loop closures
+
+- **State:** proposed
+- **Proposed in:** [../plans/continuous-localization.md](../plans/continuous-localization.md)
+
+Between a turn or a wheel slip and the next loop closure, a rover tracked only
+against its own recent scans can be 20 cm to a metre from where it believes it
+is, and on 2026-10-21 that stranded it in a doorway. Its position is matched
+against the stored map every fraction of a second instead, by a tracker that moves
+it only a step at a time and never fits it onto the map on its own
+([R-NAV-3](#r-nav-3)). The success predicate is the plan's floor test: after
+every stop of a drive through the doorway, the dining corridor and the living
+room, the position agrees with the map within 10 cm and 3 degrees at least 9
+times in 10.

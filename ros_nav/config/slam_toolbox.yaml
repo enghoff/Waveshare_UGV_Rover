@@ -24,8 +24,18 @@ slam_toolbox:
     ceres_loss_function: None
 
     # --- frames ----------------------------------------------------------------
-    odom_frame: odom
-    map_frame: map
+    # **The mapper no longer says where the rover is** (2026-10-21). Matching each
+    # scan against its own recent ones, it carried a turn's heading error 20-26 cm
+    # sideways over 8 m and never recovered a 0.8 m wheel slip; localizer_node.py
+    # matches against the map itself and owns `map -> odom`. The mapper is given
+    # that answer as its odometry -- `odom_frame: map`, so the `map -> base_link`
+    # it reads is the tracked pose -- and keeps a frame of its own, `slam_map`,
+    # which it publishes nothing about. Its grid goes out on `slam_map` (the
+    # remapping in slam.launch.py) and the localizer republishes it as `map`.
+    # The owner chose on 2026-10-21 to keep the map updating itself this way
+    # rather than freeze it.
+    odom_frame: map
+    map_frame: slam_map
     # base_link is at the lidar on this rover, not at the centre of the chassis --
     # see base_node.py, which explains why an unmeasured offset is worse than none.
     base_frame: base_link
@@ -35,11 +45,10 @@ slam_toolbox:
     # --- what it costs ---------------------------------------------------------
     debug_logging: false
     throttle_scans: 1
-    # 20 Hz. This is the map -> odom correction, and it is cheap: it republishes a
-    # transform the optimiser has already computed. Nav2's controller runs at 20 Hz
-    # and reads it every tick, so publishing slower shows up as a rover that
-    # steers on a stale pose.
-    transform_publish_period: 0.05
+    # Nothing: the transform it would publish is `slam_map -> map`, which nothing
+    # reads, and `map -> odom` is the localizer's. Zero stops the publishing
+    # thread altogether. It was 0.05 (20 Hz) while the mapper owned the pose.
+    transform_publish_period: 0.0
     # Two seconds, against a stock five. The occupancy grid is rebuilt from the
     # graph each time and that is the single most expensive periodic job here, but
     # five seconds is long enough that a person watching the map believes it has
