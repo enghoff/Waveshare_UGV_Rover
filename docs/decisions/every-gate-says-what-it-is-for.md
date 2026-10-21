@@ -4,7 +4,8 @@ Status: agreed 2026-10-09 by the owner, who asked that each remaining milestone
 be tied either to a performance a later feature needs or to something about the
 rover worth knowing, and that no gate be a formality. Changes M3, M5, M7, M9 and
 M10, adds a reported figure to M4, and defers M6 and M7 in the
-[plan](../plans/autonomous-curiosity.md). No code has changed.
+[plan](../plans/autonomous-curiosity.md). No code has changed. Running
+unattended, left to the owner here, was answered on 2026-10-21: it needs no gate.
 
 Each remaining gate was asked what goes wrong later if it is not met, or what is
 learnt by meeting it. Most survive. The ones changed here either could not show
@@ -100,16 +101,21 @@ becoming any better:
 - **M6's containment criteria** are M7's safety case for whenever it is entered.
 - **M8 and M11** are already entered only on evidence.
 
-## Not decided here: running unattended
+## Running unattended needs no gate
 
 The design's goal is a rover that "can be left in a known-safe environment and
 productively occupy itself". No milestone gets it there. R-SAFE-6 is open with no
 plan to validate drop or off-plane sensing, nothing docks the rover, and in M3
-session 9 the battery's percentage moved between 5 and 55 within minutes. Either a
-milestone for running unattended is added, with off-plane sensing validated,
-docking and a battery reading that can be trusted, or the definition of done says
-the rover is supervised. That is the owner's choice, and until it is made every
-physical milestone is owner hours.
+session 9 the battery's percentage moved between 5 and 55 within minutes. This
+record first left a choice to the owner: add a milestone for running unattended,
+with off-plane sensing validated, docking and a battery reading that can be
+trusted, or say in the definition of done that the rover is supervised.
+
+On 2026-10-21 the owner answered that running unattended does not need a gate.
+No milestone is added for it, the definition of done is unchanged, and the
+programme does not wait on it. Docking and a trustworthy battery reading are
+work to take on when a run needs them, not conditions for one. R-SAFE-6 is
+unchanged.
 
 ## What was considered
 
@@ -132,8 +138,6 @@ physical milestone is owner hours.
   already leaves a change report right more often than wrong.
 - Autonomy being given more operations, which makes compositions worth learning
   and meets M6 and M7's entry sooner.
-- The owner deciding on unattended running, which adds a milestone or changes the
-  definition of done.
 
 ## Requirements
 

@@ -1733,9 +1733,9 @@ owner. In order from here:
    candidate rule for version 5 mends; the black bean bag and the stool look as
    much like other things as like themselves; and the two stale records need
    a place the lidar can judge and absence judged over the whole visit.
-4. **The owner's choice on running unattended.** No milestone reaches the
-   design's goal of a rover left to occupy itself: R-SAFE-6 is open and nothing
-   docks the rover ([2026-10-09](../decisions/every-gate-says-what-it-is-for.md)).
+
+Running unattended is not on this list: on 2026-10-21 the owner said it needs no
+gate ([the decision](../decisions/every-gate-says-what-it-is-for.md#running-unattended-needs-no-gate)).
 
 The question the programme now turns on is: **does what the rover remembers
 make it more useful over days, and can it tell in advance which looks will
