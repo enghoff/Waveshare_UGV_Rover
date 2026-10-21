@@ -428,12 +428,54 @@ def test_a_scan_that_misses_the_map_is_refused() -> None:
     watch.set_map(*walls_grid(ROOM))
     visit(watch, ROOM + box(2.0, 2.0), t0=0.0)
     visit(watch, ROOM + box(4.0, 2.0) + box(3.0, 1.6, size=0.4), t0=3600.0)
-    check("furniture moved, the walls still on the map: nothing refused", watch.off_map, 0)
+    check("furniture moved, the walls still on the map: nothing refused",
+          (watch.off_map, watch.misplaced), (0, 0))
     check("...and the move is found",
           sorted(c["kind"] for c in watch.changes(large_only=True)), ["GONE", "NEW"])
 
 
+#: Two rooms joined by a passage 0.8 m wide and 2 m long, like the one by the
+#: corridor: its walls run along the passage, and so do the far rooms' ends.
+PASSAGE = [((0, 0), (0, 4)), ((0, 0), (2, 0)), ((0, 4), (2, 4)), ((2, 0), (2, 1.6)),
+           ((2, 2.4), (2, 4)), ((2, 1.6), (4, 1.6)), ((2, 2.4), (4, 2.4)),
+           ((4, 0), (4, 1.6)), ((4, 2.4), (4, 4)), ((4, 0), (6, 0)), ((4, 4), (6, 4)),
+           ((6, 0), (6, 4))]
+
+
+def through_the_passage(watch, t0, dy=0.0, dturn_deg=0.0, seconds=60.0):
+    """Scans taken along the passage's middle, laid on the map `dy` across it
+    and `dturn_deg` round; how many were refused as misplaced."""
+    n = int(seconds * 3)
+    before = watch.misplaced
+    for i in range(n):
+        x, heading = 2.4 + 1.2 * i / n, 0.3 * i
+        r = scan(x, 2.0, heading, PASSAGE)
+        watch.add_scan(x, 2.0 + dy, heading + math.radians(dturn_deg), r, BEAMS, t0 + i / 3.0)
+    return watch.misplaced - before, n
+
+
+def test_a_scan_that_fits_better_shifted_is_refused() -> None:
+    """**2026-10-21, 09:14: the passage by the corridor reported as new
+    furniture.** The rover stood in it 19 cm and half a degree off for four
+    minutes before navigation's drift check said so. The far walls ran along
+    the offset, so the scans fitted the map well enough to be counted, and the
+    near ones saw through the passage's own wall; that visit became the
+    reference, and the wall read as new once the pose was put right. A scan
+    that lies clearly better on the mapper's walls a little way off is refused."""
+    section("a scan that fits the map better shifted")
+    watch = cw.ChangeWatch.around(0.0, 0.0, 6.0, 4.0, margin_m=0.5)
+    watch.set_map(*walls_grid(PASSAGE))
+    check("at the true pose nothing is refused", through_the_passage(watch, 0.0)[0], 0)
+    refused, n = through_the_passage(watch, 3600.0, dy=0.19, dturn_deg=-0.5)
+    check("19 cm across it and half a degree round, every scan is refused",
+          refused, n)
+    check("...though the far walls let them past the map's own test", watch.off_map, 0)
+    through_the_passage(watch, 7200.0)
+    check("...and with the pose put right, nothing is reported", kinds(watch.changes()), [])
+
+
 TESTS = (
+    test_a_scan_that_fits_better_shifted_is_refused,
     test_what_lies_far_off_is_not_counted,
     test_a_scan_that_misses_the_map_is_refused,
     test_a_change_seen_from_one_place_is_not_reported,

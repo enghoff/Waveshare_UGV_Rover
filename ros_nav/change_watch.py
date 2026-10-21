@@ -131,6 +131,24 @@ MAP_FIT_MIN = 0.7
 MAP_FIT_FAR_M = 1.5
 MAP_FIT_SLACK_CELLS = 2
 MAP_FIT_MIN_HITS = 20
+#: **And it has to fit the map where the rover thinks it is, not just nearby.**
+#: A fit with slack passes a pose 20 cm out: on 2026-10-21 the rover stood that
+#: far and 3.5 degrees off in the doorway by the corridor for four minutes
+#: before navigation's drift check said so, and the scans counted meanwhile saw
+#: through the passage's walls. They became the reference, so the walls read as
+#: new furniture once the pose was put right. So the scan's returns out to
+#: ALIGN_MAX_RANGE_M are laid on the map at every shift within ALIGN_WINDOW_M and
+#: ALIGN_WINDOW_DEG, and the scan is refused when one lays ALIGN_MIN_GAIN of
+#: them, and ALIGN_MIN_GAIN_FRAC of the scan, more within a cell of a mapped
+#: wall than the believed pose does: the live layer's test of the same morning,
+#: with its numbers (`live_layer.align_*` in config/nav2.yaml).
+ALIGN_MAX_RANGE_M = 3.0
+ALIGN_WINDOW_M = 0.40
+ALIGN_STEP_M = 0.05
+ALIGN_WINDOW_DEG = 6.0
+ALIGN_STEP_DEG = 1.5
+ALIGN_MIN_GAIN = 20
+ALIGN_MIN_GAIN_FRAC = 0.10
 
 
 def _dilate(mask, cells):
@@ -219,7 +237,9 @@ class ChangeWatch:
         self.scans = 0
         self.refused = 0
         self.off_map = 0
+        self.misplaced = 0
         self._map = None
+        self._walls = None
         self.stale = 0
         self._newest = None
         self._known = None
@@ -257,13 +277,16 @@ class ChangeWatch:
             getattr(bigger, name)[dy:dy + self.ny, dx:dx + self.nx] = getattr(self, name)
         bigger.scans = self.scans
         bigger._map = self._map
+        bigger._walls = self._walls
         return bigger
 
     def set_map(self, occupied, x0, y0, res):
         """The mapper's occupancy to judge scans against (MAP_FIT_MIN): a boolean
         grid, rows along y, whose cell (0, 0) has its corner at (x0, y0)."""
-        self._map = (_dilate(np.asarray(occupied, bool), MAP_FIT_SLACK_CELLS),
+        occupied = np.asarray(occupied, bool)
+        self._map = (_dilate(occupied, MAP_FIT_SLACK_CELLS),
                      float(x0), float(y0), float(res))
+        self._walls = (_dilate(occupied, 1), float(x0), float(y0), float(res))
 
     def _on_map(self, xs, ys):
         """Whether these far hits fit the mapper's map; True with no map or too
@@ -277,6 +300,32 @@ class ChangeWatch:
         if inside.sum() < MAP_FIT_MIN_HITS:
             return True
         return near[cy[inside], cx[inside]].mean() >= MAP_FIT_MIN
+
+    def _misplaced(self, x, y, xs, ys):
+        """Whether these returns, seen from (x, y), lie clearly better on the
+        mapper's walls shifted (ALIGN_*); False with no map."""
+        if self._walls is None or xs.size == 0:
+            return False
+        near, x0, y0, res = self._walls
+        steps = ALIGN_STEP_M * np.arange(-round(ALIGN_WINDOW_M / ALIGN_STEP_M),
+                                         round(ALIGN_WINDOW_M / ALIGN_STEP_M) + 1)
+        turns = np.radians(ALIGN_STEP_DEG * np.arange(
+            -round(ALIGN_WINDOW_DEG / ALIGN_STEP_DEG), round(ALIGN_WINDOW_DEG / ALIGN_STEP_DEG) + 1))
+        px, py = xs - x, ys - y
+        c, s = np.cos(turns)[:, None], np.sin(turns)[:, None]
+        tx, ty = x + c * px - s * py, y + s * px + c * py
+        # Columns and rows at each turn and shift, (turns, shifts, returns); the
+        # count at every pair of shifts is then one lookup per return.
+        cx = np.floor((tx[:, None, :] + steps[None, :, None] - x0) / res).astype(np.int64)
+        cy = np.floor((ty[:, None, :] + steps[None, :, None] - y0) / res).astype(np.int64)
+        ok = ((cx >= 0) & (cx < near.shape[1]))[:, :, None, :] & (
+            (cy >= 0) & (cy < near.shape[0]))[:, None, :, :]
+        flat = (np.clip(cy, 0, near.shape[0] - 1)[:, None, :, :] * near.shape[1]
+                + np.clip(cx, 0, near.shape[1] - 1)[:, :, None, :])
+        on = (near.ravel()[flat] & ok).sum(axis=-1)
+        middle = len(steps) // 2
+        here = on[len(turns) // 2, middle, middle]
+        return on.max() - here >= max(ALIGN_MIN_GAIN, ALIGN_MIN_GAIN_FRAC * xs.size)
 
     def _cells(self, xs, ys):
         cx = np.floor((xs - self.x0) / self.res).astype(np.int64)
@@ -311,6 +360,11 @@ class ChangeWatch:
         far = r > MAP_FIT_FAR_M
         if not self._on_map(x + r[far] * np.cos(a[far]), y + r[far] * np.sin(a[far])):
             self.off_map += 1
+            self.refused += 1
+            return False
+        close = r < ALIGN_MAX_RANGE_M
+        if self._misplaced(x, y, x + r[close] * np.cos(a[close]), y + r[close] * np.sin(a[close])):
+            self.misplaced += 1
             self.refused += 1
             return False
         hits = self._cells(x + r * np.cos(a), y + r * np.sin(a))

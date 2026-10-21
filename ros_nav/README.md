@@ -248,11 +248,22 @@ walls, mostly; what is near is what moves) within 10 cm of what the mapper calls
 occupied, and is otherwise refused and counted as `off_map`. Good poses on the
 two days' recordings fitted at a median of 0.94 to 1.0 with 1.5% of scans under
 0.7; the bedroom's bad pose fitted at 0.63 to 0.67, which a first gate at 0.6
-let through. A scan dated more than a minute before the newest
+let through. Nor was that enough when the walls run along the error: on
+2026-10-21 the rover stood in the passage by the corridor 19 cm off for four
+minutes before the drift check said so, its far hits still fitted, and its near
+ones saw through the passage's walls, which read as new furniture once the pose
+was put right. So a scan is also refused, and counted as `misplaced`, when
+shifting it up to 0.40 m and 6 degrees lays 20 more of its returns within 3 m,
+and a tenth of them, on the mapper's walls: the live layer's test, with its
+numbers. Replayed, that morning's phantoms went and its real change stayed; over
+the nine M5 sessions the staged ends found stayed 58 of 60 and the unexplained
+furniture-sized changes went from 3 to 1, on a marked door
+([2026-10-21](../docs/progress/2026-10-21-a-scan-laid-off-the-map-is-not-counted.md)).
+A scan dated more than a minute before the newest
 it holds is set aside as well: after the power has been off the rover's clock
 reads 1970 until the network sets it, and on 2026-10-11 that minute's scans had
 joined the last visit and dated it 1970. It takes every third scan not turning faster than 40 degrees a second,
-3 ms each on the Orin; the process as a whole takes an eighth of one core, most
+7 ms each on the Orin; the process as a whole takes an eighth of one core, most
 of it following the transform tree. It writes `~/.ugv/changes/<map_id>.npz` (the
 tallies, every two minutes and at exit), `<map_id>.json` (the changes found,
 every 30 s), which the bridge's `changes` op returns, and `<map_id>.log.jsonl`,

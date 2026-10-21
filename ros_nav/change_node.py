@@ -21,7 +21,9 @@ restore 170 degrees out stayed settled for a quarter of an hour, so each scan
 must also fit what the watch already knows (`change_watch.FIT_MIN`), and one
 that does not is refused and counted; so is one whose far hits miss the
 mapper's own map (`change_watch.MAP_FIT_MIN`), which on 2026-10-11 the watch's
-own check let through for a bedroom it had seen all day. A scan dated before what the watch
+own check let through for a bedroom it had seen all day; and so is one that
+lies clearly better on that map a little way off (`change_watch.ALIGN_*`), which
+on 2026-10-21 a passage's walls seen from 19 cm out did not. A scan dated before what the watch
 already holds -- the minute after a cold boot, while the clock reads 1970 -- is
 set aside too, and counted in the report's `before_clock_set`.
 
@@ -224,7 +226,7 @@ class ChangeNode(Node):
         report = {"map_id": self.map_id, "at": time.time(),
                   "counting": self.believed, "paused": self.why_paused,
                   "scans": self.watch.scans, "refused": self.watch.refused,
-                  "off_map": self.watch.off_map,
+                  "off_map": self.watch.off_map, "misplaced": self.watch.misplaced,
                   "before_clock_set": self.watch.stale, "changes": found,
                   # Seen from one place only: a reason to look from another,
                   # never logged (change_watch.VIEW_SPREAD_M).
@@ -246,9 +248,10 @@ class ChangeNode(Node):
         large = sum(1 for c in found if c["large"])
         self.get_logger().info(
             "change watch: %d scans added since the last report and %d refused "
-            "as not fitting (%d in all off the map), %d in all; %d changes, "
-            "%d furniture-sized%s (%.0f ms)"
-            % (self.fed, self.refused, self.watch.off_map, self.watch.scans, len(found), large,
+            "as not fitting (%d in all off the map, %d fitting it better shifted), "
+            "%d in all; %d changes, %d furniture-sized%s (%.0f ms)"
+            % (self.fed, self.refused, self.watch.off_map, self.watch.misplaced,
+               self.watch.scans, len(found), large,
                "" if self.believed else "; paused: " + self.why_paused,
                1000.0 * (time.monotonic() - started)))
         self.fed = self.refused = 0
