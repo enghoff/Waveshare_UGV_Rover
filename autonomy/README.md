@@ -257,6 +257,13 @@ thing out of reach is driven to, and an M4 trial refuses one in reach as `in
 reach`, since its re-look would be the same look
 ([the decision](../docs/decisions/m4-asks-of-things-out-of-reach.md)).
 
+Out of reach, the places weighed are the sixty nearest the rover's walk that
+**can see the thing**, not the sixty nearest. Those are one patch on the rover's
+own side of it, and until 2026-10-21 a wall between that patch and the thing
+wrote the thing off as having nowhere to stand: from the doorway 48 things were,
+41 of which hundreds of places further round could see
+([the measurement](../docs/progress/2026-10-21-runs-that-ended-at-once.md)).
+
 Nothing is predicted better than **0.10 m**, whatever the arithmetic says. The
 model knows about bearings and not about the rover's own pose, the width of the
 thing, or the box drawn round it moving between frames — and a tenth of a metre

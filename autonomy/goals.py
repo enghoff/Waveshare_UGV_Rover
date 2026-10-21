@@ -519,11 +519,19 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
     # scenarios caught this; the ordering here is the fix.
     whole = reach.ring(x, y, SEARCH_NEAR_M, SEARCH_FAR_M)
     in_band = [one for one in whole if BAND_NEAR_M <= _gap(one, x, y) <= BAND_FAR_M]
-    ring = (in_band or whole)[:VIEWPOINTS_CONSIDERED]
+    # **And the wall is applied before the bound too.** The sixty places
+    # nearest the rover's walk are one patch on the rover's side of the thing,
+    # and when a wall stands between that patch and the thing every one of them
+    # is blocked: on 2026-10-21 a run started in the doorway refused 48 things
+    # as having nowhere to stand, and 41 of them had hundreds of places further
+    # round with nothing in the way. So the sixty are the nearest that can see
+    # the thing; the line test is cheap, and the prediction is what is bounded.
     predicted, outside = [], []
     usable = blocked = 0
     near = _neighbours(situation, entity)
-    for view_x, view_y, walk_m in ring:
+    for view_x, view_y, walk_m in in_band or whole:
+        if usable >= VIEWPOINTS_CONSIDERED:
+            break
         if not reach.clear_line(view_x, view_y, x, y, ignore_within_m=SURFACE_M):
             blocked += 1
             continue
@@ -556,7 +564,7 @@ def _viewpoints(situation: Situation, reach: mapgrid.Reach,
         if usable:
             return []
         return _nowhere_to_stand(entity, entity_id, generation, x, y,
-                                 len(ring), blocked)
+                                 usable + blocked, blocked)
 
     best = max(predicted, key=lambda one: (round(one[0]["gain_m"], 4),
                                            -round(one[3], 3)))

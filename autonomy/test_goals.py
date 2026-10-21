@@ -558,6 +558,35 @@ def test_a_thing_on_its_own_wall_can_still_be_looked_at() -> None:
           [True])
 
 
+#: A room split by a partition open only along its top, the rover on the left
+#: of it. Everything on the rover's side within the band of a thing on the far
+#: side is a short walk and has the partition in the way.
+PARTITIONED = [
+    "#" * 60,
+    *(["#" + "." * 58 + "#"] * 4),
+    *(["#" + "." * 29 + "#" + "." * 28 + "#"] * 17),
+    "#" + "." * 9 + "R" + "." * 19 + "#" + "." * 28 + "#",
+    *(["#" + "." * 29 + "#" + "." * 28 + "#"] * 6),
+    "#" * 60,
+]
+
+
+def test_a_wall_on_the_rovers_side_does_not_hide_the_far_side() -> None:
+    """Found on the rover on 2026-10-21: a run started in the doorway refused 48
+    things as having nowhere to stand, and 41 of them could be seen from
+    hundreds of places further round. Only the sixty places nearest the rover's
+    walk were tried, and those were one patch on its own side of a wall."""
+    behind = a_thing("object:72", 4.1, 0.8, uncertainty_m=0.6, major_deg=90.0)
+    found = [one for one in goals.improve_geometry(_situation(PARTITIONED,
+                                                              entities=[behind]))
+             if one.target == "object:72"]
+    check("a thing behind the partition has somewhere to be seen from",
+          [one.id.endswith("@nowhere") for one in found][:1], [False])
+    check("...and none of them on the rover's side of it",
+          [one.id for one in found if one.constraints["goal"]["x_m"] < 3.0
+           and one.constraints["goal"]["y_m"] < 2.5], [])
+
+
 #: A room eight metres long, the rover near its left end.
 LONG = [
     "#" * 80,
@@ -865,6 +894,7 @@ TESTS = (test_the_depth_camera_must_see_the_thing_from_where_the_rover_stands,
     test_a_viewpoint_faces_the_thing_it_is_for,
     test_things_put_aside_do_not_crowd_out_the_rest_of_the_house,
     test_a_thing_on_its_own_wall_can_still_be_looked_at,
+    test_a_wall_on_the_rovers_side_does_not_hide_the_far_side,
     test_a_thing_in_reach_is_looked_at_from_where_the_rover_stands,
     test_a_thing_out_of_reach_is_still_driven_to,
     test_the_height_it_cannot_predict_is_declared_rather_than_assumed,
