@@ -14,8 +14,7 @@ nothing else worth doing and went back.
 ## What ran
 
 The rover stood on its parking spot between the two armchairs, restarted at
-22:53 after dropping off the network at 18:08 (its computer and driver board
-at once; why is not known). Its position was trusted and the map settled, the
+22:53 after the owner switched it off at 18:08. Its position was trusted and the map settled, the
 gyro clean, the GPU up. The owner set a bean bag down at P2, the dining
 table's corridor end on the living-room side, 2.7 m in front of the rover, at
 about 22:57. The criteria were written down before the run.
