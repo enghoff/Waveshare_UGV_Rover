@@ -36,6 +36,7 @@ pkill -f "$DIR/lidar_node.py" 2>/dev/null
 pkill -f "$DIR/base_node.py" 2>/dev/null
 pkill -f "$DIR/nav_bridge.py" 2>/dev/null
 pkill -f "$DIR/change_node.py" 2>/dev/null
+pkill -f "$DIR/localizer_node.py" 2>/dev/null
 pkill -f 'async_slam_toolbox_node' 2>/dev/null
 pkill -f 'nav2_lifecycle_manager/lifecycle_manager' 2>/dev/null
 pkill -f 'nav2_controller/controller_server' 2>/dev/null
@@ -61,6 +62,7 @@ pkill -9 -f "$DIR/lidar_node.py" 2>/dev/null
 pkill -9 -f "$DIR/base_node.py" 2>/dev/null
 pkill -9 -f "$DIR/nav_bridge.py" 2>/dev/null
 pkill -9 -f "$DIR/change_node.py" 2>/dev/null
+pkill -9 -f "$DIR/localizer_node.py" 2>/dev/null
 pkill -9 -f 'async_slam_toolbox_node' 2>/dev/null
 pkill -9 -f 'nav2_lifecycle_manager/lifecycle_manager' 2>/dev/null
 pkill -9 -f 'nav2_controller/controller_server' 2>/dev/null
