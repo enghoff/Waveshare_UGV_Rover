@@ -932,6 +932,7 @@ def test_a_refit_reports_where_the_mapper_put_the_rover() -> None:
     """
     section("a refit the mapper applies a moment after the load")
     node = Refitted()
+    node._map_drift_at = 12.0       # the last look, which said it was off
     answer = _refit(node)
     check("a fit the mapper applied is reported as fitted",
           answer["fitted"], True)
@@ -941,6 +942,8 @@ def test_a_refit_reports_where_the_mapper_put_the_rover() -> None:
           "boot", node.kept, [FITTED])
     check("...and the rover's place on the map counts as confirmed",
           node.map_settled, True)
+    check("...and the lidar is asked again at once, so a stale 'off by' does "
+          "not outlive the fix", node._map_drift_at, None)
 
     node = Refitted(lands=False)
     began = node.clock

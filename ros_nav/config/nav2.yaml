@@ -730,6 +730,23 @@ global_costmap:
         # marks along walls on the console). 5 degrees is the 10-90% spread of
         # the scanned wall's angle against the map's on that day's drive.
         wall_margin_per_m: 0.087
+        # **The rover off by its own width, not by an angle** (2026-10-21).
+        # Between the mapper's corrections the pose is 10-30 cm out one time in
+        # ten, and parked or turning on the spot nothing corrects it; 20 cm out
+        # in an 80 cm doorway, the layer drew the furniture beside the rover as
+        # a line across it, and the rover was stuck there for five minutes. Each
+        # update now finds the shift of the whole scan, up to this far and this
+        # much turn, that lays the most of it on mapped walls, and when that
+        # beats the believed pose by `align_min_gain` returns and
+        # `align_min_gain_frac` of the scan, judges every return there instead.
+        # Replayed: the doorway's 14 marks went to none, a person put in its
+        # middle kept all 22 returns (the old rule marked 11), and two bean bags
+        # newly set down kept theirs (31.6 a scan against 31.7). 0.40 m covers
+        # the 35 cm seen at the charger the same morning. 0 switches it off.
+        align_window_m: 0.40
+        align_window_deg: 6.0
+        align_min_gain: 20
+        align_min_gain_frac: 0.10
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         # slam_toolbox's live map, not a saved one. It republishes the whole grid

@@ -1229,6 +1229,12 @@ class NavMap:
         # to leave the wrong pose on disk for the next boot to restore at.
         self.map_settled = True
         self.keep_pose(self.travelled_deg())
+        # And the lidar asked again at the next tick rather than in five
+        # minutes: the last look said the rover was off, which this has just
+        # made untrue, and on 2026-10-21 that stale verdict kept the console
+        # saying "OFF BY 19 cm" and the change watch paused for five minutes
+        # after a refit had put the rover right.
+        self._map_drift_at = None
         answer["why"] = ("the rover was %.0f cm and %.1f degrees from where it "
                          "thought it was, and has been moved onto the map -- "
                          "%.0f%% of the scan now lies on a wall against %.0f%% "

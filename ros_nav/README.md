@@ -314,8 +314,15 @@ latest scan within 3 m onto the map at every update, twice a second, using the
 map's position as it is at that moment, and keeps nothing between updates. The
 planner, replanning once a second, draws its route round whoever stands in the
 way, and nothing they leave behind can turn into a ghost wall, because nothing
-is remembered. Scan points within 10 cm of a wall the map already has are left
-to the map. On the rover a person standing on a 4.4 m leg was driven round
+is remembered. Scan points within 10 cm of a wall the map already has, plus
+8.7 cm a metre of range, are left to the map. When the rover's place on the map
+is clearly out, the scan is judged where it fits instead: each update finds the
+shift of up to 0.40 m and 6 degrees that lays the most of it on mapped walls,
+and when that beats the believed pose by 20 returns and a tenth of the scan,
+returns are judged new or mapped there. Without that, a rover 20 cm out draws
+the furniture beside it as a line of obstacles, which closed an 80 cm doorway on
+2026-10-21 ([2026-10-21](../docs/progress/2026-10-21-the-live-layer-and-a-rover-off-by-its-width.md)).
+On the rover a person standing on a 4.4 m leg was driven round
 without a stop, the rover's centre passing about half a metre from them
 ([2026-10-08](../docs/progress/2026-10-08-live-layer.md)). The bridge's
 `{"op": "live_layer", "enabled": false}` switches it off at run time and its

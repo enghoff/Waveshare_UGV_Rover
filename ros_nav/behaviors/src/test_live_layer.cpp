@@ -1,7 +1,9 @@
 // The live obstacle layer's arithmetic, on a costmap with no node behind it:
 // a person in open floor is marked, every cell of them; the map's own wall seen
-// a few centimetres off is not.
+// a few centimetres off is not, nor seen 20 cm off by a rover that is.
+#include <cmath>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 #include "nav2_costmap_2d/cost_values.hpp"
@@ -59,6 +61,107 @@ int main()
           live::mark_fresh(room, {{2.0, 1.47}}, {3.0}, 0.10, 0.087) == 1);
     check("a point 0.2 m from the wall at 0.5 m range is still marked",
           live::mark_fresh(room, {{3.0, 1.82}}, {0.5}, 0.10, 0.087) == 1);
+  }
+
+  // **A rover 20 cm off in a doorway** (2026-10-21). Walls along y = 1.0 and
+  // 1.8 m and an end wall at x = 3.5 m; the laser really at (1.0, 1.6), believed
+  // at (1.0, 1.4). Every return is the map's own wall, and the old rule drew a
+  // line of them across the doorway.
+  {
+    nav2_costmap_2d::Costmap2D door(80, 80, 0.05, 0.0, 0.0, FREE_SPACE);
+    for (unsigned int x = 0; x <= 70; ++x) {
+      door.setCost(x, 20, LETHAL_OBSTACLE);
+      door.setCost(x, 36, LETHAL_OBSTACLE);
+    }
+    for (unsigned int y = 20; y <= 36; ++y) {
+      door.setCost(70, y, LETHAL_OBSTACLE);
+    }
+    const ugv_behaviors::Point truth{1.0, 1.6};
+    const ugv_behaviors::Point believed{1.0, 1.4};
+    std::vector<ugv_behaviors::Point> walls;
+    for (double x = 0.2; x <= 3.4; x += 0.05) {
+      walls.push_back({x, 1.02});
+      walls.push_back({x, 1.82});
+    }
+    for (double y = 1.06; y <= 1.78; y += 0.05) {
+      walls.push_back({3.52, y});
+    }
+    // As the believed pose places them, with their true ranges.
+    auto seen = [&](const std::vector<ugv_behaviors::Point> & at, const ugv_behaviors::Point & from) {
+        std::vector<ugv_behaviors::Point> out;
+        std::vector<double> ranges;
+        for (const auto & p : at) {
+          const double range = std::hypot(p.first - truth.first, p.second - truth.second);
+          if (range > 3.0) {
+            continue;
+          }
+          out.push_back({p.first - truth.first + from.first, p.second - truth.second + from.second});
+          ranges.push_back(range);
+        }
+        return std::make_pair(out, ranges);
+      };
+    live::Align align;
+    align.window_m = 0.40;
+    {
+      auto [points, ranges] = seen(walls, believed);
+      nav2_costmap_2d::Costmap2D copy(door);
+      check("the old rule marks the doorway's walls seen 20 cm off",
+            live::mark_fresh(copy, points, ranges, 0.10, 0.087) > 5);
+      nav2_costmap_2d::Costmap2D again(door);
+      live::Shift shift;
+      check("...and laid on the map at the shift first, none of them",
+            live::mark_fresh(again, points, ranges, 0.10, 0.087, believed, align, &shift) == 0);
+      // To a cell: "on a wall" is within a cell of one, so 15, 20 and 25 cm tie
+      // and the smallest is kept.
+      check("...the shift found being the 20 cm the pose is out, to a cell",
+            shift.believed && std::abs(shift.dy - 0.20) <= 0.05 + 1e-9 &&
+            std::abs(shift.dx) < 1e-9 && shift.dyaw == 0.0);
+    }
+    {
+      // A person in the doorway's middle, 0.4 m from both walls.
+      std::vector<ugv_behaviors::Point> with = walls;
+      const std::vector<ugv_behaviors::Point> legs = {{1.8, 1.40}, {1.85, 1.40}, {1.8, 1.45}};
+      with.insert(with.end(), legs.begin(), legs.end());
+      auto [points, ranges] = seen(with, believed);
+      nav2_costmap_2d::Costmap2D copy(door);
+      live::Shift shift;
+      const int marked = live::mark_fresh(copy, points, ranges, 0.10, 0.087, believed, align,
+                                          &shift);
+      // The legs are the last three points, where the believed pose put them.
+      int on_legs = 0;
+      for (std::size_t i = points.size() - legs.size(); i < points.size(); ++i) {
+        unsigned int lx = 0;
+        unsigned int ly = 0;
+        copy.worldToMap(points[i].first, points[i].second, lx, ly);
+        on_legs += copy.getCost(lx, ly) == LETHAL_OBSTACLE;
+      }
+      check("a person in the doorway is still marked, where the rover sees them",
+            on_legs == 3 && marked == 3 && shift.believed);
+      if (on_legs != 3 || marked != 3 || !shift.believed) {
+        std::cout << "       legs " << on_legs << " marked " << marked << " shift "
+                  << shift.dx << "," << shift.dy << "," << shift.dyaw << " believed "
+                  << shift.believed << " on walls " << shift.on_wall_here << "->"
+                  << shift.on_wall_shifted << std::endl;
+      }
+    }
+    {
+      // The pose right: nothing to shift, and a person is marked as before.
+      std::vector<ugv_behaviors::Point> with = walls;
+      with.push_back({1.8, 1.40});
+      auto [points, ranges] = seen(with, truth);
+      nav2_costmap_2d::Costmap2D copy(door);
+      live::Shift shift;
+      const int marked = live::mark_fresh(copy, points, ranges, 0.10, 0.087, truth, align, &shift);
+      check("with the pose right the shift is not believed", !shift.believed);
+      check("...and only the person is marked", marked == 1);
+    }
+    {
+      align.window_m = 0.0;
+      auto [points, ranges] = seen(walls, believed);
+      nav2_costmap_2d::Costmap2D copy(door);
+      check("a window of 0 is the old rule",
+            live::mark_fresh(copy, points, ranges, 0.10, 0.087, believed, align) > 5);
+    }
   }
 
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;

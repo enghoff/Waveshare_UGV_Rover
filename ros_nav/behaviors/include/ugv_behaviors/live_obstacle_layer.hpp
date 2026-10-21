@@ -25,6 +25,21 @@
 // three metres, and those are the orange marks seen along the walls on the
 // console (docs/progress/2026-10-09-live-layer-marks.md).
 //
+// **A margin cannot cover a rover that is off by its own width.** Between the
+// mapper's corrections the rover's place on the map is 10 to 30 cm out one time
+// in ten (the recorded sessions of 2026-10-17 to 21), and parked or turning on
+// the spot nothing corrects it. On 2026-10-21 the rover stood 20 cm and 3.5
+// degrees off in an 80 cm doorway; the layer drew the furniture beside it as a
+// line of new obstacles 20 cm in front of where the map has it, the planner
+// found no way through, and the rover could not move far enough for the mapper
+// to put it right. So before marking, the scan as a whole is laid on the map at
+// the small shift that puts the most of it on walls (`best_shift`); when that
+// shift is clearly better than the believed pose, each point is judged new or
+// mapped there instead. Replayed, that took the doorway's 14 marks to none, and
+// marked all 22 returns of a person put in the doorway's middle where the old
+// rule marked 11; on a drive with two bean bags newly set down it kept their
+// marks (31.6 a scan against 31.7), the shift being believed on 37 scans in 890.
+//
 // `<name>.enabled` can be set while the planner runs, and is the way to take
 // the layer back out without a redeploy: switched off, it clears its marks on
 // the next update and then marks nothing.
@@ -67,6 +82,41 @@ int mark_fresh(nav2_costmap_2d::Costmap2D & grid, const std::vector<Point> & poi
 bool bounds_of(const std::vector<Point> & points, double & min_x, double & min_y,
                double & max_x, double & max_y);
 
+// How far the whole scan may be off the map, searched for before marking.
+struct Align
+{
+  double window_m = 0.0;      // 0 switches the search off
+  double step_m = 0.05;
+  double window_deg = 6.0;
+  double step_deg = 1.5;
+  int min_gain = 20;          // returns the shift must lay on walls beyond the pose's
+  double min_gain_frac = 0.10;  // ...and this share of the scan
+};
+
+// What the search found: the shift (about `origin`), how many returns lie on a
+// wall at the believed pose and at the shift, and whether the shift was believed.
+struct Shift
+{
+  double dx = 0.0, dy = 0.0, dyaw = 0.0;
+  int on_wall_here = 0, on_wall_shifted = 0;
+  bool believed = false;
+};
+
+// The shift of the whole scan, rotated about `origin` (the laser), that lays the
+// most returns within a cell of a lethal cell on `grid`, the smallest such when
+// several tie. Believed only when it lays `min_gain` and `min_gain_frac` of the
+// scan on walls beyond what the believed pose does.
+Shift best_shift(const nav2_costmap_2d::Costmap2D & grid, const std::vector<Point> & points,
+                 const Point & origin, const Align & align);
+
+// `mark_fresh` with ranges, except that when the scan as a whole lies clearly
+// better on the map shifted (`best_shift`), each point is judged at the shift
+// instead of where the believed pose puts it. Marks are still put where the
+// believed pose puts them, which is where the planner thinks they are.
+int mark_fresh(nav2_costmap_2d::Costmap2D & grid, const std::vector<Point> & points,
+               const std::vector<double> & ranges, double margin_m, double per_m,
+               const Point & origin, const Align & align, Shift * found = nullptr);
+
 }  // namespace live_layer
 
 class LiveObstacleLayer : public nav2_costmap_2d::Layer
@@ -97,7 +147,9 @@ private:
   // What this update will mark, and the box it was marked in last time.
   std::vector<Point> points_;
   std::vector<double> ranges_;
+  Point origin_{0.0, 0.0};
   bool marked_before_ = false;
+  bool said_shift_ = false;
   double before_min_x_ = 0.0, before_min_y_ = 0.0, before_max_x_ = 0.0, before_max_y_ = 0.0;
 
   bool active_ = true;
@@ -107,6 +159,7 @@ private:
   double max_age_s_ = 0.5;
   double wall_margin_m_ = 0.10;
   double wall_margin_per_m_ = 0.087;
+  live_layer::Align align_;
 };
 
 }  // namespace ugv_behaviors
