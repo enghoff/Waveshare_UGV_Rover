@@ -1,7 +1,9 @@
 # Keeping the rover pinned to its map, scan by scan
 
-**Status:** proposed and built 2026-10-21 at the owner's request; offline replays
-pass; not yet on the floor ([R-NAV-15](../requirements/navigation.md#r-nav-15)).
+**Status:** built 2026-10-21 at the owner's request; offline replays pass; the
+floor test passed the same evening, 19 of 19 legs and the position right after 18
+([progress](../progress/2026-10-21-the-localizer-on-the-floor.md),
+[R-NAV-15](../requirements/navigation.md#r-nav-15) settled). What is left is below.
 
 ## Why
 
@@ -109,8 +111,8 @@ Predeclared before the floor test:
 
 ## What is ahead
 
-- The floor test above, with the change watch's "fitting it better shifted" count
-  watched alongside (it should fall).
+- The localizer's cost: 24% of a core averaged, most of it Python's share of the
+  transform tree and the scan rather than the search.
 - Re-anchoring a paused mapper without a restart.
 - Whether the near-return weighting costs accuracy in small rooms (the short tour
   went from 5% to 14% out), and whether AMCL among the furniture would do as well.

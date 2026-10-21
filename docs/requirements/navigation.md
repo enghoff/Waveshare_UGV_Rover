@@ -309,8 +309,11 @@ the second is worth getting up for.
 <a id="r-nav-15"></a>
 ### R-NAV-15 — The rover's place on the map follows the map continuously, not only at loop closures
 
-- **State:** proposed
-- **Proposed in:** [../plans/continuous-localization.md](../plans/continuous-localization.md)
+- **State:** settled
+- **Evidence:** `f67648c`, `57e55a7`, `999e019`; `python ros_nav/selftest.py`
+  (test_localizer.py); the floor test of
+  [2026-10-21](../progress/2026-10-21-the-localizer-on-the-floor.md): within
+  10 cm and 3 degrees after 18 of 19 stops
 
 Between a turn or a wheel slip and the next loop closure, a rover tracked only
 against its own recent scans can be 20 cm to a metre from where it believes it
