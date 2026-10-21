@@ -632,7 +632,8 @@ class RoverNav:
                 status.get("gyro_bias_dps"), status.get("gyro_fault")),
             # The open autonomous run, or None: what the console's run button
             # is drawn from, so that it shows a run an agent started too.
-            "autonomy": self.autonomy_brief()}
+            "autonomy": self.autonomy_brief(),
+            "autonomy_ended": self.autonomy_ended_brief()}
 
     def _tool_nav_grid(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """The occupancy map as numbers. A control call, not a model tool.

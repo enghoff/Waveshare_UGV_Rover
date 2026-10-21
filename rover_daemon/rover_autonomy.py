@@ -285,6 +285,21 @@ class RoverAutonomy:
         return {"id": run.id, "via": run.via, "why": run.why,
                 "spent": run.spent(permission.clock())}
 
+    def autonomy_ended_brief(self) -> dict[str, Any] | None:
+        """The last run once it has ended, and why, or None.
+
+        What the console says when its run button goes back to "run". A run
+        with nothing worth doing ends within a second of opening, between two
+        of the console's polls, and on 2026-10-21 the owner pressed the button
+        five times and saw nothing happen while each run ended with its reason
+        in the daemon's log and nowhere else.
+        """
+        permission = getattr(self, "permission", None)
+        run = None if permission is None else permission.run
+        if run is None or not run.ended:
+            return None
+        return {"id": run.id, "via": run.via, "ended": run.ended}
+
     # --- what a person calls ------------------------------------------------
 
     @serialized

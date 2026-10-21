@@ -114,6 +114,17 @@ class SessionShow:
         # The open autonomous run, by the same reasoning: the console's button
         # starts one, and so can an agent, so the button shows the rover's answer.
         self.autonomy_run = body.get("autonomy") or None
+        # And how the last one ended, said once. A run with nothing worth doing
+        # opens and ends between two polls, so without this the button did
+        # nothing visible and the reason stayed in the daemon's log.
+        ended = body.get("autonomy_ended") or {}
+        if not self.run_end_primed:
+            self.run_end_primed = True
+            self.run_end_said = ended.get("id")
+        elif ended.get("id") and ended["id"] != self.run_end_said:
+            self.run_end_said = ended["id"]
+            self.say(f"run ended: {ended.get('ended') or 'no reason given'}",
+                     "note")
         # A click on the map while the rover was exploring stops the run and takes
         # its place, and this is the only announcement there is that the wheels are
         # free: an exploring run is started by a call that answers at once, so

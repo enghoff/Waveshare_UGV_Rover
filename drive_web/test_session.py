@@ -1049,6 +1049,41 @@ def test_the_run_button_starts_a_run_and_shows_the_rovers_answer() -> None:
     check("a run the rover reports is what the page is given",
           session.snapshot()["autonomy"]["via"], "api")
 
+
+def test_a_run_ending_is_said_once() -> None:
+    """A run with nothing worth doing opens and ends between two polls, so the
+    console says how the last run ended when that changes -- and not on the first
+    status, which would announce a run that ended before anybody opened the page."""
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"run ending ({type(exc).__name__})")
+        return
+    session = drive_web.Session(None, 3.0, 480)
+    base = {"ok": True, "lidar_live": True, "lidar_ok": True, "estop": False,
+            "position_trusted": True, "pose": {"x_m": 0.0, "y_m": 0.0,
+                                               "heading_deg": 0.0}}
+    old = {"id": "run/b/1", "via": "api", "ended": "the run's 9 minutes are up"}
+    session.show_status(dict(base, autonomy_ended=old))
+    check("a run that had ended before the console looked is not announced",
+          session.snapshot()["notice"]["text"], "")
+    session.show_status(dict(base, autonomy_ended=old))
+    check("...nor on the next status", session.snapshot()["notice"]["text"], "")
+    new = {"id": "run/b/2", "via": "console",
+           "ended": "there was nothing left worth doing: nothing was worth "
+                    "considering from here"}
+    session.show_status(dict(base, autonomy_ended=new))
+    notice = session.snapshot()["notice"]
+    check("a run that ends is said, with the rover's reason",
+          (notice["text"], notice["tag"]),
+          ("run ended: there was nothing left worth doing: nothing was worth "
+           "considering from here", "note"))
+    session.show_status(dict(base, autonomy_ended=new))
+    check("...once", session.snapshot()["notice"]["seq"], notice["seq"])
+    session.show_status(dict(base))
+    check("a daemon too old to say is quiet", session.snapshot()["notice"]["seq"],
+          notice["seq"])
+
 def test_the_snapshot_popup_names_arms_and_restores() -> None:
     """Snapshots on the console: a list, a save, and two acts pressed twice.
 
@@ -1155,4 +1190,5 @@ TESTS = (
     test_a_click_while_exploring_takes_over,
     test_a_slow_browser_is_shown_the_newest_state,
     test_the_run_button_starts_a_run_and_shows_the_rovers_answer,
+    test_a_run_ending_is_said_once,
 )

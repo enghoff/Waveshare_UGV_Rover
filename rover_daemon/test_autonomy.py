@@ -251,9 +251,15 @@ def test_the_console_starts_a_run_with_no_limit_but_failures():
     check("...which it says", run["executive"]["pid"], 4242)
     check("the run is what nav_status reports to the console",
           rover.call("nav_status", {})["autonomy"]["via"], "console")
+    check("...and no ending while it is open",
+          rover.call("nav_status", {})["autonomy_ended"], None)
     rover.call("stop_driving", {})
     check("...and nothing once it is stopped",
           rover.call("nav_status", {})["autonomy"], None)
+    ended = rover.call("nav_status", {})["autonomy_ended"]
+    check("...when it reports how the run ended, for the console to say",
+          (ended["id"], ended["via"], ended["ended"].startswith("stopped by")),
+          (run["run"]["id"], "console", True))
 
 
 def test_an_agent_starts_a_run_after_a_stop_and_can_bound_it():

@@ -124,6 +124,11 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         #: The autonomous run the rover says is open, or None. Read off
         #: `nav_status` for the same reason as `exploring`.
         self.autonomy_run: dict[str, Any] | None = None
+        #: The last ended run whose end this console has said, by id. The first
+        #: status only records it, so opening the console does not announce a
+        #: run that ended an hour ago.
+        self.run_end_said: str | None = None
+        self.run_end_primed = False
         # A click on the map that is waiting for the move it interrupted to let go
         # of the wheels: the `drive_to` arguments, and when to give up on them. The
         # place is held in map coordinates rather than as an offset, so waiting does
