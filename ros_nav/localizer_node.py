@@ -148,13 +148,21 @@ class LocalizerNode(Node):
             self.scan = msg
 
     def on_map(self, msg):
+        # The mapper republishes its grid every two seconds whether or not it
+        # changed, and rebuilding the field for an unchanged one was most of
+        # this node's cost while parked.
+        info = msg.info
+        key = (info.width, info.height, info.origin.position.x, info.origin.position.y,
+               hash(bytes(np.asarray(msg.data, dtype=np.int8))))
+        if key == getattr(self, "map_key", None):
+            return
+        self.map_key = key
         out = OccupancyGrid()
         out.header.stamp = msg.header.stamp
         out.header.frame_id = self.args.map_frame
         out.info = msg.info
         out.data = msg.data
         self.map_pub.publish(out)
-        info = msg.info
         if abs(info.origin.orientation.z) > 1e-6:
             self.get_logger().warn("localizer: the map is rotated; it is used as if it were not")
         data = np.asarray(msg.data, dtype=np.int8)

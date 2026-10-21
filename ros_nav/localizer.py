@@ -91,6 +91,11 @@ PARKED_VOTES = 3
 PARKED_AGREE_M = 0.03
 PARKED_AGREE_DEG = 1.0
 
+#: Parked, the full search runs on one scan in this many unless a correction is
+#: already being counted: a still rover's odometry has nothing to say, and a nudge
+#: is still taken within a few seconds. Measured on the Orin at 32 ms a search.
+PARKED_SEARCH_EVERY = 5
+
 #: Odometry moving less than this between two steps counts as standing still.
 STILL_M = 0.005
 STILL_DEG = 0.3
@@ -189,6 +194,7 @@ class Tracker(object):
         self.odom_t = None
         self.votes = []
         self.skipped = 0
+        self.still_steps = 0
 
     def set_map(self, grid):
         """Score against this map from now on. The field is rebuilt here and
@@ -228,6 +234,9 @@ class Tracker(object):
             if rate > MAX_TURN_DPS:
                 return self._keep(predicted, odom, t, 0.0, 0.0,
                                   "turning at %.0f deg/s, too fast to match" % rate, skipped=True)
+        self.still_steps = self.still_steps + 1 if still else 0
+        if still and not self.votes and self.still_steps % PARKED_SEARCH_EVERY != 1:
+            return self._keep(predicted, odom, t, 0.0, 0.0, "standing still")
         points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
         if len(points) > MAX_POINTS:
             points = points[np.linspace(0, len(points) - 1, MAX_POINTS).astype(int)]
