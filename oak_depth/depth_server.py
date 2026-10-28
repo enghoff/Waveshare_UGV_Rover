@@ -41,9 +41,24 @@ from depth_settings import (
 )
 from colour_lens import colour_intrinsics
 
+# The recording sessions' shared writer is deployed beside this file; in the
+# repository it is the daemon's, one directory over. A host with neither just
+# records nothing.
+for _where in (HERE, HERE.parent / "rover_daemon"):
+    if (_where / "session_record.py").exists():
+        if str(_where) not in sys.path:
+            sys.path.append(str(_where))
+        break
+try:
+    import session_record
+except ImportError:
+    session_record = None
+
 #: The colour sensor mode, named once because the lens depends on it as much as
 #: on the output size -- see `colour_lens`.
 COLOUR_MODE = "THE_1080_P"
+#: The OAK IMU's rate in a recording session, gyro and accelerometer alike.
+IMU_HZ = 200
 
 
 class DepthError(RuntimeError):
@@ -69,6 +84,17 @@ def _import_depthai():
                              f"import ({error})") from None
     raise DepthError(f"depthai is not installed on this host; run install.sh to "
                      f"unpack it into {VENDOR}")
+
+
+def _ns(packet, which: str) -> int | None:
+    """A packet's stamp in integer nanoseconds, `getTimestamp` (the device's
+    time mapped to this host's monotonic clock) or `getTimestampDevice` (the
+    device's own, which starts again at every wake); None if it has none."""
+    try:
+        stamp = getattr(packet, which)()
+        return (stamp.days * 86400 + stamp.seconds) * 1_000_000_000 + stamp.microseconds * 1000
+    except Exception:
+        return None
 
 
 def _stamp_of(packet) -> float:
@@ -174,6 +200,18 @@ class Depth:
         #: starts uploading firmware in the same instant rather than up to a
         #: second later.
         self._power = threading.Condition()
+        #: A recording session's streams while one is open (see `_follow`), and
+        #: whether the next pipeline carries the IMU, which only a session wants.
+        #: Read from the announcement here as well as by the follower, so a
+        #: process started mid-session builds its first pipeline with it.
+        self.recording = None
+        self.imu_wanted = session_record is not None and session_record.announced() is not None
+        self.pipeline_has_imu = False
+        #: Set while the device is closed and reopened to add the IMU: the camera
+        #: is still wanted, so the closing is not a switch-off and not a fault.
+        self.rebuilding = False
+        self.device_open = False
+        self._recorded_opens = 0
 
     # --- the pipeline -------------------------------------------------------
 
@@ -240,9 +278,23 @@ class Depth:
         logger = pipeline.create(dai.node.SystemLogger)
         logger.setRate(1)
 
-        for name, source in (("depth", stereo.depth),
-                             ("jpeg", encoder.bitstream),
-                             ("sysinfo", logger.out)):
+        outputs = [("depth", stereo.depth), ("jpeg", encoder.bitstream),
+                   ("sysinfo", logger.out)]
+        # The OAK's own gyro and accelerometer, only while a recording session
+        # wants them (Perception's sessions, rover_daemon/rover_recording.py):
+        # the rover's own looks never have, and a pipeline that has carried them
+        # has not yet run on the rover outside a session. The rate and batching
+        # are the ones the gimbal sweeps of 2026-10-09 recorded at 201.2 a second
+        # with no gap in 450 s (usb_cameras/capture_pan_sweep.py).
+        self.pipeline_has_imu = self.imu_wanted
+        if self.imu_wanted:
+            imu = pipeline.create(dai.node.IMU)
+            imu.enableIMUSensor([dai.IMUSensor.ACCELEROMETER_RAW,
+                                 dai.IMUSensor.GYROSCOPE_RAW], IMU_HZ)
+            imu.setBatchReportThreshold(5)
+            imu.setMaxBatchReports(20)
+            outputs.append(("imu", imu.out))
+        for name, source in outputs:
             out = pipeline.create(dai.node.XLinkOut)
             out.setStreamName(name)
             source.link(out.input)
@@ -270,6 +322,13 @@ class Depth:
                 queues = {name: device.getOutputQueue(name, maxSize=4,
                                                       blocking=False)
                           for name in ("depth", "jpeg", "sysinfo")}
+                self._opened_for_recording()
+                if self.pipeline_has_imu:
+                    # Its own reader, because the loop below waits on depth and
+                    # 40 batches a second must not wait behind 15 frames.
+                    imu = device.getOutputQueue("imu", maxSize=50, blocking=False)
+                    threading.Thread(target=self._drain_imu, args=(imu,),
+                                     name="imu", daemon=True).start()
                 # **The two streams do not arrive together, and the colour is
                 # the late one.** Both are exposed at the same instant on the
                 # same device, but the colour frame goes through the MJPEG
@@ -300,6 +359,8 @@ class Depth:
                     # must not be able to stall the depth.
                     packet = queues["depth"].get()
                     now = time.monotonic()
+                    if self.recording is not None:
+                        self._record_depth(packet)
                     while True:
                         picture = queues["jpeg"].tryGet()
                         if picture is None:
@@ -315,15 +376,107 @@ class Depth:
                     if pending is not None:
                         self._publish(pending, recent, now)
                     pending = (packet.getFrame(), _stamp_of(packet), now)
+                self.device_open = False
         except Exception as error:
             # Not when it was switched off mid-frame: closing the device out from
             # under a queue that is being read raises here, and that is this
             # process doing as it was told rather than a camera that has gone.
-            if self._stop.is_set() and not self.wanted():
+            # So is a rebuild for a recording session's IMU.
+            self.device_open = False
+            if self._stop.is_set() and (not self.wanted() or self.rebuilding):
                 return
             self.errors += 1
             self.last_error = f"{type(error).__name__}: {error}"
             raise DepthError(self.last_error) from None
+
+    # --- a recording session ---------------------------------------------------
+
+    def follow_sessions(self):
+        """Open this process's streams -- depth and the OAK's IMU -- whenever the
+        daemon announces a recording session, and close them when it ends."""
+        if session_record is None:
+            return None
+        return session_record.Follower("depth", self._session_opened, self._session_closed)
+
+    def _session_opened(self, session: dict) -> dict:
+        directory = session["dir"]
+        streams = {
+            "depth": session_record.Stream(directory, "depth", "depth/index.jsonl",
+                                           "depth/frames.u16"),
+            "oak_imu": session_record.Stream(directory, "oak_imu", "oak_imu.jsonl"),
+        }
+        hz = float(session.get("depth_hz") or self.fps)
+        self._keep_every = max(1, round(self.fps / hz))
+        self._depth_seen = 0
+        # The device that is open now, if one is, counts as the session's first,
+        # so the rebuild below is a restart: the device's clock begins again.
+        self._recorded_opens = 1 if self.device_open else 0
+        self.recording = streams
+        self.imu_wanted = True
+        if self.device_open and not self.pipeline_has_imu:
+            self.rebuild()
+        return streams
+
+    def _session_closed(self, streams: dict) -> dict:
+        self.recording = None
+        self.imu_wanted = False
+        return {name: s.close() for name, s in streams.items()}
+
+    def rebuild(self) -> None:
+        """Close the device and open it again with the pipeline as it now should
+        be, without counting it as a switch-off or a fault."""
+        with self._power:
+            self.rebuilding = True
+            self._stop.set()
+            self._power.notify_all()
+
+    def _opened_for_recording(self) -> None:
+        """A device has just opened: if a session is recording, a second or later
+        opening in it restarts the device's clock, which its streams must say."""
+        self.device_open = True
+        streams = self.recording
+        if streams is None:
+            return
+        if self._recorded_opens:
+            for stream in streams.values():
+                stream.restart()
+        self._recorded_opens += 1
+
+    def _record_depth(self, packet) -> None:
+        streams = self.recording
+        if streams is None:
+            return
+        self._depth_seen += 1
+        if (self._depth_seen - 1) % self._keep_every:
+            return
+        arrived = time.monotonic_ns()
+        frame = packet.getFrame()
+        height, width = frame.shape[:2]
+        streams["depth"].put(
+            {"t_arr": arrived, "t_dev": _ns(packet, "getTimestamp"),
+             "t_dev_raw": _ns(packet, "getTimestampDevice"), "offset": 0,
+             "width": int(width), "height": int(height), "frame": "oak_rgb_optical"},
+            blob=frame.astype("<u2", copy=False).tobytes())
+
+    def _drain_imu(self, queue) -> None:
+        """The OAK's IMU batches, as they come, into a session's stream; taken
+        whether or not a session is recording, since an undrained queue backs up
+        on the device."""
+        while True:
+            try:
+                batch = queue.get()
+            except Exception:
+                return  # the device has closed
+            streams = self.recording
+            if streams is None:
+                continue
+            arrived = time.monotonic_ns()
+            for report in batch.packets:
+                a, g = report.acceleroMeter, report.gyroscope
+                streams["oak_imu"].put(
+                    {"t_arr": arrived, "t_dev": _ns(g, "getTimestamp"),
+                     "t_dev_raw": _ns(g, "getTimestampDevice"),
+                     "gyro": [g.x, g.y, g.z], "accel": [a.x, a.y, a.z]})
 
     def _publish(self, pending, recent: list, now: float) -> None:
         """Make one held depth frame, and the picture it belongs with, the answer.
@@ -1086,6 +1239,7 @@ def main() -> int:
     # VPU" from "not listening at all".
     watchdog = threading.Thread(target=_watch, args=(depth,), daemon=True)
     watchdog.start()
+    depth.follow_sessions()
     # A loop rather than one call, because the camera can now be switched off and
     # on again without this process going anywhere -- see `Depth.set_power`. Every
     # time round is a fresh firmware upload and a fresh pipeline, since that is the
@@ -1101,6 +1255,14 @@ def main() -> int:
                   file=sys.stderr, flush=True)
             return 1
         depth.forget()
+        if depth.rebuilding:
+            # Closed only to open again with a recording session's IMU.
+            with depth._power:
+                depth.rebuilding = False
+                depth._stop.clear()
+            print("[oak_depth] reopening with the IMU for a recording session",
+                  file=sys.stderr, flush=True)
+            continue
         print(f"[oak_depth] switched off after {depth.frames} frames"
               f"{depth.heat()}; the camera is idle and this process is waiting",
               file=sys.stderr, flush=True)

@@ -244,6 +244,24 @@ class Follower:
                 self.session = now
             except Exception as exc:
                 print("[record] %s could not open its streams: %s" % (self.who, exc), flush=True)
+        if self.session is not None:
+            self._report()
+
+    def _report(self) -> None:
+        """Leave this process's queue depths and drops where the daemon's health
+        stream reads them, so that health covers every stream recorded."""
+        handle = self.handle
+        if not isinstance(handle, dict):
+            return
+        status = {name: {"queue": s.depth(), "dropped": s.dropped}
+                  for name, s in handle.items() if isinstance(s, Stream)}
+        path = os.path.join(self.session["dir"], ".status-%s.json" % self.who)
+        try:
+            with open(path + ".tmp", "w", encoding="utf-8") as f:
+                json.dump(status, f)
+            os.replace(path + ".tmp", path)
+        except OSError:
+            pass
 
     def _end(self) -> None:
         if self.session is None:

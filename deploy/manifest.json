@@ -116,6 +116,13 @@
             "face_tracking/*.onnx"
           ],
           "strip": "face_tracking"
+        },
+        {
+          "comment": "This manifest itself, so that a recording session can cite the deployment it ran under by hash (rover_daemon/rover_recording.py). Lands as ~/ugv/manifest.json.",
+          "patterns": [
+            "deploy/manifest.json"
+          ],
+          "strip": "deploy"
         }
       ],
       "commands": [
@@ -182,6 +189,13 @@
             "oak_depth/**"
           ],
           "strip": "oak_depth"
+        },
+        {
+          "comment": "The recording sessions' shared writer (Perception's sessions, rover_daemon/rover_recording.py), deployed here as well as into the daemon so that every process writing into a session writes the same way. One file in the repository; editing it marks all three components changed.",
+          "patterns": [
+            "rover_daemon/session_record.py"
+          ],
+          "strip": "rover_daemon"
         }
       ],
       "commands": [
@@ -224,6 +238,13 @@
         {
           "patterns": [
             "rover_daemon/permission.py"
+          ],
+          "strip": "rover_daemon"
+        },
+        {
+          "comment": "The recording sessions' shared writer (Perception's sessions, rover_daemon/rover_recording.py), deployed here as well as into the daemon so that every process writing into a session writes the same way. One file in the repository; editing it marks all three components changed.",
+          "patterns": [
+            "rover_daemon/session_record.py"
           ],
           "strip": "rover_daemon"
         }

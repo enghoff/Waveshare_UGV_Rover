@@ -113,6 +113,10 @@ class LocalizerNode(Node):
                              reliability=QoSReliabilityPolicy.RELIABLE)
         self.map_pub = self.create_publisher(OccupancyGrid, args.map_topic, latched)
         self.status_pub = self.create_publisher(String, "localizer/status", 10)
+        # Every step, with the stamp of the scan it matched: the status above
+        # shows only the last of the five a second, and a recording session
+        # keeps them all (recorder_node.py).
+        self.step_pub = self.create_publisher(String, "localizer/step", 50)
         group = MutuallyExclusiveCallbackGroup()
         self.create_subscription(LaserScan, args.scan_topic, self.on_scan,
                                  qos_profile_sensor_data, callback_group=group)
@@ -263,6 +267,18 @@ class LocalizerNode(Node):
             self.last_step = step
             self.counts["steps"] += 1
             self.counts["matched" if step.accepted else "kept"] += 1
+            correction = self.correction
+            # Searched: matched against the map at all, rather than kept for
+            # standing still or skipped for turning too fast or seeing too little.
+            searched = step.why != "standing still" and self.tracker.skipped == 0
+        stamp = scan.header.stamp
+        self.step_pub.publish(String(data=json.dumps({
+            "stamp_ns": stamp.sec * 1_000_000_000 + stamp.nanosec,
+            "map_odom": [float(correction[0]), float(correction[1]),
+                         math.radians(correction[2])],
+            "map_base": [float(step.pose[0]), float(step.pose[1]), math.radians(step.pose[2])],
+            "searched": bool(searched), "accepted": bool(step.accepted),
+            "score": float(step.score), "why": step.why})))
 
     # --- outputs ----------------------------------------------------------------
 

@@ -65,6 +65,8 @@ HELD_OUT = {"room": "bedroom", "has_door": True, "visibility_rule": None}
 #: The rooms' outlines on the map, by room, kept on the rover outside git
 #: (experiments/rooms/bedroom_outline.py draws the bedroom's).
 ROOMS_FILE = os.path.expanduser("~/.ugv/recording/rooms.json")
+#: The ROS half of a session, started with it (ros_nav/recorder_node.py).
+ROS_RECORDER = os.path.expanduser("~/ugv/ros_nav/run_recorder.sh")
 #: Camera and depth rates a second; commissioning chooses one configuration and
 #: every scored session uses it. The camera runs at 30 and the depth pipeline at
 #: 15, so the lower rates keep every third.
@@ -608,6 +610,12 @@ class RoverRecording:
         # Held on while the session lasts (rover_depth.depth_tick), and switched on
         # now rather than at the next tick.
         threading.Thread(target=self.depth_wake, args=(10.0,), daemon=True).start()
+        # The ROS half, which runs for sessions only and leaves when this one ends.
+        if os.path.exists(ROS_RECORDER):
+            import subprocess
+            subprocess.Popen(["bash", ROS_RECORDER], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
         return {"ok": True, "session": session, "dir": directory}
 
     def _tool_recording_stop(self, _arguments: dict[str, Any]) -> dict[str, Any]:
@@ -727,7 +735,7 @@ def write_manifest(recording: Recording, counts: dict[str, Any], clock_end: dict
         commit = state["components"]["rover_daemon"]["commit"]
     except Exception:
         commit = "0000000"
-    deployed = os.path.expanduser("~/ugv/deploy-manifest.json")
+    deployed = os.path.expanduser("~/ugv/manifest.json")
     config = recording.config
     rates = dict(NOMINAL_HZ, camera=config["camera_hz"], depth=config["depth_hz"])
     acquired = {n for n in rates if n in counts}

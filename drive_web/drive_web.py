@@ -92,6 +92,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import _paths  # noqa: F401 — console_model, rover_tools
+import drive_recording
 import wsframe
 from console_model import (
     LIGHT_MAX, MAP_LEGEND, MAP_SIZE_PX, Reply, TURN_PRESETS_DEG,
@@ -327,6 +328,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps(self.session.wifi_networks).encode(),
                        "application/json; charset=utf-8",
                        "public, max-age=31536000, immutable")
+        elif path == "/recording":
+            try:
+                with open(drive_recording.PAGE, "rb") as handle:
+                    page = handle.read()
+            except OSError as error:
+                self._missing(f"{drive_recording.PAGE} is missing: {error}")
+                return
+            self._send(page, "text/html; charset=utf-8")
         elif path == "/setup":
             self._send(json.dumps(setup()).encode(),
                        "application/json; charset=utf-8")
@@ -341,6 +350,12 @@ class Handler(BaseHTTPRequestHandler):
             self._missing("no such thing here")
 
     def do_POST(self) -> None:           # noqa: N802 - http.server's spelling
+        if self.path.split("?", 1)[0] == "/recording":
+            length = int(self.headers.get("Content-Length") or 0)
+            address = self.session.address or self.session.wanted_address
+            answer = drive_recording.forward(address, self.rfile.read(length))
+            self._send(json.dumps(answer).encode(), "application/json; charset=utf-8")
+            return
         if self.path.split("?", 1)[0] != "/do":
             self._missing("no such thing here")
             return

@@ -38,6 +38,7 @@ from test_maprestore import TESTS as MAPRESTORE_TESTS
 from test_measure import TESTS as MEASURE_TESTS
 from test_odometry import TESTS as ODOMETRY_TESTS
 from test_planning import TESTS as PLANNING_TESTS
+from test_recording import TESTS as RECORDING_TESTS
 from test_refit import TESTS as REFIT_TESTS
 from test_scan import TESTS as SCAN_TESTS
 from test_snapshot import TESTS as SNAPSHOT_TESTS
@@ -49,7 +50,7 @@ def main():
                  *CONFIG_TESTS, *PLANNING_TESTS, *CONTROL_TESTS, *REFIT_TESTS,
                  *MAPRESTORE_TESTS, *MEASURE_TESTS, *AUTONOMY_GUARD_TESTS,
                  *WAY_ROUND_TESTS, *CALIBRATE_TESTS, *CHANGE_WATCH_TESTS,
-                 *SNAPSHOT_TESTS, *LOCALIZER_TESTS):
+                 *SNAPSHOT_TESTS, *LOCALIZER_TESTS, *RECORDING_TESTS):
         test()
     print("\n%d passed, %d failed" % (test_harness.PASSED, test_harness.FAILED))
     return 1 if test_harness.FAILED else 0

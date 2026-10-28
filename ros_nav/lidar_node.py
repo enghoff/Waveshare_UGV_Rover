@@ -22,6 +22,7 @@ import json
 import math
 import os
 import sys
+import time
 
 import rclpy
 import rclpy.duration
@@ -45,7 +46,20 @@ for _candidate in (os.path.join(_HERE, "..", "lidar_slam"),
             sys.path.insert(0, _candidate)
 
 import slam2d                                                  # noqa: E402
+from lidar_packets import PacketRecorder                       # noqa: E402
 from scan_deskew import YawHistory, deskew                     # noqa: E402
+
+# The recording sessions' shared writer: deployed beside this file, and the
+# daemon's in the repository.
+for _candidate in (_HERE, os.path.join(_HERE, "..", "rover_daemon")):
+    if os.path.exists(os.path.join(_candidate, "session_record.py")):
+        if os.path.abspath(_candidate) not in sys.path:
+            sys.path.append(os.path.abspath(_candidate))
+        break
+try:
+    import session_record                                      # noqa: E402
+except ImportError:
+    session_record = None
 
 LIDAR_BAUD = 230400
 # What the sensor actually delivers: about 450 points in each of ten revolutions a
@@ -149,12 +163,28 @@ class LidarNode(Node):
         # about a quarter of one, for no change in the delivered scan rate.
         self.timer = self.create_timer(args.poll, self.poll)
         self.room_timer = self.create_timer(args.describe, self.describe)
+        # A recording session's raw packets (lidar_packets.py): set while the
+        # daemon announces one, and all the loop does about it is hand over bytes.
+        self.packets = None
+        self.sessions = None
+        if session_record is not None:
+            self.sessions = session_record.Follower("lidar", self._session_opened,
+                                                    self._session_closed)
         self.get_logger().info(
             "publishing %s in frame '%s', %d bins, %.2f-%.1f m"
             % (args.topic, self.frame_id, self.bins, args.range_min, args.range_max))
 
     def now(self):
         return self.get_clock().now()
+
+    def _session_opened(self, session):
+        stream = session_record.Stream(session["dir"], "lidar", "lidar/packets.jsonl")
+        self.packets = PacketRecorder(stream)
+        return {"lidar": stream}
+
+    def _session_closed(self, _streams):
+        packets, self.packets = self.packets, None
+        return {"lidar": packets.close()}
 
     def _on_odom(self, msg):
         q = msg.pose.pose.orientation
@@ -216,6 +246,9 @@ class LidarNode(Node):
             return
         if not data:
             return
+        packets = self.packets
+        if packets is not None:
+            packets.chunk(data, time.monotonic_ns())
         # feed() returns how many revolutions completed inside those bytes. More
         # than one means this loop fell behind; only the newest is still in the
         # buffer, so the older ones are gone either way and saying so is the

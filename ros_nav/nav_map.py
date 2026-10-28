@@ -123,6 +123,7 @@ than around the anchor -- centring on the anchor is what made every refit on
 2026-09-06 search a window with the truth outside it.
 """
 
+import json
 import math
 import threading
 import time
@@ -389,6 +390,11 @@ class NavMap:
             PoseWithCovarianceStamped, "initialpose",
             QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                        reliability=QoSReliabilityPolicy.RELIABLE))
+        # Which kind of hand-over each pose on `initialpose` was, restore or
+        # refit, which the localizer cannot tell from the pose: a recording
+        # session writes it beside the map pose (ros_nav/recorder_node.py).
+        from std_msgs.msg import String
+        self.pose_event_pub = self.create_publisher(String, "nav/pose_events", 10)
 
         # Its own thread rather than a node timer, and that is not a preference:
         # every call here waits on a service future, `wait` blocks the calling
@@ -756,6 +762,16 @@ class NavMap:
         msg.pose.pose.orientation.w = math.cos(half)
         self.hand_pub.publish(msg)
 
+    def pose_event(self, kind, pose):
+        """Say that a pose was just handed over, and why. Nothing on the rover
+        acts on it; a recording session keeps it (recorder_node.py)."""
+        pub = getattr(self, "pose_event_pub", None)
+        if pub is None:
+            return
+        from std_msgs.msg import String
+        pub.publish(String(data=json.dumps(
+            {"event": kind, "pose": [round(float(v), 4) for v in pose]})))
+
     def wait_landed(self, pose, timeout_s=3.0):
         """The rover's own pose once it is within a centimetre and a tenth of a
         degree of `pose`, or the last one seen when `timeout_s` runs out."""
@@ -818,6 +834,7 @@ class NavMap:
             # the localizer's pose as its odometry (config/slam_toolbox.yaml), so
             # it must already read `pose` when it anchors the graph there.
             self.hand_pose(pose)
+            self.pose_event("restore", pose)
             filename = self.saved.stem if stem is None else stem
             # A load the mapper is still working through is waited for again,
             # not asked for a second time: each ask is a whole graph read on
@@ -1236,6 +1253,7 @@ class NavMap:
         # takes the pose at once; the mapper, which takes the localizer's pose as
         # its odometry, follows it on its next scan.
         self.hand_pose((fit.x_m, fit.y_m, fit.heading_deg))
+        self.pose_event("refit", (fit.x_m, fit.y_m, fit.heading_deg))
         if self.wait_landed((fit.x_m, fit.y_m, fit.heading_deg)) is None:
             answer["fitted"] = False
             answer["why"] = ("the fit was found but the rover's position never "

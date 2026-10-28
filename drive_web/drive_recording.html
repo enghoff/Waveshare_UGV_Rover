@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recording</title>
+<style>
+  :root { --bg: #f6f6f4; --fg: #1d1d1b; --muted: #6b6b66; --line: #d6d6d0; --card: #fff;
+          --accent: #1f5fae; --bad: #b3261e; --good: #2e7d32; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --fg: #ececea; --muted: #9a9a94; --line: #34342f; --card: #1f1f1d;
+            --accent: #7fb0ff; --bad: #ff8a80; --good: #81c784; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 40px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+            padding: 12px; margin: 12px 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+       margin: 0 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+  input, select, textarea, button { font: inherit; color: inherit; background: var(--bg);
+       border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; }
+  input, select { min-width: 0; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 90px;
+             font-family: ui-monospace, monospace; font-size: 13px; }
+  button { cursor: pointer; background: var(--card); }
+  button.go { border-color: var(--accent); color: var(--accent); }
+  button.stop { border-color: var(--bad); color: var(--bad); }
+  #status, #last { font-family: ui-monospace, monospace; font-size: 13px; white-space: pre-wrap; }
+  #last.bad { color: var(--bad); }
+  #last.good { color: var(--good); }
+  .unit { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0;
+          border-top: 1px solid var(--line); }
+  .unit b { min-width: 9em; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h2>Session</h2>
+    <div class="row">
+      <select id="kind">
+        <option>commissioning</option><option>stationary_trial</option>
+        <option>reference_capture</option><option>validation</option>
+        <option>training</option><option>evaluation</option>
+      </select>
+      <input id="rooms" placeholder="rooms" size="16">
+      <input id="operator" placeholder="operator" size="10">
+      <select id="configuration"><option>base</option><option>full</option></select>
+      <input id="exposure" placeholder="exposure ms" size="9">
+    </div>
+    <div class="row">
+      <button class="go" onclick="start()">Start</button>
+      <button class="stop" onclick="stopSession()">Stop</button>
+    </div>
+    <div id="status" class="muted">-</div>
+  </section>
+
+  <section>
+    <h2>Units</h2>
+    <div class="row">
+      <select id="change"><option>moved</option><option>removed</option>
+        <option>added</option><option>recoloured</option></select>
+      <input id="object" placeholder="object" size="10">
+      <input id="room" placeholder="room" size="9">
+      <button onclick="begin('change')">Change</button>
+    </div>
+    <div class="row">
+      <button onclick="begin('revisit')">Revisit</button>
+      <button onclick="begin('capture')">Capture</button>
+      <button onclick="begin('carry')">Carry</button>
+      <select id="manoeuvre"><option>chassis_turns</option><option>gimbal_steps</option></select>
+      <button onclick="begin('timing')">Timing</button>
+      <select id="stratum"><option>static</option><option>moving</option><option>moved</option>
+        <option>light</option></select>
+      <button onclick="begin('stratum')">Stratum</button>
+    </div>
+    <div class="row">
+      <input id="view" placeholder="still view" size="10" value="fixed1">
+    </div>
+    <div id="units"></div>
+  </section>
+
+  <section>
+    <h2>Marks</h2>
+    <div class="row">
+      <button onclick="door('closed')">Bedroom door closed</button>
+      <button onclick="door('open')">Bedroom door open</button>
+    </div>
+    <div class="row">
+      <input id="point" placeholder="floor point" size="10">
+      <button onclick="mark({kind: 'floor_point_stop', point: val('point')})">Stop at point</button>
+    </div>
+    <div class="row">
+      <input id="note" placeholder="note" size="30">
+      <button onclick="mark({kind: 'note', note: val('note')})">Note</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Gimbal schedule</h2>
+    <div class="row">
+      <input id="schedule_id" placeholder="schedule id" size="14">
+      <button class="go" onclick="schedule()">Run</button>
+      <button class="stop" onclick="call('recording_schedule_cancel', {})">Cancel</button>
+    </div>
+    <textarea id="steps" placeholder='[{"step": 0, "t_offset_ns": 0, "cmd": "T133", "pan_deg": 10, "tilt_deg": 20, "speed_raw": 0, "accel_raw": 0, "pan_speed_raw": null, "tilt_speed_raw": null}]'></textarea>
+  </section>
+
+  <div id="last" class="muted"></div>
+</main>
+<script>
+"use strict";
+const open = [];          // units started and not yet ended: {unit, kind, fields}
+let count = 0;
+
+function val(id) { const v = document.getElementById(id).value.trim(); return v === "" ? null : v; }
+
+async function call(name, args) {
+  const last = document.getElementById("last");
+  try {
+    const r = await fetch("/recording", {method: "POST", headers: {"Content-Type": "application/json"},
+                                         body: JSON.stringify({call: name, arguments: args})});
+    const body = await r.json();
+    last.className = body.ok ? "good" : "bad";
+    last.textContent = name + ": " + (body.ok ? JSON.stringify(body) : body.error);
+    return body;
+  } catch (e) {
+    last.className = "bad";
+    last.textContent = name + ": " + e;
+    return {ok: false};
+  }
+}
+
+async function start() {
+  const rooms = (val("rooms") || "").split(",").map(s => s.trim()).filter(Boolean);
+  const exposure = val("exposure");
+  const body = await call("recording_start", {
+    kind: val("kind"), rooms, operator: val("operator"), configuration: val("configuration"),
+    exposure_ms: exposure === null ? null : Number(exposure)});
+  if (body.ok) {
+    open.length = 0; count = 0; draw();
+    await call("recording_annotate", {kind: "session_start"});
+  }
+}
+
+async function stopSession() {
+  if (open.length && !confirmUnits()) return;
+  await call("recording_annotate", {kind: "session_end"});
+  await call("recording_stop", {});
+}
+
+function confirmUnits() {
+  document.getElementById("last").className = "bad";
+  document.getElementById("last").textContent =
+    "open: " + open.map(u => u.unit).join(", ");
+  return false;
+}
+
+async function begin(kind) {
+  count += 1;
+  const unit = kind + "-" + count;
+  const fields = {room: val("room")};
+  if (kind === "change") Object.assign(fields, {object: val("object"), change: val("change")});
+  if (kind === "timing") fields.manoeuvre = val("manoeuvre");
+  if (kind === "stratum") fields.stratum = val("stratum");
+  const body = await call("recording_annotate", Object.assign({kind: kind + "_start", unit}, fields));
+  if (body.ok) { open.push({unit, kind, fields}); draw(); }
+}
+
+async function end(unit) {
+  const u = open.find(x => x.unit === unit);
+  const args = Object.assign({kind: u.kind + "_end", unit}, u.fields);
+  if (u.kind === "change") {
+    for (const side of ["before", "after"]) {
+      const text = document.getElementById(unit + "-" + side).value.trim();
+      if (text) args["footprint_" + side] = JSON.parse(text);
+    }
+  }
+  const body = await call("recording_annotate", args);
+  if (body.ok) { open.splice(open.indexOf(u), 1); draw(); }
+}
+
+function still(unit, when) { return call("recording_still", {unit, when, view: val("view")}); }
+function door(state) { return mark({kind: "door", room: "bedroom", door_state: state}); }
+function mark(args) { return call("recording_annotate", args); }
+
+function schedule() {
+  let steps;
+  try { steps = JSON.parse(document.getElementById("steps").value); }
+  catch (e) { document.getElementById("last").textContent = "steps: " + e; return; }
+  return call("recording_schedule", {schedule_id: val("schedule_id"), steps});
+}
+
+function draw() {
+  const box = document.getElementById("units");
+  box.textContent = "";
+  for (const u of open) {
+    const row = document.createElement("div");
+    row.className = "unit";
+    const name = document.createElement("b");
+    name.textContent = u.unit + (u.fields.object ? " " + u.fields.object : "");
+    row.append(name);
+    if (u.kind === "change" || u.kind === "capture") {
+      for (const when of ["before", "after"]) {
+        const b = document.createElement("button");
+        b.textContent = "Still " + when;
+        b.onclick = () => still(u.unit, when);
+        row.append(b);
+      }
+    }
+    if (u.kind === "change") {
+      for (const side of ["before", "after"]) {
+        const f = document.createElement("input");
+        f.id = u.unit + "-" + side;
+        f.placeholder = "footprint " + side;
+        f.size = 14;
+        row.append(f);
+      }
+    }
+    const e = document.createElement("button");
+    e.className = "stop";
+    e.textContent = "End";
+    e.onclick = () => end(u.unit);
+    row.append(e);
+    box.append(row);
+  }
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/recording", {method: "POST", headers: {"Content-Type": "application/json"},
+                                         body: JSON.stringify({call: "recording_status", arguments: {}})});
+    const s = await r.json();
+    const out = document.getElementById("status");
+    if (!s.ok) { out.textContent = s.error; }
+    else if (!s.open) { out.textContent = "no session"; }
+    else {
+      const dropped = Object.entries(s.dropped).filter(([, n]) => n).map(([k, n]) => k + " " + n);
+      out.textContent = s.session + "  " + s.seconds + " s\n" +
+        Object.entries(s.written).map(([k, n]) => k + " " + n).join("  ") +
+        (dropped.length ? "\ndropped: " + dropped.join("  ") : "") +
+        (s.camera_error ? "\ncamera: " + s.camera_error : "") +
+        (s.schedule ? "\nschedule " + s.schedule : "");
+    }
+  } catch (e) { /* the next poll will say */ }
+  setTimeout(poll, 1000);
+}
+poll();
+</script>
+</body>
+</html>
