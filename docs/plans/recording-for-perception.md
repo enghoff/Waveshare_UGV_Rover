@@ -3,9 +3,11 @@
 Status: **proposed 2026-10-28; nothing built.** Perception asked for it and for
 answers to eight questions; the answers are below, from the code and a first
 reading on the rover the same day
-([progress](../progress/2026-10-28-what-a-recording-would-cost.md)). Waiting on
-the owner's choice of the held-out room and on the schema's agreement; nothing on
-the rover is needed before the recorder is built.
+([progress](../progress/2026-10-28-what-a-recording-would-cost.md)). The owner
+chose the bedroom as the held-out room the same day
+([decision](../decisions/the-bedroom-is-held-out-for-perception.md)). Waiting on
+the schema's agreement; nothing on the rover is needed before the recorder is
+built.
 ([R-CTL-13](../requirements/control.md#r-ctl-13) proposed;
 [R-CTL-6](../requirements/control.md#r-ctl-6) needs a session exception.)
 
@@ -258,22 +260,14 @@ against the 10, 20 and 5 measured on 2026-10-28 with nothing recording.
 
 ## The held-out room
 
-The owner's choice, made before any session that could tune anything. The
-rover's map has the living room with the dining area and an open kitchen (the
-charger is there), the corridor, the bedroom behind its door, the office seen
-through its door, and four doors along the corridor the owner keeps shut. The
-living room cannot be held out, since the rover parks and charges there; nor the
-kitchen, which is open to it; nor the corridor, which every route crosses. That
-leaves a room with a door. **The bedroom is the proposal**: it is mapped, it has
-five taped things for truth, it is a dead end so its door can stay shut through
-every other session, and the visibility rule is then not needed. Against it, the
-bed limits where the rover may go, and its doorway is narrow. A room behind one
-of the shut doors would be cleaner still, never seen at all, but it would have to
-be mapped first.
+The bedroom, chosen by the owner on 2026-10-28
+([decision](../decisions/the-bedroom-is-held-out-for-perception.md)): its door
+is shut and recorded so in every other session, and its outline goes into every
+manifest, drawn by `experiments/rooms/bedroom_outline.py`.
 
 ## Order of work
 
-1. The owner chooses the held-out room; the schema is agreed with these answers.
+1. The schema is agreed with these answers.
 2. Build the taps above, the session mode (feed held, manual exposure kept, the
    OAK held on, the looking loop off) and the annotation tool; replay-test what
    can be replayed and run the suites.
