@@ -65,6 +65,8 @@ HELD_OUT = {"room": "bedroom", "has_door": True, "visibility_rule": None}
 #: The rooms' outlines on the map, by room, kept on the rover outside git
 #: (experiments/rooms/bedroom_outline.py draws the bedroom's).
 ROOMS_FILE = os.path.expanduser("~/.ugv/recording/rooms.json")
+#: The deployer's record of each component's commit, by name (deploy/deploy.py).
+DEPLOY_STATE = os.path.expanduser("~/.ugv/deploy-state.json")
 #: The ROS half of a session, started with it (ros_nav/recorder_node.py).
 ROS_RECORDER = os.path.expanduser("~/ugv/ros_nav/run_recorder.sh")
 #: Camera and depth rates a second; commissioning chooses one configuration and
@@ -730,9 +732,11 @@ def write_manifest(recording: Recording, counts: dict[str, Any], clock_end: dict
     except (OSError, ValueError):
         outlines = {}
     try:
-        with open(os.path.expanduser("~/.ugv/deploy-state.json"), encoding="utf-8") as f:
+        with open(DEPLOY_STATE, encoding="utf-8") as f:
             state = json.load(f)
-        commit = state["components"]["rover_daemon"]["commit"]
+        commit = state["components"]["rover_daemon"]
+        if not isinstance(commit, str):
+            raise ValueError(commit)
     except Exception:
         commit = "0000000"
     deployed = os.path.expanduser("~/ugv/manifest.json")

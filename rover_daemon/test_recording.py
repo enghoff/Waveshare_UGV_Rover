@@ -173,6 +173,10 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
         recording_inputs.ODOMETRY_FILE = os.path.join(root, "odometry.json")
         with open(recording_inputs.ODOMETRY_FILE, "w") as f:
             json.dump({"gyro_lsb_per_dps": 16.14613, "ticks_per_metre": 107.206}, f)
+        state_was = rover_recording.DEPLOY_STATE
+        rover_recording.DEPLOY_STATE = os.path.join(root, "deploy-state.json")
+        with open(rover_recording.DEPLOY_STATE, "w") as f:
+            json.dump({"version": 1, "components": {"rover_daemon": "b9672c5afdaf"}}, f)
         try:
             link = TappingLink()
             rover = rover_daemon.Rover(link, "unused", device="/dev/null")
@@ -261,10 +265,13 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
             check("...holds the bedroom out, with its door",
                   manifest["held_out"], {"room": "bedroom", "has_door": True,
                                          "visibility_rule": None})
+            check("...names the daemon's deployed commit as the deployer records it",
+                  manifest["rover_commit"], "b9672c5afdaf")
             check("...and says the other processes' streams never closed, here",
                   stopped["missing_writers"], ["depth", "lidar", "ros"])
         finally:
             recording_inputs.ODOMETRY_FILE = odometry_was
+            rover_recording.DEPLOY_STATE = state_was
             rover_recording.CLOSE_WAIT_S = wait_was
             for k, v in saved.items():
                 if v is None:
