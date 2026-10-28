@@ -103,5 +103,40 @@ def test_the_fit_follows_the_agreed_rule():
           [round(v, 9) for v in base])
 
 
+def test_a_change_of_fit_is_one_record_with_its_own_seq():
+    import threading
+    import recorder_node as r
+    import session_record
+
+    section("a change of fit in the map pose")
+    with tempfile.TemporaryDirectory() as directory:
+        node = object.__new__(r.Recorder)  # its streams and state, without ROS
+        node.streams = {"map_pose": session_record.Stream(directory, "map_pose",
+                                                          "map_pose.jsonl")}
+        node.status, node.status_text = {"started": True, "map": [1, 1, 0.05]}, "{}"
+        node.nav = {"map_settled": True, "gyro_fault": ""}
+        node.last_searched, node.last_pose, node.odom, node.fit = None, None, None, None
+        node._lock = threading.Lock()
+        step = {"stamp_ns": 1_000_000_000, "map_odom": [0, 0, 0], "map_base": [0, 0, 0],
+                "searched": True, "accepted": False, "score": 0.9}
+        msg = type("Msg", (), {})
+        msg.data = json.dumps(step)
+        node.on_step(msg)  # good
+        msg.data = json.dumps(dict(step, score=0.3))
+        node.on_step(msg)  # poor, from a step
+        node.nav = {"map_settled": False, "gyro_fault": ""}
+        msg.data = json.dumps({"started": True, "map": [1, 1, 0.05]})
+        node.on_status(msg)  # lost, from the status
+        node.streams["map_pose"].close()
+        lines = [json.loads(l) for l in open(os.path.join(directory, "map_pose.jsonl"))][1:]
+    check("each change of fit is written once, after the record that showed it",
+          [(l["trigger"], l["fit"]) for l in lines],
+          [("periodic", "good"), ("periodic", "poor"), ("status_change", "poor"),
+           ("status_change", "lost")])
+    check("...and every record has a seq of its own",
+          [l["seq"] for l in lines], [0, 1, 2, 3])
+
+
 TESTS = (test_packets_come_out_whole_however_the_reads_cut_them,
-         test_the_fit_follows_the_agreed_rule)
+         test_the_fit_follows_the_agreed_rule,
+         test_a_change_of_fit_is_one_record_with_its_own_seq)

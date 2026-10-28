@@ -155,7 +155,8 @@ class Recorder(Node):
         self.streams["clock"].put({"wall_ns": time.time_ns(),
                                    "ros_ns": self.get_clock().now().nanoseconds})
         # This process's queues and drops, where the daemon's health stream reads them.
-        status = {n: {"queue": s.depth(), "dropped": s.dropped} for n, s in self.streams.items()}
+        status = {n: {"queue": s.depth(), "dropped": s.dropped, "queued": s.queued}
+                  for n, s in self.streams.items()}
         path = os.path.join(self.dir, ".status-ros.json")
         try:
             with open(path + ".tmp", "w", encoding="utf-8") as f:
@@ -182,9 +183,12 @@ class Recorder(Node):
 
     def _after(self, record):
         """Write a record, then one for a change of fit if that is what it was."""
+        # Copied before it is written: writing gives it its seq, and a copy of a
+        # written record would carry the same one (2026-10-28, seq 4 twice).
+        change = dict(record, trigger="status_change", event=None)
         self.streams["map_pose"].put(record)
         if record["fit"] != self.fit and self.fit is not None:
-            self.streams["map_pose"].put(dict(record, trigger="status_change", event=None))
+            self.streams["map_pose"].put(change)
         self.fit = record["fit"]
 
     def on_step(self, msg):
@@ -209,7 +213,9 @@ class Recorder(Node):
             self.status, self.status_text = status, msg.data
             fit = fit_of(self.status, self.nav, self.last_searched, time.monotonic())
             if self.fit is not None and fit != self.fit:
-                self._after(self._pose_record("status_change", None, self.last_pose))
+                record = self._pose_record("status_change", None, self.last_pose)
+                self.streams["map_pose"].put(record)
+                self.fit = record["fit"]
 
     def on_pose_event(self, msg):
         try:

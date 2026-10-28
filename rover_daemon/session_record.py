@@ -253,7 +253,7 @@ class Follower:
         handle = self.handle
         if not isinstance(handle, dict):
             return
-        status = {name: {"queue": s.depth(), "dropped": s.dropped}
+        status = {name: {"queue": s.depth(), "dropped": s.dropped, "queued": s.queued}
                   for name, s in handle.items() if isinstance(s, Stream)}
         path = os.path.join(self.session["dir"], ".status-%s.json" % self.who)
         try:

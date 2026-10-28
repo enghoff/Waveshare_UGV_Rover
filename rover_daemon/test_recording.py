@@ -193,6 +193,24 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
             check("...with the calibration written at its start",
                   json.load(open(os.path.join(directory, "inputs.json")))["fisheye"]["values"]["b1"],
                   -0.0578)
+            others = {n for names in rover_recording.WRITERS.values() for n in names}
+            check("health names the other processes' streams before they have reported",
+                  others <= set(rover.recording.counts()[1]), True)
+            refused = rover.call("recording_annotate", {"kind": "session_start"})
+            check("the session's start is refused until every stream has begun",
+                  (refused["ok"], "oak_imu" in refused.get("error", "")), (False, True))
+            for who, names in rover_recording.WRITERS.items():
+                with open(os.path.join(directory, ".status-%s.json" % who), "w") as f:
+                    json.dump({n: {"queue": 0, "dropped": 0, "queued": 1} for n in names}, f)
+            waiting = rover.recording.waiting_for()
+            check("...and once the other processes report records, waits only on the daemon's "
+                  "own (here a camera that is not there)",
+                  ("camera" in waiting, set(waiting) <= {"camera", "board_feedback", "health"}),
+                  (True, True))
+            rover.recording.waiting_for = lambda: []
+            check("...then is marked once",
+                  [rover.call("recording_annotate", {"kind": "session_start"})["ok"]
+                   for _ in range(2)], [True, False])
             rover.call("look_at", {"pan": 10, "tilt": 20})
             link.send({"T": 11, "L": 90, "R": 90}, client="bridge",
                       note={"linear": 0.2, "angular": 0.0, "keepalive": False,
@@ -210,6 +228,14 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
                   False)
             rover.call("recording_annotate", {"kind": "change_end", "unit": "c1",
                                               "object": "mug-3", "change": "moved"})
+            rover.call("recording_annotate", {"kind": "trial_start", "unit": "t1"})
+            refused = rover.call("recording_still", {"view": "a", "unit": "t1", "when": "after"})
+            check("a still for a unit that is no change or capture is refused",
+                  (refused["ok"], "change or capture" in refused.get("error", "")), (False, True))
+            rover.call("recording_annotate", {"kind": "trial_end", "unit": "t1"})
+            check("the session's end is marked once",
+                  [rover.call("recording_annotate", {"kind": "session_end"})["ok"]
+                   for _ in range(2)], [True, False])
             steps = [{"step": 0, "t_offset_ns": 0, "cmd": "T133", "pan_deg": 5, "tilt_deg": 20,
                       "speed_raw": 0, "accel_raw": 0, "pan_speed_raw": None,
                       "tilt_speed_raw": None},

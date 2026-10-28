@@ -80,6 +80,8 @@ CAMERA_HZ = 30.0
 #: the rest as configured.
 NOMINAL_HZ = {"oak_imu": 200.0, "board_feedback": 20.0, "odometry": 20.0, "lidar": 417.0,
               "lidar_scan": 10.0, "map_pose": 5.0, "clock": 1.0, "health": 1.0}
+#: The streams that flow all session, which the session's start waits for.
+STEADY = tuple(NOMINAL_HZ) + ("camera", "depth")
 #: Which process writes which stream; the closing step waits for each to close.
 WRITERS = {"depth": ("depth", "oak_imu"), "lidar": ("lidar",),
            "ros": ("odometry", "lidar_scan", "map_pose", "clock")}
@@ -183,6 +185,7 @@ class Recording:
         self.camera_error: str | None = None
         self._volts: int | None = None
         self._units: dict[str, dict[str, Any]] = {}
+        self._marks: set[str] = set()  # session_start and session_end, once each
         self._units_lock = threading.Lock()
         self._run: dict[str, Any] | None = None
         self._runs = 0
@@ -316,25 +319,50 @@ class Recording:
 
     # --- health ---------------------------------------------------------------
 
-    def counts(self) -> tuple[dict[str, int], dict[str, int]]:
-        """Queue depths and drops for every stream: the daemon's own, and what the
-        other processes last reported in their status files."""
-        queues = {name: s.depth() for name, s in self.streams.items()}
-        dropped = {name: s.dropped for name, s in self.streams.items()}
+    def _reported(self) -> dict[str, dict]:
+        """What the other processes last reported of their streams, by stream."""
+        reported = {}
         for path in glob.glob(os.path.join(self.dir, ".status-*.json")):
             try:
                 with open(path, encoding="utf-8") as f:
-                    other = json.load(f)
+                    reported.update(json.load(f))
             except (OSError, ValueError):
                 continue
-            for name, c in other.items():
-                queues[name] = int(c.get("queue", 0))
-                dropped[name] = int(c.get("dropped", 0))
+        return reported
+
+    def counts(self) -> tuple[dict[str, int], dict[str, int]]:
+        """Queue depths and drops for every stream: the daemon's own, and what the
+        other processes last reported in their status files. A process that has
+        not reported yet has queued and dropped nothing, and its streams are
+        named all the same, so that every health record covers every stream."""
+        queues = {name: 0 for names in WRITERS.values() for name in names}
+        queues.update({name: s.depth() for name, s in self.streams.items()})
+        dropped = dict.fromkeys(queues, 0)
+        dropped.update({name: s.dropped for name, s in self.streams.items()})
+        for name, c in self._reported().items():
+            queues[name] = int(c.get("queue", 0))
+            dropped[name] = int(c.get("dropped", 0))
         return queues, dropped
+
+    def waiting_for(self) -> list[str]:
+        """The steady streams that have not yet given the session a record. The
+        OAK boots and the ROS recorder starts for seconds after a session opens,
+        and a start marked before them is a gap in every one of their streams
+        (2026-10-28: 2 to 4 s)."""
+        offered = {name: s.queued + s.dropped for name, s in self.streams.items()}
+        for name, c in self._reported().items():
+            offered[name] = int(c.get("queued", 0)) + int(c.get("dropped", 0))
+        return sorted(name for name in STEADY if not offered.get(name))
 
     def _health(self) -> None:
         before = _cpu_times()
-        while not self._stopping.wait(1.0):
+        # On a fixed beat rather than a second after the last, which lost one
+        # record in sixty to the work in between.
+        beat = time.monotonic()
+        while True:
+            beat += 1.0
+            if self._stopping.wait(max(0.0, beat - time.monotonic())):
+                return
             now = _cpu_times()
             load = [round((b1 - b0) / (t1 - t0), 4) if t1 > t0 else 0.0
                     for (b0, t0), (b1, t1) in zip(before, now)]
@@ -357,7 +385,17 @@ class Recording:
             raise ValueError("a unit id is letters, digits, '.', '_' and '-'")
         with self._units_lock:
             if kind in ("session_start", "session_end"):
-                pass  # the session's own markers, which the counts run between
+                # The session's own markers, which the counts run between: once
+                # each, in order, and the start only once every stream flows.
+                if kind in self._marks:
+                    raise ValueError("this session already has its %s" % kind)
+                if kind == "session_end" and "session_start" not in self._marks:
+                    raise ValueError("the session has no session_start to end")
+                waiting = self.waiting_for() if kind == "session_start" else []
+                if waiting:
+                    raise ValueError("not every stream has begun yet (%s): mark the start "
+                                     "once they have" % ", ".join(waiting))
+                self._marks.add(kind)
             elif kind.endswith("_start"):
                 if unit is None or unit in self._units:
                     raise ValueError("a start needs a unit id this session has not used")
@@ -385,6 +423,11 @@ class Recording:
         for value, what in ((view, "view"), (unit, "unit")):
             if not value or not NAME.match(str(value)):
                 raise ValueError("`%s` is a name of letters, digits, '.', '_' and '-'" % what)
+        with self._units_lock:
+            held = self._units.get(unit)
+        if held is not None and held["kind"] not in ("change", "capture"):
+            raise ValueError("a still belongs to a change or capture unit, and %s is a %s"
+                             % (unit, held["kind"]))
         got, why = self.snapshot(None)
         if not got:
             raise ValueError(why)
@@ -397,6 +440,11 @@ class Recording:
             f.write(got[0][0])
         self.streams["stills"].put({"file": name, "source": "gimbal_camera", "view": view,
                                     "unit": unit, "when": when})
+        if held is None:
+            # A before still may come ahead of its unit's start, so it is kept.
+            return {"ok": True, "file": name,
+                    "warning": "no change or capture unit %s has started yet; one must, "
+                               "in this session" % unit}
         return {"ok": True, "file": name}
 
     def schedule(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -640,6 +688,7 @@ class RoverRecording:
                 "seconds": round((rec.now_ns() - recording.started_ns) * 1e-9, 1),
                 "written": {n: s.written for n, s in recording.streams.items()},
                 "queues": queues, "dropped": dropped,
+                "waiting_for": recording.waiting_for(),
                 "camera_error": recording.camera_error,
                 "schedule": None if recording._run is None else recording._run["run_id"]}
 

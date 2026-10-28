@@ -563,6 +563,15 @@ file's hash. `recording_status`, `recording_annotate`, `recording_still`,
 `recording_schedule` and `recording_schedule_cancel` are the rest; the console's
 `/recording` page carries them.
 
+The session's own `session_start` and `session_end` annotations are what
+Perception counts its rates between, so each is taken once, and the start is
+refused until every steady stream has given a record (`recording_status` lists
+those still `waiting_for`): the OAK boots and the ROS recorder starts for 2 to 4
+seconds after a session opens. The page notes the bedroom door's state first,
+then waits and marks the start. A still belongs to a change or capture unit; one
+for a unit of another kind is refused, and one for a unit not yet started is kept
+with a warning, since a before still may come first.
+
 What the daemon writes itself: every write to the board, from the board link's
 write lock, numbered by the link's own count (`daemon_commands.jsonl`, and the
 gimbal and motor commands among them, the motors' with the velocity the base

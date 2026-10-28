@@ -50,6 +50,8 @@
       <input id="operator" placeholder="operator" size="10">
       <select id="configuration"><option>base</option><option>full</option></select>
       <input id="exposure" placeholder="exposure ms" size="9">
+      <select id="door"><option value="closed">bedroom door closed</option>
+        <option value="open">bedroom door open</option></select>
     </div>
     <div class="row">
       <button class="go" onclick="start()">Start</button>
@@ -140,9 +142,29 @@ async function start() {
   const body = await call("recording_start", {
     kind: val("kind"), rooms, operator: val("operator"), configuration: val("configuration"),
     exposure_ms: exposure === null ? null : Number(exposure)});
-  if (body.ok) {
-    open.length = 0; count = 0; draw();
-    await call("recording_annotate", {kind: "session_start"});
+  if (!body.ok) return;
+  open.length = 0; count = 0; draw();
+  // The door's state at or before the start, or the session counts it open.
+  await door(val("door"));
+  // The start is refused until every stream flows: the OAK boots for seconds.
+  const last = document.getElementById("last");
+  for (let i = 0; i < 60; i++) {
+    const s = await status();
+    if (s.ok && s.open && !(s.waiting_for || []).length) break;
+    last.className = "muted";
+    last.textContent = "waiting for " + (s.waiting_for || []).join(", ");
+    await new Promise(r => setTimeout(r, 500));
+  }
+  await call("recording_annotate", {kind: "session_start"});
+}
+
+async function status() {
+  try {
+    const r = await fetch("/recording", {method: "POST", headers: {"Content-Type": "application/json"},
+                                         body: JSON.stringify({call: "recording_status", arguments: {}})});
+    return await r.json();
+  } catch (e) {
+    return {ok: false, error: String(e)};
   }
 }
 
@@ -230,22 +252,19 @@ function draw() {
 }
 
 async function poll() {
-  try {
-    const r = await fetch("/recording", {method: "POST", headers: {"Content-Type": "application/json"},
-                                         body: JSON.stringify({call: "recording_status", arguments: {}})});
-    const s = await r.json();
-    const out = document.getElementById("status");
-    if (!s.ok) { out.textContent = s.error; }
-    else if (!s.open) { out.textContent = "no session"; }
-    else {
-      const dropped = Object.entries(s.dropped).filter(([, n]) => n).map(([k, n]) => k + " " + n);
-      out.textContent = s.session + "  " + s.seconds + " s\n" +
-        Object.entries(s.written).map(([k, n]) => k + " " + n).join("  ") +
-        (dropped.length ? "\ndropped: " + dropped.join("  ") : "") +
-        (s.camera_error ? "\ncamera: " + s.camera_error : "") +
-        (s.schedule ? "\nschedule " + s.schedule : "");
-    }
-  } catch (e) { /* the next poll will say */ }
+  const s = await status();
+  const out = document.getElementById("status");
+  if (!s.ok) { out.textContent = s.error; }
+  else if (!s.open) { out.textContent = "no session"; }
+  else {
+    const dropped = Object.entries(s.dropped).filter(([, n]) => n).map(([k, n]) => k + " " + n);
+    out.textContent = s.session + "  " + s.seconds + " s\n" +
+      Object.entries(s.written).map(([k, n]) => k + " " + n).join("  ") +
+      ((s.waiting_for || []).length ? "\nnot begun: " + s.waiting_for.join("  ") : "") +
+      (dropped.length ? "\ndropped: " + dropped.join("  ") : "") +
+      (s.camera_error ? "\ncamera: " + s.camera_error : "") +
+      (s.schedule ? "\nschedule " + s.schedule : "");
+  }
   setTimeout(poll, 1000);
 }
 poll();
