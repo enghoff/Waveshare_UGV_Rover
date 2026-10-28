@@ -434,6 +434,15 @@ class Depth:
         """A device has just opened: if a session is recording, a second or later
         opening in it restarts the device's clock, which its streams must say."""
         self.device_open = True
+        if self.imu_wanted and not self.pipeline_has_imu:
+            # A session announced while this device was booting, after its
+            # pipeline was built: `_session_opened` saw no open device to rebuild,
+            # so it is rebuilt here, before it has given the session anything. A
+            # session that switches the OAK on itself always lands here, because
+            # the boot takes seconds and the announcement is seen within half of
+            # one (2026-10-28: no IMU in two sessions until this).
+            self.rebuild()
+            return
         streams = self.recording
         if streams is None:
             return

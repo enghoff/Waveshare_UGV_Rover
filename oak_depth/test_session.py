@@ -101,6 +101,27 @@ def main():
           True)
 
     with tempfile.TemporaryDirectory() as root:
+        directory = os.path.join(root, "2026-10-28T1124-commissioning")
+        os.makedirs(directory)
+        # The session switched the OAK on: its pipeline was built before the
+        # announcement was seen, and the device is still booting.
+        depth.device_open, depth.pipeline_has_imu, depth.imu_wanted = False, False, False
+        streams = depth._session_opened({"dir": directory, "depth_hz": 15.0})
+        depth._opened_for_recording()
+        check("a session announced while the device boots without the IMU reopens it once open",
+              (depth.rebuilding, depth._stop.is_set()), (True, True))
+        depth.rebuilding = False
+        depth._stop.clear()
+        depth.pipeline_has_imu = True
+        depth._opened_for_recording()
+        depth._record_depth(Frame(100.0, 5.0, 0))
+        depth._session_closed(streams)
+        lines = [json.loads(l) for l in open(os.path.join(directory, "depth", "index.jsonl"))]
+        check("...and, having recorded nothing before, the reopening is no restart",
+              [l.get("restart", False) for l in lines[1:]], [False])
+        depth.device_open = False
+
+    with tempfile.TemporaryDirectory() as root:
         directory = os.path.join(root, "2026-10-28T1200-commissioning")
         os.makedirs(directory)
         depth.device_open, depth.pipeline_has_imu, depth.imu_wanted = True, False, False
@@ -109,6 +130,7 @@ def main():
               (depth.rebuilding, depth._stop.is_set(), depth.imu_wanted), (True, True, True))
         depth.rebuilding = False
         depth._stop.clear()
+        depth.pipeline_has_imu = True
         depth._opened_for_recording()
         for n in range(6):
             depth._record_depth(Frame(100.0 + n / 15, 5.0 + n / 15, n))
