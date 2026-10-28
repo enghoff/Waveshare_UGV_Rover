@@ -231,14 +231,22 @@ class Bridge:
         with self._lock:
             return self.latest, self.latest_at
 
-    def send(self, command):
-        """Push one board command. False if there is nowhere to push it."""
+    def send(self, command, note=None):
+        """Push one board command. False if there is nowhere to push it.
+
+        `note` says what the command was for -- the velocity it was mixed from,
+        whether it repeats the last one -- and goes no further than the daemon,
+        which writes it beside the command in a recording session's log
+        (rover_daemon/session_record.py). The board never sees it."""
+        message = {"send": command}
+        if note is not None:
+            message["note"] = note
         with self._send_lock:
             if self.sock is None:
                 return False
             try:
                 self.sock.sendall(
-                    json.dumps({"send": command}, separators=(",", ":")).encode()
+                    json.dumps(message, separators=(",", ":")).encode()
                     + b"\n")
                 return True
             except OSError:
@@ -501,7 +509,9 @@ class BaseNode(Node):
             # heartbeat is underneath: it stops the base if it hears nothing for
             # HEARTBEAT_MS, so silence brakes the rover rather than freeing it.
             if self._commanded not in (None, (0, 0)):
-                self.bridge.send({"T": CMD_PWM, "L": 0, "R": 0})
+                self.bridge.send({"T": CMD_PWM, "L": 0, "R": 0},
+                                 {"linear": None, "angular": None, "keepalive": False,
+                                  "caller": "base_node:timeout"})
                 self._commanded = (0, 0)
             return
 
@@ -515,7 +525,9 @@ class BaseNode(Node):
         # identical pair fifty times a second is most of the traffic on the bridge
         # for no effect on the motors.
         if pair != self._commanded or now - self._heartbeat_at > HEARTBEAT_MS / 3000.0:
-            self.bridge.send({"T": CMD_PWM, "L": pair[0], "R": pair[1]})
+            self.bridge.send({"T": CMD_PWM, "L": pair[0], "R": pair[1]},
+                             {"linear": linear, "angular": angular,
+                              "keepalive": pair == self._commanded, "caller": "cmd_vel"})
             self._commanded = pair
             self._heartbeat_at = now
 
@@ -865,7 +877,9 @@ def main():
         # Stop the wheels on the way out. This is the one thing in this file that
         # must happen even when everything else has gone wrong.
         try:
-            node.bridge.send({"T": CMD_PWM, "L": 0, "R": 0})
+            node.bridge.send({"T": CMD_PWM, "L": 0, "R": 0},
+                             {"linear": None, "angular": None, "keepalive": False,
+                              "caller": "base_node:exit"})
         except Exception:
             pass
         node.bridge.close()

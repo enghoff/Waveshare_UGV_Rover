@@ -136,7 +136,10 @@ class RoverDepth:
         if wheels is None:
             return
         now = time.monotonic()
-        want = now - wheels < DEPTH_IDLE_OFF_S or now < self._depth_hold_until
+        # A recording session is something the rover is doing too: its depth and
+        # the OAK's gyro are recorded from start to end, parked or not.
+        want = (now - wheels < DEPTH_IDLE_OFF_S or now < self._depth_hold_until
+                or getattr(self, "recording", None) is not None)
         if want is self._depth_on:
             return
         if self._depth_error and now - self._depth_tried_at < DEPTH_RETRY_S:

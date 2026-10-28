@@ -35,6 +35,7 @@ def test_bridge_protocol():
     class FakeLink:
         def __init__(self):
             self.sent = []
+            self.notes = []
             self.pumps = 0
 
         def pump(self):
@@ -47,8 +48,9 @@ def test_bridge_protocol():
         def telemetry(self):
             return {"T": 1001, "v": 1150, "gz": 3, "ax": 10}
 
-        def send(self, command):
+        def send(self, command, client="daemon", note=None):
             self.sent.append(command)
+            self.notes.append((client, note))
             return True
 
     link = FakeLink()
@@ -67,6 +69,12 @@ def test_bridge_protocol():
     check("...and an object with no command in it is refused",
           bridge.command(b'{"hello": 1}')["ok"], False)
     check("a refusal does not reach the board", len(link.sent), 2)
+    bridge.command(b'{"send": {"T": 11, "L": 0, "R": 0}, '
+                   b'"note": {"linear": 0.0, "angular": 0.0, "keepalive": false}}')
+    check("a command's note goes to the link beside it, as the bridge's, and not to "
+          "the board", (link.sent[-1], link.notes[-1]),
+          ({"T": 11, "L": 0, "R": 0},
+           ("bridge", {"linear": 0.0, "angular": 0.0, "keepalive": False})))
 
     # Before the pump has run there is nothing to report, and saying so is the
     # right answer -- a snapshot that invented zeroes would be odometry claiming

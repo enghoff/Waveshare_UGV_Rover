@@ -326,6 +326,28 @@ def restore_automatic(device):
             pass  # no v4l2-ctl, or a device that will not answer: the capture still runs
 
 
+def hold_manual(device, units):
+    """Pin the exposure at `units` of 100 µs for a recording session, and say
+    whether the camera took it.
+
+    A session that scores frames by their blur needs one exposure from start to
+    end, not whatever the camera chose a moment ago (rover_recording.py). The
+    setting outlives the session -- see restore_automatic above -- so whoever
+    calls this owes the camera a restore_automatic when the session ends.
+    """
+    ok = True
+    for control in ("auto_exposure=%d" % EXPOSURE_MANUAL,
+                    "exposure_time_absolute=%d" % int(units)):
+        try:
+            done = subprocess.run(["v4l2-ctl", "-d", device, "-c", control],
+                                  capture_output=True, check=False,
+                                  timeout=CONTROL_TIMEOUT_S)
+            ok = ok and done.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            ok = False
+    return ok
+
+
 def under_manual_control(device):
     """Whether somebody has taken the camera's exposure or white balance off it.
 
@@ -411,6 +433,12 @@ class Camera:
         self.frame_bytes = size[0] * size[1] * 2 if pixelformat == "YUYV" else 0
         self.dropped = 0
         self.unpaired = 0
+        #: Called with (jpeg, driver stamp or None, arrival in monotonic ns) for
+        #: every frame while set -- a recording session's way in. It runs on the
+        #: reader thread, so it must only hand the frame on, never wait.
+        self.listener = None
+        #: What the driver labels its buffer stamps, once a buffer has said.
+        self.stamp_kind = None
         # How old the frames that *did* pair have lately turned out to be, in
         # seconds. The fallback for a frame whose stamp cannot be found -- see
         # _stamp_for, where guessing CAMERA_LAG_S instead was actively harmful.
@@ -483,6 +511,13 @@ class Camera:
                 return
             found = pattern.search(line)
             if found:
+                # What the driver says the stamp marks, as v4l2-ctl prints the
+                # buffer's flags: a label, not a measurement (a recording keeps
+                # it as the driver's word and measures the lag itself).
+                if b"ts-src-soe" in line:
+                    self.stamp_kind = "start_of_exposure"
+                elif b"ts-src-eof" in line:
+                    self.stamp_kind = "end_of_frame"
                 with self._stamps:
                     self._pending.append((int(found.group(1)), float(found.group(2))))
                     del self._pending[:-STAMP_BACKLOG]
@@ -521,27 +556,38 @@ class Camera:
             if not chunk:
                 return
             buf += chunk
-            newest, skipped = None, []
+            frames = []
             while True:
                 end = buf.find(JPEG_EOI, scan)
                 if end < 0:
                     # Only the last byte can be half of a marker; keep it in view.
                     scan = max(0, len(buf) - 1)
                     break
-                if newest is not None:
-                    skipped.append(len(newest))
-                newest, buf, scan = buf[:end + 2], buf[end + 2:], 0
-            if newest is None:
+                frames.append(buf[:end + 2])
+                buf, scan = buf[end + 2:], 0
+            if not frames:
+                continue
+            listener = self.listener
+            if listener is not None:
+                # A recording wants every frame, each with its own stamp, so
+                # here nothing is skipped: each is paired and handed on as it
+                # comes, and the newest still goes to the slot.
+                arrived = time.monotonic_ns()
+                for frame in frames:
+                    stamp = self._paired_stamp(len(frame))
+                    listener(frame, stamp, arrived)
+                self.dropped += len(frames) - 1
+                self._offer(frames[-1], stamp if stamp is not None else self._guess())
                 continue
             # The stamps of the frames being dropped are consumed rather than left
             # behind, because _stamp_for matches by byte count from the oldest
             # pending stamp forwards: an abandoned stamp of the same length would
             # be handed to a later frame, which is a wrong exposure time rather
             # than a missing one, and a wrong one is not detectable afterwards.
-            for length in skipped:
-                self._discard_stamp(length)
-            self.dropped += len(skipped)
-            self._offer(newest, self._stamp_for(len(newest)))
+            for frame in frames[:-1]:
+                self._discard_stamp(len(frame))
+            self.dropped += len(frames) - 1
+            self._offer(frames[-1], self._stamp_for(len(frames[-1])))
 
     def _read_raw(self):
         """Fixed-size frames, for an uncompressed format.
@@ -603,6 +649,13 @@ class Camera:
         p90 6 ms -- so this waits rather than giving up. Waiting is free: the
         next thing this frame does is cross a network.
         """
+        stamp = self._paired_stamp(length)
+        return stamp if stamp is not None else self._guess()
+
+    def _paired_stamp(self, length):
+        """The driver's own stamp for the frame of this many bytes, or None when
+        none pairs with it -- which a recording writes as null rather than the
+        guess below, because a guess is not the driver's word."""
         deadline = time.monotonic() + STAMP_WAIT_S
         with self._stamps:
             while True:
@@ -621,6 +674,10 @@ class Camera:
                 if not self._stamps.wait(max(0.0, deadline - time.monotonic())):
                     break
         self.unpaired += 1
+        return None
+
+    def _guess(self):
+        """When an unpaired frame was most likely exposed."""
         # **Not CAMERA_LAG_S.** That is how long this camera takes to hand over a
         # frame once it has been exposed, and using it here amounts to claiming the
         # picture is fresh -- which is the one claim that switches off the whole

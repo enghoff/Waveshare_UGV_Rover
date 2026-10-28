@@ -210,7 +210,9 @@ class BoardBridge:
             self._refused += 1
             return {"kind": "ack", "ok": False,
                     "error": "no command in it -- expected {\"send\": {\"T\": ...}}"}
-        ok = bool(self.link.send(body))
+        note = message.get("note") if "send" in message else None
+        ok = bool(self.link.send(body, client="bridge",
+                                 note=note if isinstance(note, dict) else None))
         self._sent += 1
         return {"kind": "ack", "ok": ok, "T": body.get("T")}
 

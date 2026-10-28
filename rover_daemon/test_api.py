@@ -141,7 +141,13 @@ def test_schemas():
                # Agents saying they need the rover kept switched on. Whether it
                # may be switched off is the owner's question, answered between
                # the owner and the agents; see rover_holds.py.
-               "power_hold", "power_holds"]
+               "power_hold", "power_holds",
+               # A recording session for Perception, run by the owner and the
+               # agents: it holds the camera and moves the gimbal by schedule,
+               # neither of which is a model's to start. See rover_recording.py.
+               "recording_start", "recording_stop", "recording_status",
+               "recording_annotate", "recording_still", "recording_schedule",
+               "recording_schedule_cancel"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)

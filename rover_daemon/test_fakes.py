@@ -49,7 +49,7 @@ class FakeLink:
         self.volts = volts
         self.reads = 0
 
-    def send(self, command):
+    def send(self, command, client="daemon", note=None):
         self.sent.append(command)
         return self.works
 

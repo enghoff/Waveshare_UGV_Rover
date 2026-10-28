@@ -262,6 +262,13 @@ class SerialLink:
     #: not here: a bench script that opens the port to read the battery once
     #: should not start writing files on the rover.
     battery_log = None
+    #: A recording session (rover_recording.py) while one is open: told of every
+    #: write and every feedback line, and never allowed to make either wait --
+    #: what it does with them is put them on a queue.
+    tap = None
+    #: Every write since the port was opened: the daemon's sequence across all
+    #: the commands it sends, which a session's command log is numbered by.
+    writes = 0
 
     def __init__(self, port: str) -> None:
         import serial
@@ -308,7 +315,10 @@ class SerialLink:
     def describe(self) -> str:
         return f"{self.port} at {BAUD}"
 
-    def send(self, command: dict[str, Any]) -> bool:
+    def send(self, command: dict[str, Any], client: str = "daemon",
+             note: dict[str, Any] | None = None) -> bool:
+        """Write one command to the board. `client` and `note` say who sent it
+        and what for, and only a recording session's log reads them."""
         line = json.dumps(command, separators=(",", ":")).encode() + b"\n"
         with self._lock:
             try:
@@ -321,9 +331,18 @@ class SerialLink:
                     # from -- so this is a fallback for a reader that has died,
                     # not the standing arrangement it used to be.
                     self.link.reset_input_buffer()
-                return True
+                ok = True
             except Exception:
-                return False
+                ok = False
+            # Counted and handed to the tap under the write lock, so that the
+            # log's order is the order the board received them in.
+            seq = self.writes
+            self.writes += 1
+            tap = self.tap
+            if tap is not None:
+                tap.command(seq, time.monotonic_ns(), ok, client,
+                            line[:-1].decode(), command, note)
+            return ok
 
     def _read_forever(self) -> None:
         """Drain the board's stream for as long as the link is open.
@@ -451,6 +470,9 @@ class SerialLink:
             if not lines:
                 return 0
             now = time.monotonic()
+            tap = self.tap
+            if tap is not None:
+                tap.feedback(lines, time.monotonic_ns())
             self._fold(lines, now, self._drained_at)
             self._drained_at = now
             return len(lines)
@@ -600,7 +622,8 @@ class HttpLink:
     def describe(self) -> str:
         return f"http://{self.host}/js"
 
-    def send(self, command: dict[str, Any]) -> bool:
+    def send(self, command: dict[str, Any], client: str = "daemon",
+             note: dict[str, Any] | None = None) -> bool:
         return self._ask(command) is not None
 
     def telemetry(self) -> dict[str, Any] | None:

@@ -300,6 +300,11 @@ class RoverCamera:
         """
         from track_face_pi import snapshot
 
+        # A recording session holds the camera for as long as it lasts, and a grab
+        # now would come back empty, so the session's newest frame is the picture.
+        held = self._recording_snapshot(size)
+        if held is not None:
+            return held
         with self._camera_lock:
             return snapshot(self.device, size or self.size, frames=frames)
 
@@ -672,6 +677,10 @@ class RoverCamera:
             return {"ok": False, "error": "this rover has no camera attached"}
         if self._tracking.is_set():
             return {"ok": True, "tracking": True, "already": True}
+        if self.recording is not None:
+            # It would open the camera the session holds, and move the gimbal by
+            # a policy of its own in the middle of somebody's schedule.
+            return {"ok": False, "error": "a recording session holds the camera"}
         if (why := self._detector_ready()):
             return {"ok": False, "error": why}
         self._tracking.set()

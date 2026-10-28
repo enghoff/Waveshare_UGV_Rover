@@ -16,6 +16,7 @@ from rover_depth import RoverDepth
 from rover_holds import RoverHolds
 from rover_nav import CAMERA_FOV_DEG, RoverNav
 from rover_recall import RoverRecall
+from rover_recording import CALLER, RoverRecording
 from rover_snapshots import RoverSnapshots
 from rover_util import _level      # noqa: F401
 from rover_wifi import RoverWifi
@@ -68,7 +69,7 @@ def approach_settle_s(was: float | None, below: float) -> float:
 
 
 class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDepth,
-            RoverAutonomy, RoverSnapshots, RoverHolds):
+            RoverAutonomy, RoverSnapshots, RoverHolds, RoverRecording):
     """The rover's state and everything that may be done to it.
 
     One lock covers the board and the model of where things are pointed. The
@@ -423,12 +424,17 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         handler = getattr(self, f"_tool_{name}", None)
         if handler is None:
             return {"ok": False, "error": f"no such tool: {name}"}
+        # Who asked, for the commands this call writes: a recording session logs
+        # it beside each one (rover_recording.py).
+        CALLER.name = name
         try:
             return handler(arguments)
         except (TypeError, ValueError) as error:
             return {"ok": False, "error": str(error)}
         except Exception as error:  # a bug here must not take the daemon down
             return {"ok": False, "error": f"{type(error).__name__}: {error}"}
+        finally:
+            CALLER.name = None
 
     def _tool_set_lights(self, arguments: dict[str, Any]) -> dict[str, Any]:
         level = _level(arguments.get("level"))
