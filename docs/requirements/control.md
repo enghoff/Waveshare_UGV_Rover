@@ -183,3 +183,19 @@ mean "from now" kept the rover on overnight for a run in the morning on
 nothing refuses to power down because of one. A file the rover cannot read is
 shown as an error, never as nobody, because nobody is the answer the switch is
 reached for on.
+
+<a id="r-ctl-13"></a>
+### R-CTL-13 — A session recording never slows the rover: what it cannot keep, it drops and counts
+
+- **State:** proposed
+- **Proposed in:** [plans/recording-for-perception.md](../plans/recording-for-perception.md)
+
+A recording that waits on the disk or on its own queue would wait inside the
+daemon's board link, the camera feed or the lidar node, which is to say inside
+the things that stop the wheels and keep the rover's place on the map. So every
+writer hands its records to a bounded queue and goes on; a full queue drops the
+record and counts it, and the count is in the session's health stream for the
+checker to report. It is false if navigation's rates fall while a session
+records: fewer than 9.8 scans, 19.5 odometry updates or 5 localizer steps a
+second over a session, against 10, 20 and 5 measured parked on 2026-10-28 with
+nothing recording.
