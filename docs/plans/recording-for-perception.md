@@ -1,15 +1,17 @@
 # A recorder for Perception's sessions
 
-Status: **built 2026-10-28, tested offline, not yet deployed.** The schema was
-agreed with Perception and Codex the same day, with this project's answers
+Status: **deployed 2026-10-28; a two-minute parked session at full rates
+dropped nothing and passed Perception's checker on order, boundary and schema,
+with navigation at its rates
+([progress](../progress/2026-10-28-the-recorder-on-the-rover.md)).** The schema
+was agreed with Perception and Codex the same day, with this project's answers
 below; the owner chose the bedroom as the held-out room
 ([decision](../decisions/the-bedroom-is-held-out-for-perception.md)). What was
 built is described in the components' READMEs
 ([daemon](../../rover_daemon/README.md#recording-sessions-for-perception),
 [navigation](../../ros_nav/README.md#in-a-recording-session),
-[depth](../../oak_depth/README.md#in-a-recording-session)); a sample of the
-daemon's files validates against the schema. Next: deploy and a short parked
-session on the rover, then commissioning with the owner.
+[depth](../../oak_depth/README.md#in-a-recording-session)). Next: commissioning
+with the owner, which drives.
 ([R-CTL-13](../requirements/control.md#r-ctl-13) proposed;
 [R-CTL-6](../requirements/control.md#r-ctl-6) now holds the OAK on in a session.)
 
@@ -253,9 +255,7 @@ manifest, drawn by `experiments/rooms/bedroom_outline.py`.
 ## Order of work
 
 1. Done 2026-10-28: the schema agreed, the taps, the session mode and the
-   recording page built and tested offline.
-2. Deploy, and a short parked session on the rover whose files validate against
-   the schema, with navigation's rates read while it records.
-3. Commissioning with the owner, as in the spec, against the bar above. Before
+   recording page built, deployed, and a parked session recorded and checked.
+2. Commissioning with the owner, as in the spec, against the bar above. Before
    each session the voice model and world-state perception are switched off and
    face tracking stopped; the session itself holds the camera and the OAK.
