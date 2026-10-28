@@ -92,6 +92,8 @@ def main():
     except depth_server.DepthError as error:
         print("  skip  no depthai here: %s" % error)
         return 0
+    announcements = tempfile.mkdtemp()
+    os.environ[session_record.CURRENT_ENV] = os.path.join(announcements, "current.json")
     depth.imu_wanted = False
     depth._pipeline()
     check("an ordinary pipeline carries no IMU", depth.pipeline_has_imu, False)
@@ -99,6 +101,12 @@ def main():
     depth._pipeline()
     check("a session's pipeline carries the IMU, built by this depthai", depth.pipeline_has_imu,
           True)
+    depth.imu_wanted = False
+    session_record.announce({"dir": announcements, "session": "s"})
+    depth._pipeline()
+    check("...and so does one built after a session was announced, before the follower saw it",
+          depth.pipeline_has_imu, True)
+    session_record.announce(None)
 
     with tempfile.TemporaryDirectory() as root:
         directory = os.path.join(root, "2026-10-28T1124-commissioning")

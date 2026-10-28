@@ -286,8 +286,12 @@ class Depth:
         # has not yet run on the rover outside a session. The rate and batching
         # are the ones the gimbal sweeps of 2026-10-09 recorded at 201.2 a second
         # with no gap in 450 s (usb_cameras/capture_pan_sweep.py).
-        self.pipeline_has_imu = self.imu_wanted
-        if self.imu_wanted:
+        # A session that switches the camera on was announced before it did, so
+        # the announcement is read here too: the follower may not have seen it
+        # yet, and missing it costs a second firmware upload.
+        self.pipeline_has_imu = self.imu_wanted or (
+            session_record is not None and session_record.announced() is not None)
+        if self.pipeline_has_imu:
             imu = pipeline.create(dai.node.IMU)
             imu.enableIMUSensor([dai.IMUSensor.ACCELEROMETER_RAW,
                                  dai.IMUSensor.GYROSCOPE_RAW], IMU_HZ)
