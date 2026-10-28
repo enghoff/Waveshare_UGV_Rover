@@ -98,6 +98,11 @@ Nothing that only displays the depth may keep the camera awake: the console's
 depth picture is fetched only while the camera is already on, and fetching it
 never switches it.
 
+A recording session for Perception is something the rover is doing as well:
+its depth and the OAK's IMU are recorded from its start to its end, parked or
+not, so the camera stays on for as long as a session is open
+([plan](../plans/recording-for-perception.md)).
+
 <a id="r-ctl-7"></a>
 ### R-CTL-7 — The console is served over HTTPS to a trusted local network, with no login
 

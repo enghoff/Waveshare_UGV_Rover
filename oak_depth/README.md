@@ -34,6 +34,20 @@ arithmetic at a desk.
 Depth is aligned to the colour camera. A normalized box from `/frame` can be sent
 unchanged to `/ranges`.
 
+## In a recording session
+
+While the daemon announces a recording session for Perception
+([rover_daemon/README.md](../rover_daemon/README.md#recording-sessions-for-perception)),
+the service writes depth (every frame or every third, with DepthAI's
+host-mapped stamp and the device's own) and the OAK's IMU into the session's
+directory. The IMU -- the BMI270's raw accelerometer and gyro at 200 a second,
+as the gimbal sweeps of 2026-10-09 recorded them -- is built into the pipeline
+only while a session is open, so the rover's ordinary depth path is unchanged;
+a session that starts on a camera already running closes and reopens it once to
+add it. Every reopening in a session is a restart record, because the device's
+clock begins again. `python oak_depth/test_session.py` builds both pipelines and
+checks what the two streams write, without a camera.
+
 ## HTTP API
 
 - `GET /health` reports device, firmware, USB speed, frame age, power state and

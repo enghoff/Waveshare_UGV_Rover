@@ -520,6 +520,8 @@ model choice, for example:
 - `get_depth_power`, which reports whether the OAK is awake and cannot set it,
   and `depth_map`, its depth in millimetres for the console, which cannot wake
   it either;
+- the recording calls below -- a session holds the camera and moves the gimbal
+  by schedule, and neither is a model's to start;
 - the autonomy calls above. Starting a run is the console's button or an
   agent's call over this protocol, and a voice model that could ask for it
   could talk itself into authority it had just been refused; asking for a
@@ -544,6 +546,44 @@ through nothing. The store, the model boundary and the sidecar are
 `_whole_jpeg` that answers `camera_jpeg` -- the camera has one owner, and an
 inspection is not a reason for a second process to open it -- and
 [`rover_recall.py`](rover_recall.py), which is the model's half.
+
+## Recording sessions for Perception
+
+Perception, the owner's perception research, records the rover's streams on one
+clock to a schema agreed with it (`D:\Perception\docs\rover-schema-v1.json`;
+[the plan](../docs/plans/recording-for-perception.md)). The daemon owns a
+session ([`rover_recording.py`](rover_recording.py)): `recording_start {kind,
+rooms, operator, configuration?, exposure_ms?}` opens `~/recordings/<start>-<kind>/`,
+writes the calibration into `inputs.json` from the code that holds it
+([`recording_inputs.py`](recording_inputs.py)), and announces the session in
+`~/.ugv/recording/current.json`; the depth service, the lidar node and a ROS
+recorder it starts follow that file and write their own streams.
+`recording_stop` waits for them to close and writes `manifest.json` with every
+file's hash. `recording_status`, `recording_annotate`, `recording_still`,
+`recording_schedule` and `recording_schedule_cancel` are the rest; the console's
+`/recording` page carries them.
+
+What the daemon writes itself: every write to the board, from the board link's
+write lock, numbered by the link's own count (`daemon_commands.jsonl`, and the
+gimbal and motor commands among them, the motors' with the velocity the base
+node mixed them from); every feedback line, raw; the gimbal camera, every frame
+or every third with its own V4L2 stamp; scheduled gimbal runs; annotations,
+stills and health once a second.
+
+**While a session is open it holds the camera.** The feed stays open on the
+session's own thread, and `_snapshot` hands every other caller -- the console,
+`look` -- the feed's newest frame instead of a grab, which would come back
+empty; a picture at another size and face tracking are refused. A manual
+exposure is held for the session and given back to automatic at its end. The
+OAK is held on. A session that names the held-out bedroom is refused unless it
+is evaluation or that room's truth
+([decision](../docs/decisions/the-bedroom-is-held-out-for-perception.md)).
+
+Every writer puts its records on a bounded queue and never waits; a full queue
+drops and counts, and the session's health says so
+([R-CTL-13](../docs/requirements/control.md#r-ctl-13); the writer is
+[`session_record.py`](session_record.py), deployed into the depth and
+navigation components too).
 
 ## The depth camera follows the wheels
 

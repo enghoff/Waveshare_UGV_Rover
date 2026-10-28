@@ -41,6 +41,11 @@ the console up and preserves its required arguments.
 - `drive_snapshots.py` is the snapshot popup's server half: its connection,
   arming and list.
 - `omni_bridge.py` connects browser audio to the hosted realtime model.
+- `drive_recording.html` and `drive_recording.py` are `/recording`, a page of
+  its own for Perception's recording sessions: start and stop, the units a
+  person staging changes opens and ends, stills, door marks and gimbal
+  schedules. `POST /recording` forwards the session's calls to the daemon and
+  nothing else ([rover_daemon/README.md](../rover_daemon/README.md#recording-sessions-for-perception)).
 
 The world and snapshot scripts load before `drive_web.js`, which calls `start()`. Assets are
 read from disk per request, but deployed changes still use the normal restart and

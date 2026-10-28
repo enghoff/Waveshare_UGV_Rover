@@ -1,15 +1,17 @@
 # A recorder for Perception's sessions
 
-Status: **proposed 2026-10-28; nothing built.** Perception asked for it and for
-answers to eight questions; the answers are below, from the code and a first
-reading on the rover the same day
-([progress](../progress/2026-10-28-what-a-recording-would-cost.md)). The owner
-chose the bedroom as the held-out room the same day
-([decision](../decisions/the-bedroom-is-held-out-for-perception.md)). Waiting on
-the schema's agreement; nothing on the rover is needed before the recorder is
-built.
+Status: **built 2026-10-28, tested offline, not yet deployed.** The schema was
+agreed with Perception and Codex the same day, with this project's answers
+below; the owner chose the bedroom as the held-out room
+([decision](../decisions/the-bedroom-is-held-out-for-perception.md)). What was
+built is described in the components' READMEs
+([daemon](../../rover_daemon/README.md#recording-sessions-for-perception),
+[navigation](../../ros_nav/README.md#in-a-recording-session),
+[depth](../../oak_depth/README.md#in-a-recording-session)); a sample of the
+daemon's files validates against the schema. Next: deploy and a short parked
+session on the rover, then commissioning with the owner.
 ([R-CTL-13](../requirements/control.md#r-ctl-13) proposed;
-[R-CTL-6](../requirements/control.md#r-ctl-6) needs a session exception.)
+[R-CTL-6](../requirements/control.md#r-ctl-6) now holds the OAK on in a session.)
 
 Perception (`D:\Perception`, the owner's perception research) asks for stationary
 trials with the gimbal moving and the chassis still, later driven sessions, and a
@@ -233,23 +235,6 @@ camera.
   drawn with the owner.
 - The annotation tool does not exist; it is built with the recorder.
 
-## Where the recorder taps
-
-Every writer stamps arrival on the monotonic clock, which every process on the
-Orin shares, and writes into the session's directory through a bounded queue that
-drops and counts (R-CTL-13):
-
-- **the daemon:** the camera feed, every board line at its drain, every command
-  and the command log at the board link's `send`, the gimbal schedule's runs, the
-  annotations, health and the clock record;
-- **the depth service:** depth and the IMU, written by the service itself so no
-  frame crosses a socket;
-- **the lidar node:** the raw packets with their arrival stamps, turned into
-  `lidar/scans.jsonl` when the session closes;
-- **a ROS subscriber:** odometry, the localizer's steps and events, the
-  correction, and the 360-direction scan;
-- **a closing step:** the manifest, hashes, clock mapping and final counts.
-
 ## What counts as done
 
 The recorder is commissioned when, in a parked session and then a gentle drive,
@@ -267,8 +252,10 @@ manifest, drawn by `experiments/rooms/bedroom_outline.py`.
 
 ## Order of work
 
-1. The schema is agreed with these answers.
-2. Build the taps above, the session mode (feed held, manual exposure kept, the
-   OAK held on, the looking loop off) and the annotation tool; replay-test what
-   can be replayed and run the suites.
-3. Deploy, then commissioning as in the spec, against the bar above.
+1. Done 2026-10-28: the schema agreed, the taps, the session mode and the
+   recording page built and tested offline.
+2. Deploy, and a short parked session on the rover whose files validate against
+   the schema, with navigation's rates read while it records.
+3. Commissioning with the owner, as in the spec, against the bar above. Before
+   each session the voice model and world-state perception are switched off and
+   face tracking stopped; the session itself holds the camera and the OAK.

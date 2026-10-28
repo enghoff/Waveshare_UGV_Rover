@@ -422,6 +422,24 @@ answered once.
 These are hardware/navigation issues. Reproduce them with a recording or the
 provided simulator before changing configuration.
 
+## In a recording session
+
+Perception's recording sessions
+([rover_daemon/README.md](../rover_daemon/README.md#recording-sessions-for-perception))
+take three things from this stack. The lidar node hands every read to
+[`lidar_packets.py`](lidar_packets.py), which finds the D500's 47-byte packets,
+checks their CRC and writes each one -- twelve returns with intensities, the
+start and end angles, the speed and the sensor's millisecond clock -- on its own
+thread, so the node's loop does no more than queue the bytes. The localizer
+publishes every step on `localizer/step`, with the stamp of the scan it matched,
+whether it was searched against the map, its score and the pose; navigation
+says on `nav/pose_events` whether a pose it handed over was a restore or a
+refit. And [`recorder_node.py`](recorder_node.py), started by the daemon for
+each session through `run_recorder.sh`, writes odometry, the map pose with its
+fit (lost, poor, good, by the rule agreed with Perception), the published scan
+and the clocks, then exits when the session ends; it runs only for sessions,
+because a subscriber to the scan costs a few percent of a core while it exists.
+
 ## Reproduction and tests
 
 `nav_record.py` records pose, plans, costmaps and controller evaluation.
