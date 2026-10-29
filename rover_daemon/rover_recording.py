@@ -180,6 +180,7 @@ class Recording:
         self.last_command_ns: int | None = None
         self._keep_every = max(1, round(CAMERA_HZ / config["camera_hz"]))
         self._frames_seen = 0
+        self._manual_held = False  # the session's exposure written since the feed opened
         self.newest: tuple[bytes, float] | None = None
         self.camera = None
         self.camera_error: str | None = None
@@ -262,7 +263,9 @@ class Recording:
         self._frames_seen += 1
         if (self._frames_seen - 1) % self._keep_every:
             return
-        manual = self.config["exposure_s"]
+        # Every opening of the feed puts the camera back in automatic, so a frame
+        # is manual only once the session's exposure has been written again since.
+        manual = self.config["exposure_s"] if self._manual_held else None
         kind = getattr(self.camera, "stamp_kind", None)
         self.streams["camera"].put(
             {"t_arr": arrived,
@@ -283,12 +286,15 @@ class Recording:
         opened = 0
         while not self._stopping.is_set():
             try:
+                self._manual_held = False
                 with rover._camera_lock:
                     camera = Camera(rover.device, rover.size, "MJPG")
                 camera.listener = self._frame
                 if self.config["exposure_s"] is not None:
                     units = round(self.config["exposure_s"] / 100e-6)
-                    if not uvc_camera.hold_manual(rover.device, units):
+                    if uvc_camera.hold_manual(rover.device, units):
+                        self._manual_held = True
+                    else:
                         self.camera_error = "the camera would not take the manual exposure"
                 if opened:
                     self.streams["camera"].restart()

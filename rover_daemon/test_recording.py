@@ -215,6 +215,14 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
             link.send({"T": 11, "L": 90, "R": 90}, client="bridge",
                       note={"linear": 0.2, "angular": 0.0, "keepalive": False,
                             "caller": "cmd_vel"})
+            session = rover.recording
+            was_exposure, session.config["exposure_s"] = session.config["exposure_s"], 0.01
+            seen_was, session._keep_every = session._keep_every, 1
+            session._manual_held = False
+            session._frame(b"\xff\xd8 reopened \xff\xd9", None, time.monotonic_ns())
+            session._manual_held = True
+            session._frame(b"\xff\xd8 held \xff\xd9", None, time.monotonic_ns())
+            session.config["exposure_s"], session._keep_every = was_exposure, seen_was
             rover.recording.feedback(
                 [b'{"T":1001,"L":0,"R":0,"ax":112,"ay":-64,"az":8482,"gx":-7,"gy":6,'
                  b'"gz":8,"mx":-245,"my":803,"mz":1301,"odl":10,"odr":12,"v":1137}'],
@@ -280,6 +288,11 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
             check("...its steps' plans are the first plan plus each stored offset",
                   [s["t_plan"] - events[0]["steps"][0]["t_plan"] for s in events[0]["steps"]],
                   [s["t_offset_ns"] for s in stored["steps"]])
+            frames = [r for r in read("camera/index.jsonl") if not r.get("restart")]
+            check("a frame is marked manual only once the session's exposure is written "
+                  "again after the feed opens",
+                  [(r["auto_exposure"], r["exposure_s"]) for r in frames[-2:]],
+                  [(True, None), (False, 0.01)])
             feedback = read("board_feedback.jsonl")
             check("a feedback line keeps its raw integers",
                   (feedback[0]["enc_left"], feedback[0]["accel_raw"], feedback[0]["volt_raw"]),
