@@ -13,8 +13,8 @@
 // gyro-bearing packet is accepted. A packet is accepted only with the FIFO
 // overflow status (INT_STATUS_2, cleared by reading) clear both before its read
 // starts and after it ends, and the read itself complete. Anything else -- an
-// overflow seen, a status read that failed, a packet read that failed or stopped
-// part way -- is a loss event: the packet is discarded, the snapshot left as it
+// overflow seen, a status read that failed, a packet read that failed, stopped
+// part way or came back with an impossible header -- is a loss event: the packet is discarded, the snapshot left as it
 // was, the FIFO reset, and nothing accepted until the reset has succeeded. Every
 // FIFO or DMP reset this firmware makes counts as a loss event, the two at boot
 // included. Nothing else in the firmware reads INT_STATUS_2.
@@ -30,6 +30,9 @@ uint32_t timingReadUs = 0;
 uint32_t timingSeq = 0;
 uint16_t timingFooter = 0;
 uint32_t timingSampleLoss = 0;
+
+const uint16_t timingHeaderNever = 0x0007 | DMP_header_bitmap_Step_Detector |
+    DMP_header_bitmap_Pressure | DMP_header_bitmap_ALS;
 
 void timingBootInit() {
   Preferences prefs;
@@ -54,6 +57,10 @@ bool timingOverflowStatus(bool *clear) {
 void timingReadIMU() {
   if (timingResetPending) {
     if (myICM.resetFIFO() != ICM_20948_Stat_Ok) return;
+    // The overflow that caused the reset may have set the status again before
+    // it; that is the same loss, so it is cleared here, not counted again.
+    bool ignored;
+    if (!timingOverflowStatus(&ignored)) return;
     timingResetPending = false;
     return;  // the pass after a reset starts clean
   }
@@ -73,6 +80,14 @@ void timingReadIMU() {
     return;
   }
   if (!complete) return;
+  // A header naming outputs this firmware never enables (step detector,
+  // pressure, light, the undefined low bits) is a read out of step with the
+  // packets, such as one a reset left part way through a packet: a failed read.
+  if ((data.header & timingHeaderNever) != 0) {
+    timingLoss++;
+    timingResetPending = true;
+    return;
+  }
 
   if ((data.header & DMP_header_bitmap_Accel) > 0) {
     ax = data.Raw_Accel.Data.X;

@@ -43,8 +43,10 @@ LIBDIR="$(arduino-cli config get directories.user | tr -d '\r')/libraries"
 mkdir -p "$LIBDIR" && rm -rf "$LIBDIR/SCServo" && cp -r "$HERE/SCServo" "$LIBDIR/"
 
 # The DMP code in the IMU library is compiled only with ICM_20948_USE_DMP.
+# build.defines, not build.extra_flags: the core composes extra_flags itself,
+# and replacing it drops the log level (logs would cut into the Orin's lines).
 arduino-cli compile --fqbn "$FQBN" --output-dir "$BUILD" \
-  --build-property "build.extra_flags=-DESP32 -DICM_20948_USE_DMP" \
+  --build-property "build.defines=-DICM_20948_USE_DMP" \
   --warnings default "$SKETCH"
 ls -l "$BUILD/ROS_Driver.ino.bin"
 sha256sum "$BUILD/ROS_Driver.ino.bin"

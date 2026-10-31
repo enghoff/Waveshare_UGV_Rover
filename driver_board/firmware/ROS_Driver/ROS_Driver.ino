@@ -162,8 +162,11 @@ void setup() {
 
   // Reset FIFO
   success &= (myICM.resetFIFO() == ICM_20948_Stat_Ok);
-  // Both resets above are this firmware's own, so both are loss events.
-  timingLoss += 2;
+  // The FIFO reset inside initializeDMP and the two above are this firmware's
+  // own, so all three are loss events. The overflow interrupt is enabled, as in
+  // InvenSense's own sequence, so that INT_STATUS_2 reports an overflow.
+  timingLoss += 3;
+  success &= (myICM.intEnableOverflowFIFO(0x1F) == ICM_20948_Stat_Ok);
 
   // Check success
   if (success)
@@ -265,9 +268,16 @@ void setup() {
   // Firmware updates over Wi-Fi, so that no later update needs the BOOT button.
   ArduinoOTA.setHostname("ugv-driver-board");
   ArduinoOTA.setPassword(OTA_PASSWORD);
+  // An update blocks the loop, and with it the PID and the heartbeat, until the
+  // board restarts, so the wheels are stopped directly. A failed update returns
+  // to the loop, which must not act on commands queued while it was blocked.
   ArduinoOTA.onStart([]() {
-    emergencyStopProcessing();
-    setGoalSpeed(0, 0);
+    usePIDCompute = false;
+    leftCtrl(0);
+    rightCtrl(0);
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    while (Serial.available()) Serial.read();
   });
   ArduinoOTA.begin();
 

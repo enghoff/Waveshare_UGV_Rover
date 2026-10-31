@@ -24,14 +24,18 @@ which every recording's manifest names
   when its DMP packet was read), `n` (gyro packets accepted since boot), `gc` (the
   packet's DMP footer, raw) and `ln` (loss events since boot) -- changed together
   with `gx..gz` and only when a packet is accepted. A packet is accepted only with
-  the FIFO overflow status clear before and after its read and the read complete;
-  otherwise it is discarded and the FIFO reset. The vendor's loop ignored a packet
+  the FIFO overflow status clear before and after its read, the read complete and
+  its header naming only outputs that can be on; otherwise it is discarded and the
+  FIFO reset. The overflow interrupt is enabled so that the status reports an
+  overflow (the vendor left it off). The vendor's loop ignored a packet
   read that stopped part way, which left the FIFO misaligned. Before the first
   accepted packet, `ti`, `n`, `gc`, `ln` and `gx..gz` are left out.
 - **Firmware updates over Wi-Fi** (ArduinoOTA, host `ugv-driver-board`, port
   3232), with a password from `secrets/board-ota.key` compiled in through the
   untracked `ota_secret.h`. The board's partition table already has two app slots.
-  The motors are stopped when an update starts.
+  An update blocks the loop until the board restarts, so the wheels are stopped
+  directly when it starts; the gimbal keeps its torque. There is no rollback: an
+  image that will not run needs the BOOT button again.
 
 The IMU is read as before: one DMP packet each pass of the loop, at the vendor's
 DMP rate (55 Hz divided by 4 for each output).
