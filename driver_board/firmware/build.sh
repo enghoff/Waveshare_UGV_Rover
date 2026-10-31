@@ -23,7 +23,7 @@ LIBS=(
   "Adafruit BusIO@1.16.1"
   "INA219_WE@1.3.8"
   "ESP32Encoder@0.11.6"
-  "PID_v2@0.1.1"
+  "PID_v2@2.0.1"
   "SimpleKalmanFilter@0.1.0"
   "SparkFun 9DoF IMU Breakout - ICM 20948 - Arduino Library@1.2.13"
 )
@@ -39,9 +39,8 @@ arduino-cli core install "$CORE" --additional-urls \
   https://espressif.github.io/arduino-esp32/package_esp32_index.json
 for lib in "${LIBS[@]}"; do arduino-cli lib install "$lib"; done
 # Waveshare bundles the servo library with the firmware.
-arduino-cli config set library.enable_unsafe_install true >/dev/null
-arduino-cli lib install --zip-path <(cd "$HERE" && zip -qr - SCServo) 2>/dev/null \
-  || cp -r "$HERE/SCServo" "$(arduino-cli config get directories.user)/libraries/"
+LIBDIR="$(arduino-cli config get directories.user | tr -d '\r')/libraries"
+mkdir -p "$LIBDIR" && rm -rf "$LIBDIR/SCServo" && cp -r "$HERE/SCServo" "$LIBDIR/"
 
 # The DMP code in the IMU library is compiled only with ICM_20948_USE_DMP.
 arduino-cli compile --fqbn "$FQBN" --output-dir "$BUILD" \
