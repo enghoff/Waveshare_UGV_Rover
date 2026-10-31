@@ -60,3 +60,9 @@ tmp/
 # check-fit.mjs takes of it. The PDF is the output worth keeping.
 docs/rover-architecture/print.html
 docs/rover-architecture/*.png
+
+# The driver board firmware's Wi-Fi update password, generated from secrets/board-ota.key at build time.
+driver_board/firmware/ROS_Driver/ota_secret.h
+
+# The driver board firmware's build output.
+driver_board/firmware/build/

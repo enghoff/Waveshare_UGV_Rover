@@ -436,6 +436,8 @@ void baseInfoFeedback() {
 		break;
 	}
 
+	timingAddToFeedback(jsonInfoHttp);
+	jsonInfoHttp["ts"] = (uint32_t)micros();
 	String getInfoJsonString;
 	serializeJson(jsonInfoHttp, getInfoJsonString);
 	Serial.println(getInfoJsonString);
