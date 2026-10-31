@@ -62,6 +62,9 @@ except ImportError:
     session_record = None
 
 LIDAR_BAUD = 230400
+#: The driver board's USB serial numbers: its ESP32's port, plugged into the Orin
+#: for firmware updates since 2026-10-31 (docs/runbooks/hosts.md).
+BOARD_USB_SERIALS = ("5B79022005",)
 # What the sensor actually delivers: about 450 points in each of ten revolutions a
 # second. Everything below is measured from that rather than chosen.
 NOMINAL_HZ = 10.0
@@ -77,9 +80,14 @@ def find_lidar(preferred=None):
     """
     if preferred and os.path.exists(preferred):
         return preferred
+    # The driver board's own USB port is the same CH343 as the lidar's adapter and
+    # differs only in its serial number. Opening it restarts the board, so it is
+    # never taken for the lidar, by name or by the node number it resolves to.
+    board = {os.path.realpath(p) for s in BOARD_USB_SERIALS
+             for p in glob.glob("/dev/serial/by-id/*%s*" % s)}
     for pattern in ("/dev/serial/by-id/*1a86*", "/dev/serial/by-id/*10c4*",
                     "/dev/ttyACM*"):
-        found = sorted(glob.glob(pattern))
+        found = [p for p in sorted(glob.glob(pattern)) if os.path.realpath(p) not in board]
         if found:
             return found[0]
     return None

@@ -32,6 +32,7 @@ interchangeable. No local language model runs on the Orin.
 |---|---|---|
 | General Driver board | `/dev/ttyTHS1`, 115200 | `rover_daemon` |
 | D500 lidar | stable `/dev/serial/by-id/...`, 230400 | `ros_nav/lidar_node.py` |
+| General Driver board's ESP32 USB (firmware only, since 2026-10-31) | `/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B79022005-if00`; the same CH343 as the lidar's adapter, so the lidar node skips it by serial; opening it restarts the board | nothing in service; flashing |
 | Xitech gimbal camera | stable `/dev/v4l/by-id/...-video-index0` | `rover_daemon` |
 | OAK-D-Lite | USB2, DepthAI 2.32.0.0 | `oak_depth` |
 
