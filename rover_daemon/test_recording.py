@@ -32,7 +32,7 @@ def test_a_stream_writes_its_header_records_and_frames():
         counts = s.close()
         lines = _lines(os.path.join(root, "camera", "index.jsonl"))
         check("a stream's file opens with the schema's header",
-              lines[0], {"schema": "rover-recording", "version": 1, "stream": "camera"})
+              lines[0], {"schema": "rover-recording", "version": 2, "stream": "camera"})
         check("...then its records, numbered from 0 in order",
               [(r["seq"], r["t_arr"]) for r in lines[1:]], [(0, 5), (1, 6)])
         check("...each frame's offset and length its bytes' real place",
@@ -173,6 +173,8 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
         recording_inputs.ODOMETRY_FILE = os.path.join(root, "odometry.json")
         with open(recording_inputs.ODOMETRY_FILE, "w") as f:
             json.dump({"gyro_lsb_per_dps": 16.14613, "ticks_per_metre": 107.206}, f)
+        firmware_was = rover_recording.BOARD_FIRMWARE
+        rover_recording.BOARD_FIRMWARE = os.path.join(root, "board_firmware.json")
         state_was = rover_recording.DEPLOY_STATE
         rover_recording.DEPLOY_STATE = os.path.join(root, "deploy-state.json")
         with open(rover_recording.DEPLOY_STATE, "w") as f:
@@ -180,6 +182,13 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
         try:
             link = TappingLink()
             rover = rover_daemon.Rover(link, "unused", device="/dev/null")
+            refused = rover.call("recording_start", {"kind": "commissioning", "rooms": ["hall"],
+                                                      "operator": "test"})
+            check("a session is refused while the board's firmware is not recorded",
+                  (refused["ok"], "firmware" in refused.get("error", "")), (False, True))
+            with open(rover_recording.BOARD_FIRMWARE, "w") as f:
+                json.dump({"name": "ugv_base_ros", "version": "0.96", "build": "vendor-0.96",
+                           "image_sha256": None, "timing_fields": False, "imu": None}, f)
             refused = rover.call("recording_start", {"kind": "training", "rooms": ["bedroom"],
                                                       "operator": "test"})
             check("a training session in the held-out bedroom is refused",
@@ -304,6 +313,8 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
             check("...holds the bedroom out, with its door",
                   manifest["held_out"], {"room": "bedroom", "has_door": True,
                                          "visibility_rule": None})
+            check("...is version 2 and names the board's firmware as recorded on the rover",
+                  (manifest["version"], manifest["board_firmware"]["build"]), (2, "vendor-0.96"))
             check("...names the daemon's deployed commit as the deployer records it",
                   manifest["rover_commit"], "b9672c5afdaf")
             check("...and says the other processes' streams never closed, here",
@@ -311,6 +322,7 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
         finally:
             recording_inputs.ODOMETRY_FILE = odometry_was
             rover_recording.DEPLOY_STATE = state_was
+            rover_recording.BOARD_FIRMWARE = firmware_was
             rover_recording.CLOSE_WAIT_S = wait_was
             for k, v in saved.items():
                 if v is None:
@@ -319,7 +331,50 @@ def test_a_session_records_commands_feedback_a_schedule_and_its_manifest():
                     os.environ[k] = v
 
 
+def test_the_board_clock_unwraps_and_starts_an_epoch_at_a_reboot():
+    import rover_recording
+    import session_record
+
+    with tempfile.TemporaryDirectory() as directory:
+        rec = object.__new__(rover_recording.Recording)  # its board stream alone
+        rec.streams = {"board_feedback": session_record.Stream(directory, "board_feedback",
+                                                               "board_feedback.jsonl")}
+        rec._volts, rec._board_last = None, None
+        wrap = 2 ** 32
+        lines = [
+            (b'{"T":1001,"odl":1,"odr":1,"ts":4000,"bi":7}', 1),          # before a sample
+            (b'{"T":1001,"ts":%d,"bi":7,"ti":%d,"n":1,"gc":5,"ln":0,"gx":1,"gy":2,"gz":3}'
+             % (wrap - 1000, wrap - 30000), 2),
+            (b'{"T":1001,"ts":49000,"bi":7,"ti":%d,"n":2,"gc":6,"ln":0,"gx":1,"gy":2,"gz":3}'
+             % (wrap - 2000), 3),                                         # the clock wrapped
+            (b'{"T":1001,"ts":900,"bi":8,"ti":500,"n":1,"gc":1,"ln":0,"gx":0,"gy":0,"gz":0}', 4),
+            (b'{"T":1001,"odl":2,"odr":2,"gx":1,"gy":1,"gz":1}', 5),     # vendor firmware
+            (b'{"T":1001,"odl":2,"odr":2,"gx":1,"gy":1,"gz":1}', 5 + 3600 * 10 ** 9),
+        ]
+        for line, t in lines:
+            rec.feedback([line], t)
+        rec.streams["board_feedback"].close()
+        rows = _lines(os.path.join(directory, "board_feedback.jsonl"))[1:]
+    data = [r for r in rows if not r.get("restart")]
+    check("a line before the boot's first gyro sample has its send time and no sample",
+          (data[0]["send_us"], data[0]["boot_id"], data[0]["gyro_raw"], data[0]["gyro_seq"]),
+          (4000, 7, None, None))
+    check("send times unwrap across the board clock's wrap",
+          [r["send_us"] for r in data[:3]], [4000, wrap - 1000, wrap + 49000])
+    check("...and a gyro read before the wrap is placed before its send",
+          [r["gyro_read_us"] for r in data[1:3]], [wrap - 30000, wrap - 2000])
+    check("a new boot id, and an hour's silence, each start an epoch",
+          [r.get("restart", False) for r in rows], [False] * 3 + [True, False, False, True, False])
+    check("...and the new boot's clock starts again from its own first line",
+          (data[3]["send_us"], data[3]["gyro_read_us"]), (900, 500))
+    check("vendor firmware's lines carry every timing field null",
+          [data[4][k] for k in ("send_us_raw", "send_us", "boot_id", "gyro_read_us_raw",
+                                "gyro_read_us", "gyro_seq", "gyro_footer", "gyro_loss")],
+          [None] * 8)
+
+
 TESTS = (
+    test_the_board_clock_unwraps_and_starts_an_epoch_at_a_reboot,
     test_a_stream_writes_its_header_records_and_frames,
     test_a_full_queue_drops_counts_and_leaves_a_gap,
     test_a_restart_record_comes_before_the_new_epoch,

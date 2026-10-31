@@ -34,7 +34,7 @@ import threading
 import time
 
 SCHEMA = "rover-recording"
-VERSION = 1
+VERSION = 2  # Perception's rover-schema-v2.json: the board's timing fields (2026-10-31)
 #: Where the open session is announced; an environment variable moves it for tests.
 CURRENT_ENV = "UGV_RECORDING_CURRENT"
 #: What each stream's queue holds before it starts dropping. A tenth of a second

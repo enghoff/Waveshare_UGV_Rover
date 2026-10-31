@@ -65,6 +65,12 @@ HELD_OUT = {"room": "bedroom", "has_door": True, "visibility_rule": None}
 #: The rooms' outlines on the map, by room, kept on the rover outside git
 #: (experiments/rooms/bedroom_outline.py draws the bedroom's).
 ROOMS_FILE = os.path.expanduser("~/.ugv/recording/rooms.json")
+#: What firmware the driver board runs, as this project flashed or found it: the
+#: board reports none of it, so a session will not start without it (schema v2's
+#: manifest board_firmware).
+BOARD_FIRMWARE = os.path.expanduser("~/.ugv/board_firmware.json")
+#: A board line this long after the one before starts a new epoch (schema v2).
+BOARD_SILENCE_NS = 3600 * 10 ** 9
 #: The deployer's record of each component's commit, by name (deploy/deploy.py).
 DEPLOY_STATE = os.path.expanduser("~/.ugv/deploy-state.json")
 #: The ROS half of a session, started with it (ros_nav/recorder_node.py).
@@ -114,6 +120,32 @@ def recordings_dir() -> str:
 
 def _int_or_none(value):
     return None if value is None else int(value)
+
+
+FIRMWARE_KEYS = ("name", "version", "build", "image_sha256", "timing_fields", "imu")
+
+
+def board_firmware() -> dict:
+    """The driver board's firmware as recorded on the rover, for the manifest.
+    Refused rather than guessed: a recording that names the wrong firmware would
+    have its board timing read by the wrong rules."""
+    try:
+        with open(BOARD_FIRMWARE, encoding="utf-8") as f:
+            firmware = json.load(f)
+    except (OSError, ValueError) as exc:
+        raise ValueError("the board's firmware is not recorded in %s, so no session (%s)"
+                         % (BOARD_FIRMWARE, exc))
+    missing = [k for k in FIRMWARE_KEYS if k not in firmware]
+    if missing or not isinstance(firmware.get("timing_fields"), bool):
+        raise ValueError("%s lacks %s" % (BOARD_FIRMWARE, ", ".join(missing) or "timing_fields"))
+    if firmware["timing_fields"] and (not firmware["image_sha256"] or not firmware["imu"]):
+        raise ValueError("%s: firmware with timing fields names its image and IMU" % BOARD_FIRMWARE)
+    return {k: firmware[k] for k in FIRMWARE_KEYS}
+
+
+def _u32(value):
+    """A board counter as sent, or None when the line does not carry it."""
+    return int(value) % 2 ** 32 if isinstance(value, (int, float)) else None
 
 
 def _cpu_times() -> list[tuple[int, int]]:
@@ -185,6 +217,7 @@ class Recording:
         self.camera = None
         self.camera_error: str | None = None
         self._volts: int | None = None
+        self._board_last: dict | None = None  # the board clock's state in this epoch
         self._units: dict[str, dict[str, Any]] = {}
         self._marks: set[str] = set()  # session_start and session_end, once each
         self._units_lock = threading.Lock()
@@ -248,11 +281,37 @@ class Recording:
             volts = f.get("v")
             if isinstance(volts, (int, float)):
                 self._volts = int(volts)
-            stream.put({"t_arr": t, "enc_left": _int_or_none(f.get("odl")),
-                        "enc_right": _int_or_none(f.get("odr")),
-                        "accel_raw": three("ax", "ay", "az"), "gyro_raw": three("gx", "gy", "gz"),
-                        "mag_raw": three("mx", "my", "mz"),
-                        "volt_raw": _int_or_none(volts), "raw": text})
+            record = {"t_arr": t, "enc_left": _int_or_none(f.get("odl")),
+                      "enc_right": _int_or_none(f.get("odr")),
+                      "accel_raw": three("ax", "ay", "az"), "gyro_raw": three("gx", "gy", "gz"),
+                      "mag_raw": three("mx", "my", "mz"),
+                      "volt_raw": _int_or_none(volts), "raw": text}
+            record.update(self._board_clock(f, t))
+            stream.put(record)
+
+    def _board_clock(self, f: dict, t: int) -> dict:
+        """Version 2's board timing for one line: the raw keys as sent, the board's
+        microseconds unwrapped within an epoch, and a new epoch at a reboot (the
+        boot id changes) or after an hour's silence. Vendor firmware sends none of
+        the keys, and every field is null but the epoch rule by silence."""
+        ts, boot = _u32(f.get("ts")), _u32(f.get("bi"))
+        read = _u32(f.get("ti"))
+        last = self._board_last
+        if last is not None and (t - last["t"] >= BOARD_SILENCE_NS
+                                 or (boot is not None and boot != last["boot"])):
+            self.streams["board_feedback"].restart(t_arr=t)
+            last = None
+        send_us = None
+        if ts is not None:
+            send_us = ts if last is None or last["send_us"] is None else (
+                last["send_us"] + (ts - last["raw"]) % 2 ** 32)
+        self._board_last = {"t": t, "boot": boot, "raw": ts, "send_us": send_us}
+        return {"send_us_raw": ts, "send_us": send_us, "boot_id": boot,
+                "gyro_read_us_raw": read,
+                "gyro_read_us": None if read is None or send_us is None
+                else send_us - (ts - read) % 2 ** 32,
+                "gyro_seq": _int_or_none(f.get("n")), "gyro_footer": _int_or_none(f.get("gc")),
+                "gyro_loss": _int_or_none(f.get("ln"))}
 
     # --- the camera -----------------------------------------------------------
 
@@ -487,7 +546,7 @@ class Recording:
         if os.path.exists(path):
             raise ValueError("schedule %s is already stored in this session" % sid)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        body = {"schema": "rover-recording", "version": 1, "file": "schedule",
+        body = {"schema": "rover-recording", "version": rec.VERSION, "file": "schedule",
                 "schedule_id": sid, "steps": clean}
         with open(path, "w", encoding="utf-8") as f:
             json.dump(body, f, indent=1)
@@ -644,6 +703,7 @@ class RoverRecording:
         directory = os.path.join(recordings_dir(), session)
         if os.path.exists(directory):
             raise ValueError("%s already exists: wait a minute" % session)
+        firmware = board_firmware()
         config = {"name": name, "camera_hz": CONFIGURATIONS[name]["camera"],
                   "depth_hz": CONFIGURATIONS[name]["depth"],
                   "exposure_s": None if exposure_ms is None else float(exposure_ms) / 1000.0}
@@ -660,7 +720,7 @@ class RoverRecording:
         recording.meta = {"rooms": rooms, "operator": operator,
                           "clock_start": self._recording_clock(),
                           "services": self._recording_services(),
-                          "map": self._recording_map()}
+                          "map": self._recording_map(), "board_firmware": firmware}
         self.recording = recording
         recording.start()
         # Held on while the session lasts (rover_depth.depth_tick), and switched on
@@ -808,7 +868,7 @@ def write_manifest(recording: Recording, counts: dict[str, Any], clock_end: dict
             files.append({"path": rel, "size": os.path.getsize(path), "sha256": _sha256(path)})
     log = os.path.join(directory, "daemon_commands.jsonl")
     manifest = {
-        "schema": "rover-recording", "version": 1, "file": "manifest",
+        "schema": "rover-recording", "version": rec.VERSION, "file": "manifest",
         "session": recording.session, "kind": recording.kind,
         "day": recording.session[:10], "rooms": meta["rooms"],
         "rover_commit": commit,
@@ -821,6 +881,7 @@ def write_manifest(recording: Recording, counts: dict[str, Any], clock_end: dict
                                   "lidar", "lidar_scan", "map_pose", "clock", "health")},
             "auto_exposure": config["exposure_s"] is None, "exposure_s": config["exposure_s"]},
         "map": meta["map"], "room_outlines": outlines, "held_out": HELD_OUT,
+        "board_firmware": meta["board_firmware"],
         "clock": {"start": meta["clock_start"], "end": clock_end},
         "services": meta["services"], "operator": meta["operator"],
         "daemon_log": {"path": "daemon_commands.jsonl",

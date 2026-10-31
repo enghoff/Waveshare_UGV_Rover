@@ -563,6 +563,14 @@ file's hash. `recording_status`, `recording_annotate`, `recording_still`,
 `recording_schedule` and `recording_schedule_cancel` are the rest; the console's
 `/recording` page carries them.
 
+Sessions are written to version 2 of the schema (`rover-schema-v2.json`,
+agreed 2026-10-31): each board feedback line also carries the board's own
+timing when its firmware sends it (`ts`, `bi`, `ti`, `n`, `gc`, `ln`), unwrapped
+across the board clock's 71-minute wrap, with a new epoch at a reboot or after an
+hour's silence; with the vendor's firmware those fields are null. The manifest
+names the board's firmware from `~/.ugv/board_firmware.json`, which the board
+cannot report itself, and a session is refused while that file is missing.
+
 The session's own `session_start` and `session_end` annotations are what
 Perception counts its rates between, so each is taken once, and the start is
 refused until every steady stream has given a record (`recording_status` lists

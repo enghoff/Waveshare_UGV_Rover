@@ -20,6 +20,8 @@ import math
 import os
 from typing import Any
 
+import session_record as rec
+
 #: base_node's odometry file, which is runtime state outside git and so is cited
 #: by its hash.
 ODOMETRY_FILE = os.path.expanduser("~/ugv/odometry.json")
@@ -134,5 +136,5 @@ def build(colour_lens: dict[str, Any] | None = None) -> dict[str, Any]:
     # A calibration changed between sessions is a new version: name it by what
     # it holds, so two sessions with the same values share one.
     digest = hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()[:12]
-    return {"schema": "rover-recording", "version": 1, "file": "inputs",
+    return {"schema": "rover-recording", "version": rec.VERSION, "file": "inputs",
             "calibration_version": "cal-" + digest, **entries}
