@@ -104,3 +104,7 @@ autonomy/** text eol=lf
 # experiments/multiday/ is copied to the rover by scp (docs/runbooks/daily-benchmark-run.md),
 # so a CRLF checkout would reach it as is: the same carriage-return trap.
 experiments/multiday/** text eol=lf
+
+# driver_board/firmware/flash.sh runs on the rover and build.sh under bash: the
+# same carriage-return trap.
+driver_board/firmware/*.sh text eol=lf
