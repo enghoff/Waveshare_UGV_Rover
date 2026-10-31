@@ -201,6 +201,10 @@ the things that stop the wheels and keep the rover's place on the map. So every
 writer hands its records to a bounded queue and goes on; a full queue drops the
 record and counts it, and the count is in the session's health stream for the
 checker to report. It is false if navigation's rates fall while a session
-records: fewer than 9.8 scans, 19.5 odometry updates or 5 localizer steps a
-second over a session, against 10, 20 and 5 measured parked on 2026-10-28 with
-nothing recording.
+records, against the same motion with nothing recording: parked, fewer than 9.8
+scans, 19.5 odometry updates or 5 localizer steps a second over a session,
+against 10, 20 and 5 measured on 2026-10-28. Moving, the comparison is the same
+moves unrecorded, because turning alone lowers odometry: twelve 30-degree turns
+gave 19.17 updates a second with nothing recording on 2026-10-31, and 19.43
+recorded on 2026-10-29
+([progress](../progress/2026-10-29-the-first-timing-manoeuvres.md)).
