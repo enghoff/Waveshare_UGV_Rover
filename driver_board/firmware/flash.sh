@@ -43,14 +43,17 @@ while time.time() - t < float(sys.argv[1]):
 s.close(); print("no download mode seen"); sys.exit(1)
 EOF
 
-echo "--- writing $IMAGE to app0 (0x10000)"
+# One connection only: esptool leaves its stub at 460800 baud, and a second run
+# cannot reach it (2026-10-31). write-flash checks each region's hash itself.
+# app0 must be the slot that boots, so otadata is blanked in the same write: one
+# pointing at app1 after a Wi-Fi update would bypass it.
+echo "--- writing $IMAGE to app0 (0x10000) and blanking otadata (0xe000)"
+BLANK=$(mktemp)
+head -c 8192 /dev/zero | tr '\0' '\377' > "$BLANK"
 $ESPTOOL --port $U --before no-reset --after no-reset -b 460800 \
-  write-flash --flash-mode keep --flash-freq keep --flash-size keep 0x10000 "$IMAGE" || exit 1
-$ESPTOOL --port $U --before no-reset --after no-reset -b 460800 \
-  verify-flash 0x10000 "$IMAGE" || exit 1
-# app0 must be the slot that boots: an otadata pointing at app1 would bypass it.
-$ESPTOOL --port $U --before no-reset --after no-reset -b 460800 \
-  erase-region 0xe000 0x2000 || exit 1
+  write-flash --flash-mode keep --flash-freq keep --flash-size keep \
+  0xe000 "$BLANK" 0x10000 "$IMAGE" || { rm -f "$BLANK"; exit 1; }
+rm -f "$BLANK"
 
 echo "--- tap EN now to start the new firmware; reading its first lines for 60 s"
 /usr/bin/python3 - <<'EOF'

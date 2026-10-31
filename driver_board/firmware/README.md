@@ -64,4 +64,14 @@ first flash needs the rover opened and BOOT pressed by hand:
 
 Back to the vendor's firmware: the same, with `vendor-app0.bin`. Once a build with
 the Wi-Fi updater is on the board, later updates need neither the rover opened nor
-the daemon stopped.
+the daemon stopped:
+
+    python driver_board/firmware/ota.py driver_board/firmware/build/ROS_Driver.ino.bin
+
+It reads the password from `secrets/`, and the board restarts into the new image
+by itself. One flaw of the core's updater (3.0.4): a packet it does not expect --
+an invitation arriving while it waits for the password, or anything else sent to
+port 3232 -- is never fully read, and its UDP receive buffer is never cleared
+(`NetworkUDP::flush` does nothing), so it answers nothing more until the board
+restarts. An update attempt cut short does exactly this (2026-10-31). Switching
+the rover off and on clears it.
