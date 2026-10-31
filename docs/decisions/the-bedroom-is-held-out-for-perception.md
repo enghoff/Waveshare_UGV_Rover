@@ -1,6 +1,7 @@
 # The bedroom is held out of Perception's training
 
-Status: **decided by the owner, 2026-10-28,** before any Perception session.
+Status: **decided by the owner, 2026-10-28,** before any Perception session;
+**amended 2026-10-31**: the lobby and the ensuite are part of it (below).
 
 Perception holds one room of the flat out of all its training and tuning, so
 that what it learns can be judged somewhere it has never seen (its target
@@ -51,3 +52,29 @@ quarter of a metre wrong passing through it (2026-10-11).
   Autonomy runs, the multi-day benchmark, the world store and its archives have
   all been in the bedroom, and nothing here changes what they do; but anything
   from them offered to Perception would carry the room in.
+
+## Amended 2026-10-31: the lobby and the ensuite are part of it
+
+The owner corrected the outline (2026-10-30 and 2026-10-31, through Perception's
+session). **The bedroom's door is at about x −11.9 on the corridor, not at
+x −10.12 where the outline above was cut**, so the corridor's last 1.8 m (the
+lobby) is part of the bedroom, not a room or area of its own. Perception found
+the door frame on the grid: a jamb from the corridor's north wall at x −12.0 to
+−11.8 and a step in its south wall between x −12.0 and −11.4, to about 0.2 m.
+The 2026-10-11 drive's "half way down the corridor" point and the M5 sessions'
+corridor-2 viewpoint both lie in the lobby, so they were in the bedroom.
+
+**The ensuite bathroom is held out with it.** Its only opening is its door onto
+the lobby, inside the bedroom door, so with that door shut it is out of reach
+and out of sight as the bedroom is, and holding it out costs nothing. A manifest
+names one held-out room, so the held-out outline (`bedroom` in the manifest's
+room outlines) is the bedroom with the lobby joined to the ensuite's outline;
+the ensuite keeps its own outline beside it.
+
+The outlines are now Perception's, drawn with the owner for every room on map
+`7da19bef3888` (`D:\Perception\data\rover\outlines\`, kept out of both
+repositories), and installed on the rover as `~/.ugv/recording/rooms.json` with
+the rooms the rover may go into and the bed as a keep-out. Nothing in
+navigation reads that file: the bed stays a hazard the drive scripts avoid.
+The outline drawn by `experiments/rooms/bedroom_outline.py` is superseded, and
+the recordings made before this amendment carry it, which leaves out the lobby.
