@@ -136,7 +136,11 @@ class BluezLink:
             self.bus.get_object(BLUEZ, path, introspect=False), PROPERTIES)
         if isinstance(value, bool):
             value = self.dbus.Boolean(value)
-        props.Set(iface, name, value, timeout=5.0)
+        # The signature is said, not guessed. With `introspect=False` dbus-python
+        # works it out from the arguments and sends "ssb", which BlueZ answers
+        # with UnknownMethod -- Set takes its value as a variant, "ssv" -- and
+        # every pair on the rover failed at its first step.
+        props.Set(iface, name, value, signature="ssv", timeout=5.0)
 
     def close(self) -> None:
         try:

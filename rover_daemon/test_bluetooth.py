@@ -289,7 +289,35 @@ def test_unpairing_forgets_the_device():
           rover.call("bt_unpair", {"address": SPEAKER}).get("ok"), False)
 
 
+def test_a_property_is_set_as_a_variant():
+    """The fake above cannot see a D-Bus signature, which is how a pair that
+    failed on its first step on the rover passed here: dbus-python guessed
+    "ssb" for Properties.Set and BlueZ has only "ssv"."""
+    import rover_bluetooth
+
+    calls = []
+
+    class Interface:
+        def __init__(self, obj, iface):
+            self.iface = iface
+
+        def Set(self, *args, **kwargs):
+            calls.append((self.iface, args, kwargs))
+
+    fake = type("dbus", (), {"Interface": Interface,
+                             "Boolean": staticmethod(lambda v: ("Boolean", v))})
+    link = object.__new__(rover_bluetooth.BluezLink)
+    link.dbus = fake
+    link.bus = type("Bus", (), {"get_object": lambda _s, *a, **k: object()})()
+    link.set(HCI, "org.bluez.Adapter1", "Pairable", True)
+    check("Set is sent with the signature BlueZ has",
+          calls[0][2].get("signature"), "ssv")
+    check("...and the value as a D-Bus boolean",
+          calls[0][1], ("org.bluez.Adapter1", "Pairable", ("Boolean", True)))
+
+
 TESTS = (
+    test_a_property_is_set_as_a_variant,
     test_the_console_is_shown_what_could_be_paired_and_nothing_else,
     test_a_connected_controller_shows_the_joystick_it_became,
     test_a_scan_is_held_and_then_let_go,
