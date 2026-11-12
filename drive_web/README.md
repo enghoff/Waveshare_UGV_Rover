@@ -135,16 +135,21 @@ runs on the rover and answers at once; the card says "pairing ..." until the
 rover reports how it went. The controller has to be in its own pairing mode when
 "look" or "pair" is pressed. The calls are the daemon's
 ([`bt_status` and the rest](../rover_daemon/README.md#control-calls-not-shown-to-the-model)),
-and the card is off the page on a daemon without them. Pairing a controller does
-not make it drive the rover: nothing reads the joystick yet.
+and the card is off the page on a daemon without them. A connected controller
+drives the rover (below).
 
 While a game controller drives the rover, a line under the header names it and
 says when the lidar has stopped it and how close the thing is (in the warning
 colour), and the last button's effect. Its X button starts or ends the
 conversation as the microphone button does; a conversation started that way with
 nobody at the console is held open by a Bluetooth headset's microphone, as a
-browser holds one. The drive pad's moves are refused meanwhile, and the console
-polls and redraws as it does during a move. See
+browser holds one. The drive pad's moves are refused meanwhile. The status poll
+runs at a move's pace for as long as a controller is connected, and the camera
+and map only while it is moving the rover and for a few seconds after
+(`MANUAL_SETTLE_S`): a controller left untouched is a parked rover, and the
+pictures' wi-fi is shared with Bluetooth. The lights and face tracking rows
+follow the rover whoever changed them -- Y, B, the voice model, another console
+-- because the status poll carries both. See
 [the daemon](../rover_daemon/README.md#driving-by-hand-with-a-game-controller).
 
 ## World-state popup
@@ -255,12 +260,20 @@ the transcript says so.
 
 **The conversation can use the rover's own Bluetooth audio instead of the
 browser** (`rover_sound.py`). While a conversation is live the console reads
-PipeWire's graph every three seconds and routes by what is connected: the
-model's voice goes to every connected speaker, or to a headset when there is
-no speaker, and a connected headset's microphone replaces the browser's -- so a
-speaker with no microphone and a headset with one work together, the voice in
-the room and the microphone on the person. The browser is silent while the
-rover has an output and its microphone is ignored while a headset's is used.
+PipeWire's graph every three seconds and routes by what is connected: a
+connected headset is the microphone and the voice both, replacing the browser's;
+with no headset the voice goes to every connected speaker and the browser's
+microphone is listened to. The browser is silent while the rover has an output
+and its microphone is ignored while a headset's is used.
+
+**A speaker and a headset are never used together**, though both may be
+connected: with a headset the speaker stays silent. The Orin's one radio card
+takes turns between Bluetooth and its 2.4 GHz wi-fi, and with both links
+streaming (2026-11-12, the JBL Flip and the WI-XB400, wi-fi on channel 6) the
+rover's wi-fi upload fell from about 7 Mbit/s to between 0.3 and 2.3; the
+conversation's link to the service then stalled for 20 s at a time and the voice
+broke up. One link alone left 3 Mbit/s (the speaker) or 5 (the headset). A 5 GHz
+network or a separate USB Bluetooth adapter would allow both again.
 The microphone button still starts and ends the conversation, and no headset is
 recorded between conversations. A headset only has a microphone in its
 hands-free profile, so the console moves it there; that profile is mono, at

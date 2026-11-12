@@ -34,6 +34,10 @@ KEEPALIVE_S = 15.0
 # How long the last browser has to come back before a move in flight is stopped.
 # A reload takes a fraction of this; a closed tab never comes back.
 ORPHAN_GRACE_S = 2.0
+# How long after the game controller last moved the rover the pictures keep a
+# moving rover's pace. A controller left connected and untouched is a parked
+# rover, and on this radio the pictures' wi-fi is shared with Bluetooth.
+MANUAL_SETTLE_S = 3.0
 # How long after a search that found nothing to look again, multiplied by the number
 # of tries and held at the ceiling. Two seconds so that opening the page a moment
 # before the daemon is up costs nothing, fifteen so that a rover switched off for the
@@ -176,6 +180,7 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         # something that starts or stops it, and None on a console with no voice.
         self.manual: dict[str, Any] = {"on": False, "text": "", "blocked": False}
         self.manual_voice_seen: int | None = None
+        self.manual_driven_at = float("-inf")
         self.voice_toggle = None
         self.pose_text = "-"
         self.plan_text = "-"
@@ -442,10 +447,12 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         because a move publishes a sentence at a time and they are wanted in order,
         and the two pictures, because a map drawn around a pose that is changing is
         a different picture each time. A click waiting for the wheels counts -- it is
-        about to be a move, and the panel should not go quiet in between.
+        about to be a move, and the panel should not go quiet in between. So does
+        the game controller, but only while it is moving the rover.
         """
         return (self.busy_since is not None or self.pending_target is not None
-                or bool(self.manual.get("on")))
+                or (bool(self.manual.get("on"))
+                    and time.monotonic() - self.manual_driven_at < MANUAL_SETTLE_S))
 
     # --- the pump -------------------------------------------------------------
     def run(self) -> None:
@@ -484,6 +491,7 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
             return
         if (self.watch is not None and not self.poll_outstanding
                 and now - self.poll_at > (POLL_S if self.moving()
+                                          or self.manual.get("on")
                                           else PARKED_POLL_S)):
             self.poll_outstanding = True
             self.poll_at = now

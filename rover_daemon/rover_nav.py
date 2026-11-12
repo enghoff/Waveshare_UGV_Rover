@@ -637,7 +637,14 @@ class RoverNav:
             # A game controller driving the rover, or not (rover_manual.py):
             # the console draws its line from this and takes the conversation
             # button off `voice`. After `status`, whose `manual` is the bridge's.
-            "manual": self.manual_status()}
+            "manual": self.manual_status(),
+            # The lights and the face tracking, which the game controller's Y
+            # and B, the voice model and another console all change without
+            # this console asking: carried on the poll it already makes, so
+            # its panels follow within a poll rather than never (the lights)
+            # or at the tracking poll's pace.
+            "lights": self.level,
+            "tracking": self._tracking.is_set()}
 
     def _tool_nav_grid(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """The occupancy map as numbers. A control call, not a model tool.

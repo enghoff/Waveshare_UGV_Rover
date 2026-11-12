@@ -6,15 +6,14 @@ voice to whatever Bluetooth audio the rover has connected, and listens through
 a connected headset's microphone instead of the browser's:
 
     a speaker connected        the voice plays there; the browser stays silent
-    a headset connected        its microphone is the one listened to
-    both                       voice on the speaker, microphone on the headset
-    a headset alone            voice and microphone both on the headset
+    a headset connected        voice and microphone both on the headset
+    both                       the headset, as if the speaker were not there
     neither                    the browser, as before
 
-More than one device at once is the point: PipeWire runs a speaker on A2DP and a
-headset on its hands-free profile side by side, and every Bluetooth output that
-is not the headset in use as the microphone is played to. The console's button
-still starts and ends the conversation; this only changes where its sound goes.
+**A speaker and a headset are never streamed at once** ("One link at a time",
+below).
+The console's button still starts and ends the conversation; this only
+changes where its sound goes.
 
 **A speaker in the room is heard by every microphone in it**, the browser's
 included, and the service's own turn detection takes the rover's voice for
@@ -61,6 +60,17 @@ BLOCK_S = 0.02
 SPEAKER_TAIL_S = 0.5
 #: Form factors that are worn, and so leak nothing into a microphone.
 WORN = ("headset", "headphone", "hands-free")
+
+# One link at a time: why a headset takes the voice off a speaker rather than
+# sharing with it. The Orin's one radio card does Bluetooth and its 2.4 GHz
+# wi-fi by taking turns, and on 2026-11-12 (the owner's JBL Flip and Sony
+# WI-XB400, wi-fi on channel 6, no 5 GHz network in reach) the rover's wi-fi
+# upload, alternated two or three times each way, was about 7 Mbit/s with no
+# Bluetooth audio, 3 with the speaker's A2DP stream, 5 with the headset's
+# hands-free microphone -- and 0.3 to 2.3 with both. A conversation sends
+# 0.35 Mbit/s of microphone and the console's pictures about as much again;
+# with both links up the service's keepalive went unanswered for 20 s at a
+# time, replies came half a minute late and the voice broke up.
 #: One read of the microphone: 20 ms at the model's input rate.
 MIC_BLOCK = int(IN_RATE * 0.02) * 2
 
@@ -125,15 +135,20 @@ def choose(audio: dict[str, Any]) -> dict[str, Any]:
 
     The first headset (by name) is the microphone, and is asked into its
     hands-free profile if it is not in it: in A2DP a headset has no microphone
-    at all. The voice goes to every other device's output; to the headset's own
-    only when there is nothing else, since a speaker means the room should hear.
+    at all. The voice then goes to that headset too, over the same hands-free
+    link, and to nothing else -- see "One link at a time". Until the profile has changed
+    its outputs are its music ones, which are about to go away, so the voice
+    stays in the browser meanwhile. With no headset the voice goes to every
+    speaker.
     """
     devices = audio.get("devices") or []
     mic_device = next((d for d in devices if d["headset"]), None)
-    others = [d for d in devices if d is not mic_device]
-    outputs = [(d, s) for d in others for s in d["sinks"]]
-    if not outputs and mic_device is not None:
+    if mic_device is None:
+        outputs = [(d, s) for d in devices for s in d["sinks"]]
+    elif mic_device["profile"].startswith("headset-head-unit"):
         outputs = [(mic_device, s) for s in mic_device["sinks"]]
+    else:
+        outputs = []
     choice = {"outputs": [s for _, s in outputs],
               "out_names": [d["name"] for d, _ in outputs],
               "mic": None, "mic_name": "", "profile": None,

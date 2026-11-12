@@ -117,6 +117,16 @@ class SessionShow:
         self.rotation_fault = str(body.get("rotation_fault") or "")
         manual = body.get("manual")
         self.show_manual(manual if isinstance(manual, dict) else {})
+        # The lights and tracking as the rover has them, whoever changed them:
+        # the controller's Y and B, the voice model, another console. The level
+        # is the whole of the lights panel; tracking's panel has more than a
+        # flag, so a change asks for the rest at once rather than at its poll.
+        if isinstance(body.get("lights"), int):
+            self.light_level = body["lights"]
+        if "tracking" in body and bool(body["tracking"]) != self.tracking_on:
+            self.tracking_on = bool(body["tracking"])
+            self.track_text = "on" if self.tracking_on else "off"
+            self.track_at = 0.0
         pose = body.get("pose") or {}
         self.heading_deg = float(pose.get("heading_deg", 0.0))
         self.pose_text = "x {:+.2f}  y {:+.2f}  {:+.1f} deg".format(
@@ -366,6 +376,8 @@ class SessionShow:
         if not manual.get("on"):
             self.manual = {"on": False, "text": "", "blocked": False}
             return
+        if manual.get("linear") or manual.get("angular"):
+            self.manual_driven_at = time.monotonic()
         parts = [f"manual: {manual.get('controller') or 'game controller'}"]
         blocked = str(manual.get("blocked") or "")
         error = str(manual.get("error") or "")

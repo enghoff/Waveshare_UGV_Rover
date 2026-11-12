@@ -591,7 +591,9 @@ that comes another way -- and the world store records nothing: the looking loop
 here skips, and the bridge's latched `/manual_mode` pauses the mapper, the
 change watch and the world model's scan log. Localization goes on, so the rover
 still knows where it is afterwards. `nav_status.manual` says which controller,
-what the lidar cut and why, and the last button's effect.
+what the lidar cut and why, and the last button's effect; `nav_status.lights`
+and `nav_status.tracking` carry the light level and whether face tracking is
+on, so a console follows what Y and B (or the voice model) changed.
 
 The joystick is read through the kernel's `js` interface, which `jetson` can
 read without the `input` group; which axis is the right stick and which are the

@@ -31,8 +31,15 @@ def test_the_manual_line_and_the_talk_button() -> None:
         "front_m": 0.6, "voice": 4, "note": ""}})
     check("a controller is a line naming it",
           session.manual["text"], "manual: Xbox Wireless Controller")
-    check("...and the console keeps up with it, as it does with a move",
+    check("...but one nobody is touching is a parked rover to the pictures",
+          session.moving(), False)
+    session.show_manual({"on": True, "controller": "Xbox Wireless Controller",
+                         "linear": 0.2, "angular": 0.0, "voice": 4})
+    check("...and one that is driving keeps them at a move's pace",
           session.moving(), True)
+    import drive_session
+    session.manual_driven_at -= drive_session.MANUAL_SETTLE_S + 0.1
+    check("...until a few seconds after it stops", session.moving(), False)
 
     session.show_manual({"on": True, "controller": "Xbox Wireless Controller",
                          "blocked": "ahead", "front_m": 0.27, "voice": 5,
@@ -51,4 +58,38 @@ def test_the_manual_line_and_the_talk_button() -> None:
           session.manual["text"], "manual: pad -- navigation is not answering")
 
 
-TESTS = (test_the_manual_line_and_the_talk_button,)
+def test_the_lights_and_tracking_follow_the_rover() -> None:
+    """Y, B and the voice model change these on the rover without this console
+    asking; the status poll carries them, and the panels follow it."""
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"lights and tracking ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.light_level = 0
+    session.track_at = 1e12          # the tracking poll just went
+    session.show_status({"ok": True, "lights": 255, "tracking": True})
+    snap = session.snapshot()
+    check("lights switched on elsewhere show as on",
+          snap["lights"]["level"], 255)
+    check("...tracking started elsewhere shows at once",
+          (session.tracking_on, snap["tracking"]), (True, "on"))
+    check("...and asks for the rest of the tracking panel now, not at its poll",
+          session.track_at, 0.0)
+
+    session.track_at = 1e12
+    session.show_status({"ok": True, "lights": 255, "tracking": True})
+    check("no change is no extra question", session.track_at, 1e12)
+    session.show_status({"ok": True, "lights": 0, "tracking": False})
+    check("and both go off the same way",
+          (session.light_level, session.tracking_on, session.snapshot()["tracking"]),
+          (0, False, "off"))
+    session.show_status({"ok": True})
+    check("a daemon that does not say leaves them as they were",
+          (session.light_level, session.tracking_on), (0, False))
+
+
+TESTS = (test_the_manual_line_and_the_talk_button,
+         test_the_lights_and_tracking_follow_the_rover)

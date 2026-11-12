@@ -2,10 +2,10 @@
 
 PipeWire's graph is a fixture here, shaped as `pw-dump` prints it for a speaker
 on A2DP and a headset that starts in A2DP and is moved to its hands-free
-profile, which is the one with a microphone. What matters is that the room
-hears the rover through the speaker while the headset is listened to, that a
-speaker is never listened to through, and that nothing is recorded between
-conversations.
+profile, which is the one with a microphone. What matters is that a speaker
+and a headset are never streamed at once -- on the Orin the two links together
+leave the wi-fi too little to hold a conversation -- that a speaker is never
+listened to through, and that nothing is recorded between conversations.
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def graph(headset_profile="a2dp-sink", speaker=True):
     return objects
 
 
-def test_the_speaker_speaks_and_the_headset_listens() -> None:
+def test_a_headset_takes_the_voice_off_the_speaker() -> None:
     try:
         import rover_sound
     except ImportError as exc:
@@ -63,22 +63,27 @@ def test_the_speaker_speaks_and_the_headset_listens() -> None:
 
     choose = lambda objects: rover_sound.choose(rover_sound.bt_audio(objects))  # noqa: E731
     first = choose(graph())
-    check("with a speaker and a headset, the voice goes to the speaker only",
-          (first["outputs"], first["out_names"]),
-          (["bluez_output.11_22.1"], ["BT Speaker"]))
+    check("with a speaker and a headset still in A2DP, nothing plays yet: the "
+          "headset's music output is about to go away, and the speaker would be "
+          "a second link", (first["outputs"], first["gate"]), ([], False))
     check("...the headset is asked into its hands-free profile, the generic one",
           first["profile"], (HEADSET, 3))
     check("...which it does not have a microphone without",
           (first["mic"], first["mic_name"]), (None, "Headset"))
-    check("...and a speaker in the room means not listening while it speaks",
-          first["gate"], True)
 
     then = choose(graph("headset-head-unit"))
-    check("once it is in that profile its microphone is the one listened to",
-          then["mic"], "bluez_input.77_88.0")
-    check("...the voice stays on the speaker", then["outputs"],
-          ["bluez_output.11_22.1"])
+    check("once it is in that profile it is the microphone and the voice both, "
+          "and the speaker is left alone",
+          (then["mic"], then["outputs"], then["out_names"]),
+          ("bluez_input.77_88.0", ["bluez_output.77_88.0"], ["Headset"]))
+    check("...a worn one is listened to while it speaks", then["gate"], False)
     check("...and nothing more is asked of the headset", then["profile"], None)
+
+    speaker = choose([o for o in graph() if o["id"] not in (HEADSET, 80)])
+    check("a speaker alone takes the voice, with the browser's microphone",
+          (speaker["outputs"], speaker["mic"]), (["bluez_output.11_22.1"], None))
+    check("...which is not listened to while the room hears the rover",
+          speaker["gate"], True)
 
     alone = choose(graph("headset-head-unit", speaker=False))
     check("a headset alone is the speaker and the microphone both",
@@ -184,11 +189,21 @@ def test_the_headset_is_heard_only_during_a_conversation() -> None:
               ["bluez_input.77_88.0"])
         check("...and what it hears reaches the conversation",
               sum(len(b) for b in heard), 3200)
-        check("...which says where its sound is going",
-              sound.describe(), {"out": "BT Speaker", "mic": "Headset", "error": ""})
+        check("...which says where its sound is going: the headset, both ways",
+              sound.describe(), {"out": "Headset", "mic": "Headset", "error": ""})
 
         sound.speaker.write(__import__("numpy").zeros(4800, dtype="float32"))
-        check("while the speaker speaks the microphone is not listened to",
+        check("a worn headset's own voice does not stop it being listened to",
+              sound.deaf(), False)
+        sound.speaker.flush()
+
+        state["graph"] = [o for o in graph() if o["id"] not in (HEADSET, 80)]
+        sound.refresh()
+        check("with the headset gone the speaker takes the voice, and its "
+              "microphone is let go", (sound.describe()["out"], sound.has_mic),
+              ("BT Speaker", False))
+        sound.speaker.write(__import__("numpy").zeros(4800, dtype="float32"))
+        check("...and while the speaker speaks, no microphone is listened to",
               sound.deaf(), True)
 
         sound.stop()
@@ -236,7 +251,7 @@ def test_the_browser_microphone_gives_way_to_the_headset() -> None:
 
 
 TESTS = (
-    test_the_speaker_speaks_and_the_headset_listens,
+    test_a_headset_takes_the_voice_off_the_speaker,
     test_the_voice_is_paced_so_an_interruption_can_take_it_back,
     test_the_headset_is_heard_only_during_a_conversation,
     test_the_browser_microphone_gives_way_to_the_headset,
