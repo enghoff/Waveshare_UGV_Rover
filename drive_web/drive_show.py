@@ -47,6 +47,22 @@ def _clock(stamp: Any) -> str:
     return time.strftime("%a %H:%M" if days < 6.5 else "%d %b %H:%M", when)
 
 
+def bt_outcome(last: dict[str, Any]) -> tuple[str, str]:
+    """What the rover's last Bluetooth act came to, as a note and its colour."""
+    name = last.get("name") or last.get("address") or "?"
+    said = str(last.get("said") or "").strip()
+    what = last.get("what")
+    if what == "unpair":
+        return f"unpaired {name}", ""
+    if what == "scan":
+        return f"the scan failed: {said}", "bad"
+    if not last.get("ok"):
+        return f"could not pair {name}: {said or 'no reason given'}", "bad"
+    if last.get("connected") is False:
+        return f"paired {name}, not connected: {said}", "warn"
+    return f"paired {name}", "good"
+
+
 class SessionShow:
     """Renderers mixed into Session."""
 
@@ -368,6 +384,55 @@ class SessionShow:
             rows.append({"who": str(hold.get("who", "")), "when": when,
                          "what": str(hold.get("what", "")), "times": times})
         self.holds = {"supported": True, "rows": rows, "note": ""}
+
+    def show_bt(self, body: dict[str, Any]) -> None:
+        """What the rover is paired with over Bluetooth, and what a scan found.
+
+        The note says what is happening or what the last act came to: a pairing
+        in flight, its outcome once the rover reports one, and how much a scan
+        heard when it ends. An outcome the rover already had when this console
+        first asked is history rather than news, and is not said.
+        """
+        if not body.get("ok"):
+            error = str(body.get("error", "no answer"))
+            if body.get("supported") is False or "no such tool" in error:
+                self.bt.update({"supported": False, "rows": [], "note": ""})
+                return
+            self.bt.update({"supported": True, "rows": [], "scanning": False,
+                            "busy": "", "note": error, "verdict": "bad"})
+            return
+        first = self.bt["supported"] is None
+        was_scanning = self.bt["scanning"]
+        rows = []
+        for device in body.get("devices") or []:
+            paired = bool(device.get("paired"))
+            if device.get("connected"):
+                state = "connected"
+                if device.get("input"):
+                    state += f" {device['input']}"
+            else:
+                state = "paired" if paired else "found"
+            rows.append({"address": str(device.get("address", "")),
+                         "name": str(device.get("name", "?")),
+                         "kind": str(device.get("kind", "")),
+                         "state": state, "connected": bool(device.get("connected")),
+                         "act": "unpair" if paired else "pair"})
+        busy = body.get("busy") if isinstance(body.get("busy"), dict) else None
+        scanning = bool(body.get("scanning"))
+        note, verdict = self.bt["note"], self.bt["verdict"]
+        last = body.get("last") if isinstance(body.get("last"), dict) else None
+        if busy:
+            note, verdict = f"pairing {busy.get('name', '')}", ""
+        elif last and last.get("at") != self.bt_last_at:
+            self.bt_last_at = last.get("at")
+            if not first:
+                note, verdict = bt_outcome(last)
+        elif was_scanning and not scanning:
+            heard = int(body.get("heard") or 0)
+            note, verdict = f"heard {heard} device{'' if heard == 1 else 's'}", ""
+        self.bt.update({"supported": True, "rows": rows, "scanning": scanning,
+                        "busy": busy.get("name", "") if busy else "",
+                        "note": note, "verdict": verdict})
 
     def show_depth_map(self, body: dict[str, Any]) -> None:
         """The depth map, still compressed, for the page to colour and read.

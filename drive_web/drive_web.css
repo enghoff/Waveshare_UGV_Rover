@@ -583,6 +583,15 @@
   #wifiList tr.here td { color: var(--accent); }
   #wifiList tr.stranger td { color: var(--dim); }
   #wifiList button { padding: 2px 10px; font-size: 12px; }
+  /* The folded network list is a list like any other once open; only the line
+     that opens it reads as a hint. */
+  #wifiFold { color: inherit; font-size: inherit; }
+  #wifiFold summary { font-size: 12px; color: var(--dim); }
+  #btList td { padding: 4px 6px; }
+  #btList tr.here td { color: var(--accent); }
+  #btList td.kind { color: var(--dim); font-size: 12px; }
+  #btList button { padding: 2px 10px; font-size: 12px; }
+  #btNote:empty { display: none; }
 
   /* --- the notice line ----------------------------------------------------
      One line, under the header and above everything else, for the things that

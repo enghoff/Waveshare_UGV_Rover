@@ -517,6 +517,18 @@ model choice, for example:
   restarts, and drawn on the console's "keep it on" card
   ([R-CTL-12](../docs/requirements/control.md#r-ctl-12)). A request, not a lock:
   nothing refuses to power down because of one. See [`rover_holds.py`](rover_holds.py);
+- Bluetooth pairing, for a game controller or an audio device:
+  `bt_status {}`, `bt_scan {seconds?}`, `bt_pair {address}` and
+  `bt_unpair {address}`. Status lists the paired devices and any controller,
+  speaker or headset a scan has heard (everything else is only counted), each
+  with whether it is connected and, for a connected controller, the joystick
+  the kernel made of it. A scan holds discovery for 30 s on its own thread; a
+  pair runs on its own thread too -- pair, trust, connect, with the adapter
+  pairable only meanwhile -- and the next status carries how it went as `last`.
+  No agent is registered, so a device that wants a PIN typed cannot be paired.
+  All of it is BlueZ over D-Bus as `jetson`, with nothing to install; see
+  [`rover_bluetooth.py`](rover_bluetooth.py). Off the model's schema because
+  what the rover pairs with is decided by whoever is holding the device;
 - `get_depth_power`, which reports whether the OAK is awake and cannot set it,
   and `depth_map`, its depth in millimetres for the console, which cannot wake
   it either;

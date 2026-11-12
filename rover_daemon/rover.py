@@ -11,6 +11,7 @@ from board_link import (
     _battery_percent, _battery_state, _battery_summary,
 )
 from rover_autonomy import PERSON_MOVES, RoverAutonomy
+from rover_bluetooth import RoverBluetooth
 from rover_camera import RoverCamera, VisionLink
 from rover_depth import RoverDepth
 from rover_holds import RoverHolds
@@ -68,8 +69,8 @@ def approach_settle_s(was: float | None, below: float) -> float:
                APPROACH_SWING_FLOOR_S + swing / APPROACH_SWING_DPS)
 
 
-class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDepth,
-            RoverAutonomy, RoverSnapshots, RoverHolds, RoverRecording):
+class Rover(RoverCamera, RoverWifi, RoverBluetooth, RoverNav, RoverWorld, RoverRecall,
+            RoverDepth, RoverAutonomy, RoverSnapshots, RoverHolds, RoverRecording):
     """The rover's state and everything that may be done to it.
 
     One lock covers the board and the model of where things are pointed. The
@@ -200,6 +201,9 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         # told: the switch takes the link down, and the reply would have gone out
         # over it. See :meth:`_tool_wifi_join`.
         self._wifi_join: dict[str, Any] | None = None
+        # Pairing: a scan held on its own thread, one pairing at a time, and
+        # what the last of them came to. See rover_bluetooth.py.
+        self._bt_init()
 
     # --- the board ----------------------------------------------------------
 

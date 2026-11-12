@@ -78,6 +78,10 @@ def test_schemas():
                # cutting the wire its own conversation arrives on, and no wording
                # of a description makes that a good idea.
                "wifi_status", "wifi_join",
+               # And Bluetooth, for the network's reason turned round: what the
+               # rover is paired with is decided by the person holding the
+               # controller or the headset, which a model cannot see.
+               "bt_status", "bt_scan", "bt_pair", "bt_unpair",
                # Whether the depth camera is awake, which is a control call for
                # the same shape of reason as the two above: what the rover can
                # afford is a decision about the rover rather than about the

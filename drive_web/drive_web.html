@@ -91,6 +91,7 @@
         <button id="micButton">start talking</button>
         <span id="voiceState" class="mono">off</span>
       </div>
+      <p id="voiceRoute" class="hint"></p>
       <p id="voiceHeard" class="hint"></p>
       <p id="voiceSaid" class="hint"></p>
       <p id="voiceError"></p>
@@ -130,13 +131,32 @@
     <h2>network</h2>
     <div id="wifi" class="reading">-</div>
     <p id="wifiWhere" class="hint"></p>
-    <div class="scroller" style="max-height:30vh;margin-top:6px">
-      <table><tbody id="wifiList"></tbody></table>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <button id="wifiScan">look for networks</button>
-    </div>
+    <!-- Folded on every load: the list is looked at when choosing a network,
+         which is rare, and open it is the tallest thing in this column. -->
+    <details id="wifiFold">
+      <summary id="wifiCount">networks</summary>
+      <div class="scroller" style="max-height:30vh;margin-top:6px">
+        <table><tbody id="wifiList"></tbody></table>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="wifiScan">look for networks</button>
+      </div>
+    </details>
     <p id="wifiNote" class="hint"></p>
+  </section>
+
+  <!-- What the rover is paired with over Bluetooth -- game controllers and
+       audio devices -- and pairing or forgetting one
+       (rover_daemon/rover_bluetooth.py). Off the page on a rover whose daemon
+       cannot pair. -->
+  <section id="btCard" hidden>
+    <h2>bluetooth</h2>
+    <table><tbody id="btList"></tbody></table>
+    <div id="btNone" class="reading">nothing paired</div>
+    <div class="row" style="margin-top:8px">
+      <button id="btScan">look for devices</button>
+    </div>
+    <p id="btNote" class="hint"></p>
   </section>
 
   <!-- Which agents want the rover kept switched on, for now or for something

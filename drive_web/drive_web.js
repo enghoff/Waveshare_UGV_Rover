@@ -123,6 +123,7 @@ function render(next) {
   drawDepthPicture(next.depth, next.depth_picture);
 
   drawWifi(next.wifi);
+  drawBt(next.bt);
   drawHolds(next.holds);
   drawNotice(next.notice);
   drawWorld(next.world);
@@ -199,6 +200,13 @@ function drawVoice(omni) {
     + (omni.seconds ? `  ${Math.round(omni.seconds)}s` : "");
   where.className = "mono " + (omni.state === "live" ? "up"
     : omni.state === "error" ? "down" : "");
+  // Where the conversation's sound is going when it is not this browser: the
+  // rover's Bluetooth speaker and headset (rover_sound.py).
+  const sound = omni.sound || {};
+  const route = [];
+  if (sound.out) route.push(`voice: ${sound.out}`);
+  if (sound.mic) route.push(`mic: ${sound.mic}`);
+  $("voiceRoute").textContent = sound.error || route.join(", ");
   $("voiceHeard").textContent = omni.heard ? `you: ${omni.heard}` : "";
   $("voiceSaid").textContent = omni.said ? `rover: ${omni.said}` : "";
   // **Only what the rover said.** This runs on every state push, which is ten
@@ -635,6 +643,44 @@ function drawHolds(holds) {
   $("holdsNote").textContent = holds.note;
 }
 
+// The rows are rebuilt only when they change, which during a scan is when a
+// device is heard or a pairing ends -- not on every state -- so a button is not
+// torn out from under a finger reaching for it.
+function drawBt(bt) {
+  if (!bt) return;
+  $("btCard").hidden = bt.supported !== true;
+  const list = $("btList");
+  const key = JSON.stringify(bt.rows);
+  if (list.dataset.key !== key) {
+    list.dataset.key = key;
+    list.replaceChildren(...bt.rows.map((device) => {
+      const row = document.createElement("tr");
+      row.className = device.connected ? "here" : "";
+      const name = document.createElement("td");
+      name.className = "wrap";
+      name.textContent = device.name;
+      const kind = document.createElement("td");
+      kind.className = "kind";
+      kind.textContent = device.kind;
+      const state = document.createElement("td");
+      state.textContent = device.state;
+      const action = document.createElement("td");
+      const button = document.createElement("button");
+      button.textContent = device.act;
+      button.onclick = () => post({do: `bt_${device.act}`, address: device.address});
+      action.append(button);
+      row.append(name, kind, state, action);
+      return row;
+    }));
+  }
+  for (const button of list.querySelectorAll("button")) button.disabled = !!bt.busy;
+  $("btNone").hidden = bt.rows.length > 0;
+  $("btScan").disabled = bt.scanning || !!bt.busy;
+  $("btScan").textContent = bt.scanning ? "looking..." : "look for devices";
+  $("btNote").textContent = bt.note;
+  $("btNote").className = "hint " + (bt.verdict || "");
+}
+
 function drawWifi(wifi) {
   $("wifi").textContent = wifi.text;
   $("wifi").className = "reading " + (wifi.verdict || "");
@@ -665,6 +711,8 @@ function drawWifi(wifi) {
 function drawNetworks() {
   const list = $("wifiList");
   list.replaceChildren();
+  $("wifiCount").textContent = networks.length
+    ? `${networks.length} network${networks.length === 1 ? "" : "s"}` : "networks";
   const joining = state && state.wifi.joining;
   for (const network of networks) {
     const row = document.createElement("tr");
@@ -742,6 +790,7 @@ function wire() {
   $("refitPose").onclick = () => post({do: "refit"});
   $("clearMap").onclick = () => post({do: "clear_map"});
   $("wifiScan").onclick = () => post({do: "wifi_scan"});
+  $("btScan").onclick = () => post({do: "bt_scan"});
 
   $("mapImg").onclick = (event) => {
     // The picture is scaled to whatever width the panel came out at, so a click

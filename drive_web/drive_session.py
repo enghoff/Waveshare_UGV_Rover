@@ -11,8 +11,8 @@ from typing import Any
 import _paths  # noqa: F401 — rover_tools and console_model
 import rover_tools
 from console_model import (
-    BATTERY_POLL_S, Channel, DEPTH_POLL_S, DEPTH_RETRY_S, DEPTH_WAKING_POLL_S,
-    HOLDS_POLL_S, MAP_STALE_S, MOVE_TIMEOUT_S,
+    BATTERY_POLL_S, BT_BUSY_POLL_S, BT_POLL_S, Channel, DEPTH_POLL_S,
+    DEPTH_RETRY_S, DEPTH_WAKING_POLL_S, HOLDS_POLL_S, MAP_STALE_S, MOVE_TIMEOUT_S,
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
     SLOW_PICTURE_S, POLL_S, Reply, TRACK_POLL_S, WIFI_POLL_S,
     WIFI_SCAN_TIMEOUT_S, WORLD_OPEN_POLL_S, WORLD_RETRY_S, WORLD_TIMEOUT_S,
@@ -224,6 +224,15 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         self.holds_outstanding = False
         self.holds_at = 0.0
         self.holds: dict[str, Any] = {"supported": None, "rows": [], "note": ""}
+        # What the rover is paired with over Bluetooth (rover_bluetooth.py), the
+        # same way: found by asking, and a daemon without the calls takes the
+        # card off the page. `last_at` is when the outcome the note is saying
+        # happened, so that the same outcome read again says nothing new.
+        self.bt_outstanding = False
+        self.bt_at = 0.0
+        self.bt_last_at = 0.0
+        self.bt: dict[str, Any] = {"supported": None, "rows": [], "scanning": False,
+                                   "busy": "", "note": "", "verdict": ""}
 
         # Whether the depth camera is awake, which the lamp on the battery
         # heading is coloured from. `supported` is None until the rover has been
@@ -368,6 +377,7 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
                                f"({self.light_level})"},
             "battery": self.battery,
             "holds": self.holds,
+            "bt": self.bt,
             # Beside the battery because that is the question it answers: what
             # this rover is spending.
             "depth": dict(self.depth),
@@ -558,6 +568,13 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
             self.holds_outstanding = True
             self.holds_at = now
             self.watch.submit("power_holds")
+        if (self.watch is not None and self.bt["supported"] is not False
+                and not self.bt_outstanding
+                and now - self.bt_at > (BT_BUSY_POLL_S if self.bt["scanning"]
+                                        or self.bt["busy"] else BT_POLL_S)):
+            self.bt_outstanding = True
+            self.bt_at = now
+            self.watch.submit("bt_status")
         # The network, on the same connection. Only once the rover has answered one
         # of these successfully, so a daemon that has never heard of them is asked
         # exactly once rather than every five seconds for the rest of the session.
@@ -916,6 +933,13 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         if name == "power_holds":
             self.holds_outstanding = False
             self.show_holds(body)
+            return
+        if name == "bt_status":
+            self.bt_outstanding = False
+            self.show_bt(body)
+            return
+        if name in ("bt_scan", "bt_pair", "bt_unpair"):
+            self.bt_answered(name, body)
             return
         if name == "wifi_status":
             self.wifi_outstanding = False

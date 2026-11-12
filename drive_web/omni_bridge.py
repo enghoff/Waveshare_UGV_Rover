@@ -67,6 +67,11 @@ import session as omni
 from session import IN_RATE, OUT_RATE, _to_pcm16
 from talk_frames import Frames
 
+try:
+    from rover_sound import RoverSound
+except ImportError:              # pragma: no cover - numpy is already required
+    RoverSound = None
+
 #: What the page has to send and what it will be sent, so that the rates live in
 #: one place and the browser is told them rather than told to assume. The
 #: microphone is 16 kHz because that is what the service takes; the reply comes
@@ -134,6 +139,11 @@ LOG_KEEP = 1
 #: back a name -- so nothing should come near this, and a line that does is a
 #: result that has grown a payload rather than one worth keeping in full.
 LOG_LINE_MAX = 4000
+
+#: How often a live conversation looks again at which Bluetooth audio is
+#: connected: one `pw-dump` on the rover, so that a speaker switched on
+#: mid-conversation is speaking by the next reply.
+SOUND_POLL_S = 3.0
 
 
 def api_key() -> str:
@@ -232,6 +242,44 @@ class BrowserSpeaker:
                 return            # a report about a reply that has been replaced
             self._played_ms = max(self._played_ms, float(played_ms))
             self._played_at = time.monotonic()
+
+
+class RoutedSpeaker:
+    """The browser's speaker or the rover's own, chosen afresh for every reply.
+
+    Chosen at `begin`, which `Session` calls at the start of each response, so a
+    Bluetooth speaker connected or lost mid-conversation takes over or hands
+    back at the next reply rather than in the middle of a sentence.
+    """
+
+    rate = OUT_RATE
+
+    def __init__(self, browser: BrowserSpeaker, local=None) -> None:
+        self.browser = browser
+        self.local = local
+        self.current = browser
+
+    def begin(self) -> None:
+        local = self.local
+        self.current = (local if local is not None and local.available
+                        else self.browser)
+        self.current.begin()
+
+    def write(self, audio: np.ndarray) -> None:
+        self.current.write(audio)
+
+    def played_ms(self) -> int:
+        return self.current.played_ms()
+
+    def flush(self) -> float:
+        return self.current.flush()
+
+    @property
+    def busy(self) -> bool:
+        return self.current.busy
+
+    def note_played(self, generation: int, played_ms: float) -> None:
+        self.browser.note_played(generation, played_ms)
 
 
 class Transcript:
@@ -350,8 +398,14 @@ class Omni:
     """
 
     def __init__(self, rover_address: str, note, model: str | None = None,
-                 frame_port: int = FRAME_PORT, log_path: str | None = None) -> None:
+                 frame_port: int = FRAME_PORT, log_path: str | None = None,
+                 sound: bool = True) -> None:
         self.rover_address = rover_address
+        # The rover's own Bluetooth audio (rover_sound.py), made on the first
+        # conversation rather than here: it starts a thread, and a console
+        # nobody talks through has no use for one.
+        self._use_sound = sound and RoverSound is not None
+        self.sound: Any = None
         self.model = model or omni.MODEL
         self.frame_port = frame_port
         self._say = note
@@ -374,7 +428,7 @@ class Omni:
         self._stop: asyncio.Event | None = None
         self._audio: asyncio.Queue | None = None
         self._session: Any = None
-        self._speaker: BrowserSpeaker | None = None
+        self._speaker: RoutedSpeaker | None = None
         self._frames: Frames | None = None
         self._wire: Any = None
         self._detached_at = time.monotonic()
@@ -403,11 +457,14 @@ class Omni:
     def status(self) -> dict[str, Any]:
         with self._lock:
             live = self.state == "live"
+            sound = self.sound
             return {
                 "state": self.state,
                 "error": self.error,
                 "model": self.model,
-                "listening": bool(self._wire) and live,
+                "listening": bool(self._wire or (sound and sound.has_mic)) and live,
+                "sound": sound.describe() if sound is not None and live else
+                         {"out": "", "mic": "", "error": ""},
                 "seconds": round(time.monotonic() - self.since, 1) if self.since else 0,
                 "heard": self.heard,
                 "said": self.said,
@@ -481,7 +538,20 @@ class Omni:
                 self._detached_at = time.monotonic()
 
     def on_audio(self, pcm: bytes) -> None:
-        """One block of microphone audio, PCM16 mono at IN_RATE, from the page."""
+        """One block of microphone audio, PCM16 mono at IN_RATE, from the page.
+
+        Dropped while a Bluetooth headset is the microphone -- two microphones
+        into one conversation is one person heard twice, a beat apart -- and
+        while the rover's voice is coming out of a speaker the page's
+        microphone can hear.
+        """
+        sound = self.sound
+        if sound is not None and (sound.has_mic or sound.deaf()):
+            return
+        self._hear(pcm)
+
+    def _hear(self, pcm: bytes) -> None:
+        """Microphone audio from either source into the conversation."""
         loop, audio = self._loop, self._audio
         if loop is None or audio is None:
             return
@@ -674,9 +744,13 @@ class Omni:
         # Named before the `try`, because the `finally` names it and the first
         # thing that can fail is the connection that has not happened yet.
         session = None
+        sound_watch = None
         self._stop = asyncio.Event()
         self._audio = asyncio.Queue()
-        speaker = BrowserSpeaker(self._send_audio, self._send_control)
+        if self.sound is None and self._use_sound:
+            self.sound = RoverSound(self._hear)
+        speaker = RoutedSpeaker(BrowserSpeaker(self._send_audio, self._send_control),
+                                self.sound.speaker if self.sound else None)
         self._speaker = speaker
         notes = Notes(self._note)
 
@@ -719,6 +793,9 @@ class Omni:
 
                 pump = asyncio.create_task(self._pump(session))
                 idle = asyncio.create_task(self._idle_watch())
+                if self.sound is not None:
+                    self.sound.start()
+                    sound_watch = asyncio.create_task(self._sound_watch())
                 done, pending = await asyncio.wait(
                     [reader, pump, idle, asyncio.create_task(self._stop.wait())],
                     return_when=asyncio.FIRST_COMPLETED)
@@ -736,6 +813,11 @@ class Omni:
                     if not task.cancelled() and task.exception() is not None:
                         raise task.exception()
         finally:
+            if sound_watch is not None:
+                sound_watch.cancel()
+            if self.sound is not None:
+                # The headset's microphone is not recorded between conversations.
+                self.sound.stop()
             self._session = None
             self._mirror(session=None)
             # One client per conversation, and it holds a socket to the daemon.
@@ -771,6 +853,12 @@ class Omni:
                 self.heard = session.transcripts[-1]
             if session.said:
                 self.said = session.said[-1]
+
+    async def _sound_watch(self) -> None:
+        """Keep the Bluetooth route current while the conversation is live."""
+        while True:
+            await asyncio.to_thread(self.sound.refresh)
+            await asyncio.sleep(SOUND_POLL_S)
 
     async def _idle_watch(self) -> None:
         """Close the session when no browser has held the microphone for a while,

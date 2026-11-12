@@ -193,6 +193,12 @@ BATTERY_NOTES = {"absent": "no pack fitted, or the main switch is off"}
 # times a day; five seconds is so that one set while the owner is looking shows
 # before they have reached the switch.
 HOLDS_POLL_S = 5.0
+# How often to ask what the rover is paired with over Bluetooth: one D-Bus read on
+# the rover. Paired devices change when somebody switches a controller on or off,
+# so five seconds is plenty at rest; during a scan or a pairing the list is what a
+# person is watching, and it is asked every second until it ends.
+BT_POLL_S = 5.0
+BT_BUSY_POLL_S = 1.0
 
 # How often to ask which access point the rover is on. The signal strength in that
 # answer is live -- the daemon reads it out of /proc for nothing -- while the list

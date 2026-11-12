@@ -41,6 +41,8 @@ the console up and preserves its required arguments.
 - `drive_snapshots.py` is the snapshot popup's server half: its connection,
   arming and list.
 - `omni_bridge.py` connects browser audio to the hosted realtime model.
+- `rover_sound.py` routes that conversation through the rover's own Bluetooth
+  speaker and headset instead, when they are connected (see "Voice").
 - `drive_recording.html` and `drive_recording.py` are `/recording`, a page of
   its own for Perception's recording sessions: start and stop, the units a
   person staging changes opens and ends, stills, door marks and gimbal
@@ -119,6 +121,22 @@ A red line under the header stays up for as long as `nav_status` carries a
 turn ([R-SAFE-17](../docs/requirements/safety.md#r-safe-17)), in the daemon's own
 words. Unlike a notice it does not fade, because the fault comes with a boot and
 lasts until the power is cut.
+
+The network card shows the access point, its strength and the address; the list
+of networks and "look for networks" are folded under a line giving their count,
+closed on every load.
+
+Under it, **bluetooth** lists what the rover is paired with -- game controllers,
+speakers and headsets -- and, after "look for devices", any of those a 30-second
+scan has heard; phones, televisions and the rest are only counted. Each row says
+what the device is, whether it is connected (a connected controller with the
+joystick the kernel made of it, `js0`), and offers **pair** or **unpair**. A pair
+runs on the rover and answers at once; the card says "pairing ..." until the
+rover reports how it went. The controller has to be in its own pairing mode when
+"look" or "pair" is pressed. The calls are the daemon's
+([`bt_status` and the rest](../rover_daemon/README.md#control-calls-not-shown-to-the-model)),
+and the card is off the page on a daemon without them. Pairing a controller does
+not make it drive the rover: nothing reads the joystick yet.
 
 ## World-state popup
 
@@ -225,6 +243,33 @@ without it the rover announces that it is setting off and never mentions arrivin
 The notice is spoken when the conversation is free and held for the model's next
 turn when it is not. With no conversation running it is accepted and dropped, and
 the transcript says so.
+
+**The conversation can use the rover's own Bluetooth audio instead of the
+browser** (`rover_sound.py`). While a conversation is live the console reads
+PipeWire's graph every three seconds and routes by what is connected: the
+model's voice goes to every connected speaker, or to a headset when there is
+no speaker, and a connected headset's microphone replaces the browser's -- so a
+speaker with no microphone and a headset with one work together, the voice in
+the room and the microphone on the person. The browser is silent while the
+rover has an output and its microphone is ignored while a headset's is used.
+The microphone button still starts and ends the conversation, and no headset is
+recorded between conversations. A headset only has a microphone in its
+hands-free profile, so the console moves it there; that profile is mono, at
+16 kHz -- the rate the model listens at -- when the headset and the Orin agree
+on mSBC, and at 8 kHz when they fall back to CVSD. While the voice comes out of a speaker the
+microphone is not listened to, and for half a second after, because the
+service's turn detection would hear the rover and take it for an
+interruption; the voice row says where the sound is going.
+
+That needs a one-time setup on the rover, which `install_bt_audio.sh` does and
+says what it changed: bluetoothd with its audio plugins (NVIDIA's drop-in turns
+off A2DP, so a speaker could not connect at all), linger for `jetson` so that
+PipeWire runs with nobody logged in, and WirePlumber allowed to use Bluetooth
+without a seat session:
+
+```bash
+ssh orin 'sudo -S -p "" sh ~/ugv/drive_web/install_bt_audio.sh' < secrets/jetson-orin.key
+```
 
 If voice dependencies or the hosted service are unavailable, manual driving and
 status remain available. The page reports current failure state rather than

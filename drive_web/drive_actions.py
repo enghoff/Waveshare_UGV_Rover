@@ -98,6 +98,13 @@ class SessionActions:
             self.wifi_scan()
         elif what == "wifi_join":
             self.wifi_join(str(action.get("ssid") or ""))
+        elif what == "bt_scan":
+            self.bt["scanning"] = True
+            self.watch_call("bt_scan")
+        elif what in ("bt_pair", "bt_unpair"):
+            address = str(action.get("address") or "")
+            if address:
+                self.watch_call(what, {"address": address})
         elif what == "world":
             self.world_act(action)
         elif what == "snapshots":
@@ -416,6 +423,24 @@ class SessionActions:
                              f"for a few seconds")
         self.watch_call("wifi_join", {"ssid": ssid})
         self.rejoin_at = time.monotonic() + WIFI_REJOIN_S
+
+    def bt_answered(self, name: str, body: dict[str, Any]) -> None:
+        """A Bluetooth button's answer, said in its own card.
+
+        Pairing and scanning answer before they have done anything, so the
+        answer only says whether the rover took the request; what it came to
+        arrives with the next `bt_status`, which is asked for at once.
+        """
+        self.bt_at = 0.0
+        if not body.get("ok"):
+            self.bt.update({"note": str(body.get("error") or "no answer"),
+                            "verdict": "bad", "scanning": False})
+            return
+        if name == "bt_pair":
+            who = str(body.get("name") or body.get("pairing") or "")
+            self.bt.update({"busy": who, "note": f"pairing {who}", "verdict": ""})
+        elif name == "bt_scan":
+            self.bt.update({"scanning": True, "note": "", "verdict": ""})
 
     def rejoined(self) -> None:
         """Reconnect after a join, whatever became of the request.
