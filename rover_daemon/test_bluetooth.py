@@ -146,9 +146,13 @@ def test_the_console_is_shown_what_could_be_paired_and_nothing_else():
     check("every connection is closed after use", bluez.closed, 1)
 
     bluez.objects.pop(HCI)
+    gap = rover.call("bt_status", {})
     check("no adapter is said, not shown as nothing paired",
-          (rover.call("bt_status", {}).get("ok"),
-           rover.call("bt_status", {}).get("supported")), (False, False))
+          (gap.get("ok"), gap.get("error")), (False, "no Bluetooth adapter is up"))
+    # It is what bluetoothd restarting looks like for a moment -- one answer in
+    # a hundred and ten, measured on the rover -- so it must not read as a
+    # daemon that cannot pair, which takes the console's card away for good.
+    check("...and is not said to be for good", "supported" in gap, False)
 
     def broken():
         raise DBusError("org.freedesktop.DBus.Error.ServiceUnknown",

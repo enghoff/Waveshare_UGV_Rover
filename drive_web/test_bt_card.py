@@ -116,6 +116,16 @@ def test_the_card_pairs_and_says_how_it_went() -> None:
           (session.bt["note"], session.bt["verdict"]),
           ("still pairing Headset", "bad"))
 
+    reply("bt_status", {"ok": False, "error": "no Bluetooth adapter is up"})
+    check("an adapter missing while bluetoothd restarts is said in the card, "
+          "which stays",
+          (session.bt["supported"], session.bt["note"]),
+          (True, "no Bluetooth adapter is up"))
+    reply("bt_status", {"ok": True, "devices": [PAD], "heard": 1,
+                        "scanning": False, "last": failed})
+    check("...and the next answer puts the rows back",
+          [r["name"] for r in session.bt["rows"]], ["Xbox Wireless Controller"])
+
     reply("bt_status", {"ok": False, "error": "no such tool: bt_status"})
     check("a daemon that cannot pair takes the card off the page",
           session.bt["supported"], False)

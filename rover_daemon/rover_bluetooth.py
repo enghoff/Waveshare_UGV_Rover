@@ -280,8 +280,10 @@ class RoverBluetooth:
         except Exception as error:
             return {"ok": False, "error": f"Bluetooth is not answering: {_said(error)}"}
         if path is None:
-            return {"ok": False, "supported": False,
-                    "error": "this rover has no Bluetooth adapter"}
+            # Not `supported: False`: for a moment while bluetoothd restarts
+            # there is no adapter, and a console told the rover cannot pair
+            # took its card off the page until it was itself restarted.
+            return {"ok": False, "error": "no Bluetooth adapter is up"}
         devices, heard = bt_devices(objects)
         now = time.monotonic()
         with self._bt_lock:

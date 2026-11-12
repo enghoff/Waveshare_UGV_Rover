@@ -395,7 +395,10 @@ class SessionShow:
         """
         if not body.get("ok"):
             error = str(body.get("error", "no answer"))
-            if body.get("supported") is False or "no such tool" in error:
+            if "no such tool" in error:
+                # Only a daemon without the calls takes the card away. An
+                # adapter missing for the moment bluetoothd restarts is said in
+                # the card, and the next answer puts the rows back.
                 self.bt.update({"supported": False, "rows": [], "note": ""})
                 return
             self.bt.update({"supported": True, "rows": [], "scanning": False,
