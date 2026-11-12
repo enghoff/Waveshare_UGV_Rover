@@ -68,6 +68,13 @@ BT_CONNECT_TIMEOUT_S = 20.0
 #: How long a pair looks for a device BlueZ has dropped from its list since the
 #: scan that found it -- it keeps unpaired devices about 30 s after a scan ends.
 BT_FIND_S = 20.0
+#: How many times a pair calls a device that does not answer. The radio's page
+#: lasts 5.12 s, and the Orin's radio card shares its time with 2.4 GHz wi-fi
+#: and every other Bluetooth link: on 2026-11-12 the owner's WI-XB400, in
+#: pairing mode at -75 dBm, missed two calls in a row and answered the third in
+#: 2.9 s, and the console said the pair had failed after the first. Only a page
+#: timeout is tried again; a device that answered and refused has said no.
+BT_PAGE_TRIES = 3
 
 #: Profiles that say what a device can do with sound. A headset that offers the
 #: hands-free or headset profile has a microphone; a speaker offers only A2DP.
@@ -558,7 +565,7 @@ class RoverBluetooth:
             outcome["name"] = str(props.get("Alias") or props.get("Name") or name)
             link.set(adapter, ADAPTER, "Pairable", True)
             if not props.get("Paired"):
-                link.pair(device, BT_PAIR_TIMEOUT_S)
+                device = self._bt_pair_calling(link, adapter, device, address)
             link.set(device, DEVICE, "Trusted", True)
             outcome["ok"] = True
             try:
@@ -584,6 +591,29 @@ class RoverBluetooth:
             with self._bt_lock:
                 self._bt_busy = None
                 self._bt_last = outcome
+
+    def _bt_pair_calling(self, link: Any, adapter: str, device: str,
+                         address: str) -> str:
+        """Pair, calling again up to BT_PAGE_TRIES times while the device does
+        not answer. Says the device's path, which a device BlueZ dropped and
+        found again between two calls has changed."""
+        for attempt in range(1, BT_PAGE_TRIES + 1):
+            try:
+                link.pair(device, BT_PAIR_TIMEOUT_S)
+                return device
+            except Exception as error:
+                if "page timeout" not in _said(error).lower():
+                    raise
+                if attempt == BT_PAGE_TRIES:
+                    raise RuntimeError(f"no answer to {attempt} calls "
+                                       f"({_said(error)})") from error
+            found, _props = _device_path(link.objects(), address)
+            if found is None:
+                found, _props = self._bt_find(link, adapter, address)
+            if found is None:
+                raise RuntimeError("not heard -- is it still in pairing mode?")
+            device = found
+        return device
 
     def _bt_find(self, link: Any, adapter: str,
                  address: str) -> tuple[str | None, dict]:

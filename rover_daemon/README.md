@@ -528,7 +528,10 @@ model choice, for example:
   Each pair registers a pairing agent as BlueZ's default for its own length,
   which agrees to the device being paired and to nothing else; LE controllers
   need one even for "just works" pairing. A device that wants a PIN or passkey
-  typed is refused.
+  typed is refused. A device that does not answer the radio's call (BlueZ's
+  "Page Timeout", 5.12 s) is called up to three times, since the Orin's radio
+  shares its time with 2.4 GHz wi-fi and every other link: the owner's headset
+  missed two calls in a row and answered the third (2026-11-12).
   All of it is BlueZ over D-Bus as `jetson`, with nothing to install; see
   [`rover_bluetooth.py`](rover_bluetooth.py). Off the model's schema because
   what the rover pairs with is decided by whoever is holding the device;

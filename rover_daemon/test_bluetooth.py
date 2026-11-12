@@ -76,7 +76,11 @@ class _Conn:
     def call(self, path, iface, method, *args, timeout=10.0):
         self.bluez.calls.append((method, path))
         if method in self.bluez.fail:
-            raise self.bluez.fail[method]
+            failure = self.bluez.fail[method]
+            if not isinstance(failure, list):
+                raise failure
+            if failure:             # a list fails once per entry, then works
+                raise failure.pop(0)
         if method == "StartDiscovery" and self.bluez.on_discover:
             self.bluez.on_discover()
         if method == "Pair":
@@ -249,6 +253,29 @@ def test_pairing_leaves_it_trusted_and_the_adapter_not_pairable():
     check("a pair that could not connect is still a pair",
           (last["ok"], last["connected"], last["said"]),
           (True, False, "Failed: Page Timeout"))
+
+    # Not answering the call, as the owner's headset did twice in three on the
+    # rover: called again, and only a page timeout is.
+    page = lambda: DBusError("org.bluez.Error.ConnectionAttemptFailed",  # noqa: E731
+                             "Page Timeout")
+    bluez.objects[f"{HCI}/dev_pad"]["org.bluez.Device1"]["Paired"] = False
+    bluez.fail = {"Pair": [page(), page()]}
+    bluez.calls.clear()
+    rover.call("bt_pair", {"address": PAD})
+    _settle(rover)
+    last = rover.call("bt_status", {})["last"]
+    check("a device that misses two calls is paired on the third",
+          ([m for m, _ in bluez.calls].count("Pair"), last["ok"]), (3, True))
+    bluez.objects[f"{HCI}/dev_pad"]["org.bluez.Device1"]["Paired"] = False
+    bluez.fail = {"Pair": [page(), page(), page()]}
+    bluez.calls.clear()
+    rover.call("bt_pair", {"address": PAD})
+    _settle(rover)
+    last = rover.call("bt_status", {})["last"]
+    check("...one that misses all three says how many went unanswered",
+          ([m for m, _ in bluez.calls].count("Pair"), last["ok"], last["said"]),
+          (3, False, "no answer to 3 calls "
+                     "(ConnectionAttemptFailed: Page Timeout)"))
 
     # Dropped from BlueZ's list since the scan: looked for again.
     bluez.fail = {}
