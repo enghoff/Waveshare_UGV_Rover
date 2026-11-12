@@ -84,6 +84,9 @@ class _Conn:
         if method == "Connect":
             self.bluez.objects[path]["org.bluez.Device1"]["Connected"] = True
 
+    def pair(self, device, timeout):
+        self.call(device, "org.bluez.Device1", "Pair", timeout=timeout)
+
     def remove(self, adapter, device):
         self.bluez.calls.append(("RemoveDevice", device))
         self.bluez.objects.pop(device, None)

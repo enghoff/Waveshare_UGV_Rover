@@ -525,7 +525,10 @@ model choice, for example:
   the kernel made of it. A scan holds discovery for 30 s on its own thread; a
   pair runs on its own thread too -- pair, trust, connect, with the adapter
   pairable only meanwhile -- and the next status carries how it went as `last`.
-  No agent is registered, so a device that wants a PIN typed cannot be paired.
+  Each pair registers a pairing agent as BlueZ's default for its own length,
+  which agrees to the device being paired and to nothing else; LE controllers
+  need one even for "just works" pairing. A device that wants a PIN or passkey
+  typed is refused.
   All of it is BlueZ over D-Bus as `jetson`, with nothing to install; see
   [`rover_bluetooth.py`](rover_bluetooth.py). Off the model's schema because
   what the rover pairs with is decided by whoever is holding the device;

@@ -22,12 +22,18 @@ connection for BT_SCAN_S and then lets go. Devices it heard stay in BlueZ's list
 for about half a minute after that (`TemporaryTimeout`), so a pair that finds its
 device gone looks for it again rather than failing at once.
 
-**Pairing uses no agent.** A controller, a speaker or a headset pairs with "just
-works" pairing, which the kernel accepts by itself when the rover is the one
-asking; a device that wants a PIN typed is refused, and says so in `last`. The
-adapter is made pairable only for the length of one pairing, because with no
-agent registered a pairable adapter would also accept a stranger who asked; it is
-not pairable at rest (`Pairable: no` on this rover), and an LE controller paired
+**A pairing registers an agent for its own length, and it says yes to one
+device.** A controller, a speaker or a headset pairs with "just works" pairing,
+and for LE Secure Connections the kernel still asks user space to confirm it,
+even when the rover is the one asking. With no agent BlueZ answers no: on
+2026-11-12 the owner's Xbox controller got as far as both public keys and the
+random values, then the rover sent "numeric comparison failed" and the controller
+hung up, which reads as a link timeout two seconds later (btmon on the rover). So
+the pair runs on a connection with a GLib loop, registers a NoInputNoOutput agent
+as the default, and the agent agrees to the device being paired and nothing else
+-- a device that wants a PIN or a passkey typed is refused, and says so in
+`last`. The adapter is made pairable only for the same length of time, and is
+not pairable at rest (`Pairable: no` on this rover); an LE controller paired
 while it is not would pair without bonding and never reconnect by itself.
 """
 from __future__ import annotations
@@ -43,6 +49,10 @@ ADAPTER = "org.bluez.Adapter1"
 DEVICE = "org.bluez.Device1"
 OBJECT_MANAGER = "org.freedesktop.DBus.ObjectManager"
 PROPERTIES = "org.freedesktop.DBus.Properties"
+AGENT_MANAGER = "org.bluez.AgentManager1"
+AGENT = "org.bluez.Agent1"
+#: Where the pairing agent lives on its own connection, for one pairing.
+AGENT_PATH = "/ugv/rover/pairing_agent"
 
 #: How long a press of "look" keeps the radio discovering. Long enough to put a
 #: controller into pairing mode after pressing it; a device found in the first
@@ -108,6 +118,22 @@ def _said(error: Exception) -> str:
     return message[:200] or type(error).__name__
 
 
+def _private_bus(dbus: Any, mainloop: Any = None) -> Any:
+    """A private system-bus connection that does not end the process when closed.
+
+    libdbus gives every bus connection exit-on-disconnect, so the "Disconnected"
+    a closed connection leaves behind calls `_exit(1)` the next time anything
+    dispatches it. Measured on the rover: the second pairing in one process ran
+    its GLib loop, dispatched the first pairing's leftover, and the process
+    vanished with status 1 and no traceback -- in the daemon, the rover's whole
+    control process on the second pair.
+    """
+    bus = (dbus.SystemBus(private=True) if mainloop is None
+           else dbus.SystemBus(private=True, mainloop=mainloop))
+    bus.set_exit_on_disconnect(False)
+    return bus
+
+
 class BluezLink:
     """One private connection to BlueZ, for one call or one thread."""
 
@@ -115,7 +141,7 @@ class BluezLink:
         import dbus
 
         self.dbus = dbus
-        self.bus = dbus.SystemBus(private=True)
+        self.bus = _private_bus(dbus)
 
     def objects(self) -> dict[str, dict[str, dict[str, Any]]]:
         manager = self.dbus.Interface(
@@ -142,11 +168,132 @@ class BluezLink:
         # every pair on the rover failed at its first step.
         props.Set(iface, name, value, signature="ssv", timeout=5.0)
 
+    def pair(self, device: str, timeout: float) -> None:
+        """Pair `device` with an agent registered for this pairing alone.
+
+        On a connection of its own with a GLib loop, because the agent's
+        methods are calls *into* this process that bluetoothd makes while Pair
+        is still waiting for its answer; a blocking call would never hear them.
+        """
+        import dbus
+        from dbus.mainloop.glib import DBusGMainLoop
+        from gi.repository import GLib
+
+        bus = _private_bus(dbus, DBusGMainLoop())
+        loop = GLib.MainLoop()
+        agent = _agent_class()(bus, AGENT_PATH, device)
+        path = dbus.ObjectPath(AGENT_PATH)
+        manager = dbus.Interface(
+            bus.get_object(BLUEZ, "/org/bluez", introspect=False), AGENT_MANAGER)
+        outcome: dict[str, Any] = {}
+
+        def done(error: Exception | None = None) -> None:
+            outcome["error"] = error
+            loop.quit()
+
+        try:
+            manager.RegisterAgent(path, "NoInputNoOutput", timeout=5.0)
+            try:
+                # The default agent, because that is the one the kernel's
+                # confirmation is put to; the agent of whoever called Pair is
+                # only asked what it can do.
+                manager.RequestDefaultAgent(path, timeout=5.0)
+                target = dbus.Interface(
+                    bus.get_object(BLUEZ, device, introspect=False), DEVICE)
+                target.Pair(reply_handler=done, error_handler=done,
+                            timeout=timeout)
+                guard = GLib.timeout_add(int((timeout + 5.0) * 1000), loop.quit)
+                try:
+                    loop.run()
+                finally:
+                    # Left on the default context it would fire in some later
+                    # pairing's loop instead.
+                    GLib.source_remove(guard)
+            finally:
+                try:
+                    manager.UnregisterAgent(path, timeout=5.0)
+                except Exception:
+                    pass
+        finally:
+            agent.remove_from_connection()
+            bus.close()
+        if "error" not in outcome:
+            raise RuntimeError("the pair never answered")
+        if outcome["error"] is not None:
+            raise outcome["error"]
+
     def close(self) -> None:
         try:
             self.bus.close()
         except Exception:
             pass
+
+
+_AGENT_CLASS = None
+
+
+def _agent_class():
+    """The pairing agent, defined on first use: it needs dbus-python, which the
+    machine running the self-test does not have."""
+    global _AGENT_CLASS
+    if _AGENT_CLASS is not None:
+        return _AGENT_CLASS
+    import dbus
+    import dbus.service
+
+    class Rejected(dbus.DBusException):
+        _dbus_error_name = "org.bluez.Error.Rejected"
+
+    class PairingAgent(dbus.service.Object):
+        """Yes to the device being paired, and no to every other device and to
+        anything that needs a PIN or passkey typed on a rover with no keypad."""
+
+        def __init__(self, bus, path: str, device: str) -> None:
+            super().__init__(bus, path)
+            self.device = device
+
+        def _ours(self, device) -> None:
+            if str(device) != self.device:
+                raise Rejected("not the device being paired")
+
+        @dbus.service.method(AGENT, in_signature="ou", out_signature="")
+        def RequestConfirmation(self, device, passkey):
+            self._ours(device)
+
+        @dbus.service.method(AGENT, in_signature="o", out_signature="")
+        def RequestAuthorization(self, device):
+            self._ours(device)
+
+        @dbus.service.method(AGENT, in_signature="os", out_signature="")
+        def AuthorizeService(self, device, uuid):
+            self._ours(device)
+
+        @dbus.service.method(AGENT, in_signature="o", out_signature="s")
+        def RequestPinCode(self, device):
+            raise Rejected("a PIN cannot be typed on the rover")
+
+        @dbus.service.method(AGENT, in_signature="o", out_signature="u")
+        def RequestPasskey(self, device):
+            raise Rejected("a passkey cannot be typed on the rover")
+
+        @dbus.service.method(AGENT, in_signature="ouq", out_signature="")
+        def DisplayPasskey(self, device, passkey, entered):
+            pass
+
+        @dbus.service.method(AGENT, in_signature="os", out_signature="")
+        def DisplayPinCode(self, device, pincode):
+            pass
+
+        @dbus.service.method(AGENT, in_signature="", out_signature="")
+        def Cancel(self):
+            pass
+
+        @dbus.service.method(AGENT, in_signature="", out_signature="")
+        def Release(self):
+            pass
+
+    _AGENT_CLASS = PairingAgent
+    return PairingAgent
 
 
 def _kind(props: dict[str, Any]) -> tuple[str | None, bool]:
@@ -411,7 +558,7 @@ class RoverBluetooth:
             outcome["name"] = str(props.get("Alias") or props.get("Name") or name)
             link.set(adapter, ADAPTER, "Pairable", True)
             if not props.get("Paired"):
-                link.call(device, DEVICE, "Pair", timeout=BT_PAIR_TIMEOUT_S)
+                link.pair(device, BT_PAIR_TIMEOUT_S)
             link.set(device, DEVICE, "Trusted", True)
             outcome["ok"] = True
             try:
