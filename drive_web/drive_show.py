@@ -117,6 +117,7 @@ class SessionShow:
         self.rotation_fault = str(body.get("rotation_fault") or "")
         manual = body.get("manual")
         self.show_manual(manual if isinstance(manual, dict) else {})
+        self.show_off_map(body.get("off_map"))
         # The lights and tracking as the rover has them, whoever changed them:
         # the controller's Y and B, the voice model, another console. The level
         # is the whole of the lights panel; tracking's panel has more than a
@@ -393,6 +394,22 @@ class SessionShow:
             parts.append(str(manual["note"]))
         self.manual = {"on": True, "text": " -- ".join(parts),
                        "blocked": bool(blocked or error)}
+
+    def show_off_map(self, off: Any) -> None:
+        """A drive by hand that took the rover off its map: navigation holds the
+        map and the store until it is back on it (ros_nav/off_map.py). On the
+        manual line, which stays up for it after the controller has gone."""
+        if not isinstance(off, dict):
+            return
+        since = off.get("since")
+        when = (time.strftime("%H:%M", time.localtime(since))
+                if isinstance(since, (int, float)) else "?")
+        part = f"off the map since {when} -- map and store paused"
+        if self.manual.get("on"):
+            self.manual = {"on": True, "text": f"{self.manual['text']} -- {part}",
+                           "blocked": True}
+        else:
+            self.manual = {"on": True, "text": part, "blocked": True}
 
     def show_holds(self, body: dict[str, Any]) -> None:
         """Which agents want the rover kept switched on, as rows for the card.

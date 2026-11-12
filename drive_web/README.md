@@ -149,7 +149,11 @@ and map only while it is moving the rover and for a few seconds after
 (`MANUAL_SETTLE_S`): a controller left untouched is a parked rover, and the
 pictures' wi-fi is shared with Bluetooth. The lights and face tracking rows
 follow the rover whoever changed them -- Y, B, the voice model, another console
--- because the status poll carries both. See
+-- because the status poll carries both. A drive that took the rover off its
+map puts "off the map since HH:MM -- map and store paused" on the same line,
+which stays up after the controller has gone and until navigation has the rover
+back on the map ([R-NAV-16](../docs/requirements/navigation.md#r-nav-16)); "refit
+to map" is the way back when it does not find its own. See
 [the daemon](../rover_daemon/README.md#driving-by-hand-with-a-game-controller).
 
 ## World-state popup

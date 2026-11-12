@@ -91,5 +91,36 @@ def test_the_lights_and_tracking_follow_the_rover() -> None:
           (session.light_level, session.tracking_on), (0, False))
 
 
+def test_off_the_map_stays_on_the_line() -> None:
+    """A drive by hand that left the map holds it until the rover is back,
+    controller or not (ros_nav/off_map.py); the line says so meanwhile."""
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"off the map ({type(exc).__name__})")
+        return
+    import time
+
+    session = drive_web.Session(None, 3.0, 480)
+    since = time.mktime((2026, 11, 13, 23, 10, 0, 0, 0, -1))
+    off = {"since": since, "left_at": {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0}}
+    session.show_status({"ok": True, "manual": {"on": True, "controller": "pad",
+                                                "voice": 0}, "off_map": off})
+    check("driving off the map is said after the controller's name, as a warning",
+          (session.manual["text"], session.manual["blocked"]),
+          ("manual: pad -- off the map since 23:10 -- map and store paused", True))
+    session.show_status({"ok": True, "manual": {"on": False, "voice": 0},
+                         "off_map": off})
+    check("...and stays when the controller has gone",
+          (session.manual["on"], session.manual["text"]),
+          (True, "off the map since 23:10 -- map and store paused"))
+    check("...without keeping the pictures at a moving rover's pace",
+          session.moving(), False)
+    session.show_status({"ok": True, "manual": {"on": False, "voice": 0},
+                         "off_map": None})
+    check("back on the map, the line goes", session.manual["on"], False)
+
+
 TESTS = (test_the_manual_line_and_the_talk_button,
-         test_the_lights_and_tracking_follow_the_rover)
+         test_the_lights_and_tracking_follow_the_rover,
+         test_off_the_map_stays_on_the_line)

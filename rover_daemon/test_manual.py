@@ -229,8 +229,41 @@ def test_nothing_changes_without_a_controller():
            .start_manual(None), True), ("", True))
 
 
+def test_the_store_waits_while_navigation_holds_the_map():
+    """A drive by hand that left the map holds it after the controller has
+    gone (ros_nav/off_map.py); the looking loop asks navigation, not the pad."""
+    import rover_daemon
+
+    class Holding(FakeNav):
+        def __init__(self):
+            super().__init__()
+            self.off_map = {"since": 1.0, "left_at": None}
+            self.asked = 0
+
+        def status(self):
+            self.asked += 1
+            if self.off_map == "broken":
+                raise OSError("no bridge")
+            return {"off_map": self.off_map}
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+    rover.nav = nav = Holding()
+    check("navigation holding the map stops the store", rover._world_held(10.0), True)
+    nav.off_map = None
+    check("...asked once a second, not every turn",
+          (rover._world_held(10.5), nav.asked), (True, 1))
+    check("...and given back when navigation lets go",
+          rover._world_held(11.1), False)
+    nav.off_map = "broken"
+    check("a navigation that does not answer is not a hold",
+          rover._world_held(12.2), False)
+    rover.nav = None
+    check("...nor is a rover with none", rover._world_held(13.3), False)
+
+
 TESTS = (
     test_the_controller_is_read_as_it_reports_itself,
     test_a_controller_takes_the_wheels_and_gives_them_back,
     test_nothing_changes_without_a_controller,
+    test_the_store_waits_while_navigation_holds_the_map,
 )

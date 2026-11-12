@@ -598,6 +598,13 @@ what the lidar cut and why, and the last button's effect; `nav_status.lights`
 and `nav_status.tracking` carry the light level and whether face tracking is
 on, so a console follows what Y and B (or the voice model) changed.
 
+A drive that takes the rover off its map leaves the map held after the
+controller has gone, until the rover is shown to be back on it
+([R-NAV-16](../docs/requirements/navigation.md#r-nav-16), `ros_nav/off_map.py`):
+`nav_status.off_map` says since when, the looking loop takes no look while it is
+set (`_world_held`, asked once a second), and a position read for the store in
+the meantime has no bearing because the map is not settled.
+
 The joystick is read through the kernel's `js` interface, which `jetson` can
 read without the `input` group; which axis is the right stick and which are the
 triggers is read off the device, since the generic HID driver and `xpad` differ.

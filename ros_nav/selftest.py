@@ -37,6 +37,7 @@ from test_localizer import TESTS as LOCALIZER_TESTS
 from test_manual_gate import TESTS as MANUAL_GATE_TESTS
 from test_maprestore import TESTS as MAPRESTORE_TESTS
 from test_measure import TESTS as MEASURE_TESTS
+from test_off_map import TESTS as OFF_MAP_TESTS
 from test_odometry import TESTS as ODOMETRY_TESTS
 from test_planning import TESTS as PLANNING_TESTS
 from test_recording import TESTS as RECORDING_TESTS
@@ -52,7 +53,7 @@ def main():
                  *MAPRESTORE_TESTS, *MEASURE_TESTS, *AUTONOMY_GUARD_TESTS,
                  *WAY_ROUND_TESTS, *CALIBRATE_TESTS, *CHANGE_WATCH_TESTS,
                  *SNAPSHOT_TESTS, *LOCALIZER_TESTS, *RECORDING_TESTS,
-                 *MANUAL_GATE_TESTS):
+                 *MANUAL_GATE_TESTS, *OFF_MAP_TESTS):
         test()
     print("\n%d passed, %d failed" % (test_harness.PASSED, test_harness.FAILED))
     return 1 if test_harness.FAILED else 0

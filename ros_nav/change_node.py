@@ -121,6 +121,10 @@ class ChangeNode(Node):
             # and the world store is not recording (nav_manual.py), so nothing
             # seen now is counted as a change either.
             self.believed, self.why_paused = False, "manual driving"
+        elif status.get("off_map"):
+            # Driven off the map by hand and not yet shown to be back on it
+            # (off_map.py); the map is held meanwhile.
+            self.believed, self.why_paused = False, "off the map"
         elif not status.get("map_settled"):
             self.believed, self.why_paused = False, "the map is not settled"
         elif not status.get("position_trusted"):

@@ -324,3 +324,24 @@ it only a step at a time and never fits it onto the map on its own
 every stop of a drive through the doorway, the dining corridor and the living
 room, the position agrees with the map within 10 cm and 3 degrees at least 9
 times in 10.
+
+<a id="r-nav-16"></a>
+### R-NAV-16 — A drive by hand off the map changes neither the map nor the world store until the rover is shown to be back on it
+
+- **State:** proposed
+- **Proposed in:** [ros_nav/README.md](../../ros_nav/README.md#driven-by-hand), 2026-11-13
+
+A person may drive the rover with the game controller somewhere its map does not
+cover -- outside the flat, or into a room never mapped -- and bring it back. Out
+there its position is wheel odometry alone, so nothing it sees may be drawn into
+the map, saved over the map on disk, or recorded in the world store, and nothing
+may treat its position as known; and that must hold whether or not the
+controller is still connected, because one that goes to sleep outside is not the
+rover back inside. It ends only when the rover is shown to be back: the
+localizer matching the map well for two seconds and a search 1.5 m and a full
+turn around the tracked pose finding nowhere better. `ros_nav/off_map.py` is the
+rule. What would make this false is a wall, a look or a saved pose in the store
+or on disk from a place the map does not cover, or from a pose the rover could
+not vouch for after coming back.
+
+Proposed rather than settled: no drive off the map has been made with it.

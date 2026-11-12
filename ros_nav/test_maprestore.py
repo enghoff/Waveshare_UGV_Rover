@@ -110,6 +110,12 @@ class Mapper:
     def map_trustworthy(self):
         return nav_map.NavMap.map_trustworthy(self)
 
+    def pose_event(self, kind, pose):
+        """The real one, which says nothing without a publisher -- and this has
+        none. Missing here since the recorder added it (231867e), which stopped
+        the whole suite at the first restore."""
+        return nav_map.NavMap.pose_event(self, kind, pose)
+
 
 #: Where the map says the rover was parked, and where it actually lands -- a
 #: little short of it, because the mapper matches the next scan within its own

@@ -285,6 +285,10 @@ class RoverWorld:
         self._world_build_stop = threading.Event()
         self._world_build_at = 0.0
         self._world_settle_at = 0.0
+        # Whether navigation holds the map after a drive by hand left it, asked
+        # once a second rather than every turn of the loop (`_world_held`).
+        self._world_held_at = float("-inf")
+        self._world_held_was = False
         self._world_settled: dict[str, Any] = {}
         self._world_build_from = None
         self._world_rest = None
@@ -419,10 +423,12 @@ class RoverWorld:
         while not self._world_build_stop.wait(0.2):
             try:
                 now = time.monotonic()
-                if self.manual_on():
-                    # Somebody is driving with the game controller, and the
-                    # store records nothing meanwhile: no look and no settling
-                    # (rover_manual.py). The clocks restart when it ends.
+                if self.manual_on() or self._world_held(now):
+                    # Somebody is driving with the game controller, or drove
+                    # the rover off its map and it is not yet back on it, and
+                    # the store records nothing meanwhile: no look and no
+                    # settling (rover_manual.py, ros_nav/off_map.py). The
+                    # clocks restart when it ends.
                     self._world_build_at = now
                     self._world_settle_at = now
                     continue
@@ -522,6 +528,24 @@ class RoverWorld:
         except Exception as error:
             return f"the world-state database could not be opened: {error}"
         return ""
+
+    def _world_held(self, now: float) -> bool:
+        """Whether navigation is holding the map because a drive by hand took
+        the rover off it (ros_nav/off_map.py). A look there would be a picture
+        of somewhere the map is not, at a pose that is wheel odometry alone, so
+        none is taken -- not even one without a bearing. Asked once a second."""
+        if now - getattr(self, "_world_held_at", float("-inf")) < 1.0:
+            return getattr(self, "_world_held_was", False)
+        self._world_held_at = now
+        held = False
+        navigator = getattr(self, "nav", None)
+        if navigator is not None:
+            try:
+                held = bool(navigator.status().get("off_map"))
+            except Exception:
+                held = False        # no answer is not a hold; the pose check says the rest
+        self._world_held_was = held
+        return held
 
     def _world_store(self):
         """The store, opened once and kept.

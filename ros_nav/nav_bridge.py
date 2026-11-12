@@ -493,8 +493,11 @@ class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, NavManual, Node):
             "map_age_s": None if self.map_at is None
                          else round(now - self.map_at, 1),
             "nav2_ready": self.actions["goto"].server_is_ready(),
-            # A person driving with the game controller (nav_manual.py).
+            # A person driving with the game controller (nav_manual.py), and
+            # whether a drive of theirs has left the rover off its map, holding
+            # the map and the world store until it is back (off_map.py).
             "manual": self.manual_on,
+            "off_map": self.off_map_status(),
             # What map this is, whether it came back from disk, and how the
             # rover was last fitted to it. See nav_map.py.
             **self.map_status(),

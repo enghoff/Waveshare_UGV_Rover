@@ -407,6 +407,25 @@ back when the lease ends, unless its guard had stopped it), the change watch,
 and the world model's scan log. A daemon that dies mid-drive leaves the lease to
 lapse.
 
+**A drive that leaves the map holds it until the rover is back on it**
+(`off_map.py`, [R-NAV-16](../docs/requirements/navigation.md#r-nav-16)). The
+bridge reads the localizer's steps on `localizer/step`: ten searched scans
+running that it could not place on the map, during a manual drive, is the rover
+off its map, and from then on `/manual_mode` stays true after the lease has
+gone, `map_trustworthy` is false -- so the map keeper saves neither the graph nor
+the parked pose, the change watch says "off the map", autonomous runs are
+refused and the daemon's looking loop takes no look at all -- and `status`
+carries `off_map` with when it left and where it was last matched. It ends when
+ten matched scans running score 75% or better and the drift check's search
+(1.5 m, a full turn) finds nowhere better than the tracked pose; a failed check
+waits 10 s before the next. A rover that came back further out than the
+localizer's 25 cm window cannot match well enough to earn the check, and a refit
+from the console then searches the drift check's window instead of the usual
+metre and 45 degrees. Moves the console asks for are not refused. The hold lives
+in the bridge's memory: a navigation restart while off the map forgets it, and
+the restore's own check is then all that stands between the parked pose and the
+place the rover really is.
+
 ## Known limits
 
 - A rover standing on a small island of mapped floor — which is what a cleared

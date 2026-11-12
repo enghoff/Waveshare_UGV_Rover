@@ -526,6 +526,12 @@ class NavMap:
         base = getattr(self, "base_state", None) or {}
         if base.get("gyro_fault"):
             return False
+        # **Nor while a drive by hand has the rover off its map** (off_map.py):
+        # its pose there is wheel odometry and nothing else, on a map of
+        # somewhere it is not.
+        off = getattr(self, "off_map", None)
+        if off is not None and off.off:
+            return False
         return self.map_settled or not self.map_restored
 
     def still_parked(self):
@@ -930,7 +936,14 @@ class NavMap:
                     "against the map -- stop it first"}
         try:
             with self.map_lock:
-                if (around is None and not self.map_trustworthy()
+                off = getattr(self, "off_map", None)
+                if (off is not None and off.off and window_m is None
+                        and window_deg is None):
+                    # Back from a drive off the map on wheel odometry alone,
+                    # which can be further out than the usual metre: the drift
+                    # check's window, and its distinct-answer rule still holds.
+                    window_m, window_deg = DRIFT_WINDOW_M, DRIFT_WINDOW_DEG
+                elif (around is None and not self.map_trustworthy()
                         and self.still_parked()):
                     around = self.map_parked_at
                 answer = self.map_fit_now(window_m, window_deg, min_score,
