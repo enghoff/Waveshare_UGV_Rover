@@ -712,7 +712,7 @@ class Omni:
         browser on it is one `_idle_watch` is about to close anyway.
         """
         with self._lock:
-            attached = self._wire is not None
+            attached = self._listening()
             lived = time.monotonic() - self.since if self.since else 0.0
             again = attached and lived >= SHORT_SESSION_S and not self._quit
             if again:
@@ -725,6 +725,13 @@ class Omni:
             HUNG_UP, "starting another, which will not remember this one" if again
             else "press the button to talk again"))
         return again
+
+    def _listening(self) -> bool:
+        """Whether anything is holding a microphone to this conversation: a
+        browser, or a Bluetooth headset on the rover -- which is how one started
+        from the game controller's X, with nobody at the console, is heard."""
+        sound = self.sound
+        return self._wire is not None or bool(sound is not None and sound.has_mic)
 
     def _release(self, why: str) -> None:
         """Tell the browser to let go of the microphone, and say why.
@@ -866,7 +873,9 @@ class Omni:
         while True:
             await asyncio.sleep(5.0)
             with self._lock:
-                attached = self._wire is not None
+                attached = self._listening()
+                if attached:
+                    self._detached_at = time.monotonic()
                 gone = time.monotonic() - self._detached_at
                 age = time.monotonic() - self.since if self.since else 0.0
             if not attached and gone > IDLE_STOP_S:

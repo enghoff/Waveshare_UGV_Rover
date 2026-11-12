@@ -814,6 +814,19 @@ def health() -> dict[str, Any]:
             "rover": session.address, "idle": session.idle}
 
 
+def toggle_voice() -> str:
+    """The game controller's X: start the conversation, or end it. Says what it
+    did, for the notice line."""
+    omni = Handler.omni
+    if omni is None:
+        return "X: there is no voice on this console"
+    if omni.state in ("starting", "live"):
+        omni.turn_off()
+        return "X: ending the conversation"
+    why = omni.turn_on()
+    return f"X: {why}" if why else "X: starting the conversation"
+
+
 def omni_state() -> dict[str, Any]:
     """What the page needs to draw the microphone button, whether or not there is
     one. `available` false with a reason beats a button that does nothing."""
@@ -893,6 +906,7 @@ def main(argv=None) -> int | str:
             args.rover, lambda text, err=False: session.say(text + "\n",
                                                             "bad" if err else "quiet"))
         session.omni = omni_state
+        session.voice_toggle = toggle_voice
     elif omni_bridge is None:
         print(f"note: no microphone on this console ({OMNI_MISSING})",
               file=sys.stderr)

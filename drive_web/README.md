@@ -138,6 +138,15 @@ rover reports how it went. The controller has to be in its own pairing mode when
 and the card is off the page on a daemon without them. Pairing a controller does
 not make it drive the rover: nothing reads the joystick yet.
 
+While a game controller drives the rover, a line under the header names it and
+says when the lidar has stopped it and how close the thing is (in the warning
+colour), and the last button's effect. Its X button starts or ends the
+conversation as the microphone button does; a conversation started that way with
+nobody at the console is held open by a Bluetooth headset's microphone, as a
+browser holds one. The drive pad's moves are refused meanwhile, and the console
+polls and redraws as it does during a move. See
+[the daemon](../rover_daemon/README.md#driving-by-hand-with-a-game-controller).
+
 ## World-state popup
 
 The popup has entity, map and observation views over one read-only data source.

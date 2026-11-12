@@ -392,6 +392,21 @@ rover's centre from anything occupied (0.20 m, read off the costmap node), and
 places only a point could get to. Both are missing until the costmap node has
 answered once.
 
+### Driven by hand
+
+`{"op": "manual", "on": true, "linear": m/s, "angular": rad/s, "who": "..."}` is
+one command from a game controller (`rover_daemon/rover_manual.py`), sent twenty
+times a second. The bridge checks it against the newest `/scan`
+(`manual_gate.py`, [R-SAFE-18](../docs/requirements/safety.md#r-safe-18)) and
+publishes what survives on `/cmd_vel`, and answers with how near the nearest
+thing ahead and behind is, from the body's edges, and what it cut. Manual mode
+is a lease of 2 s (`nav_manual.py`): while it lasts, Nav2 goals are refused,
+`status` says `manual`, and the latched `/manual_mode` is true -- which pauses
+the mapper (`localizer_node.py`, which keeps localizing and gives the mapper
+back when the lease ends, unless its guard had stopped it), the change watch,
+and the world model's scan log. A daemon that dies mid-drive leaves the lease to
+lapse.
+
 ## Known limits
 
 - A rover standing on a small island of mapped floor — which is what a cleared

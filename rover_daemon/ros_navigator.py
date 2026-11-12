@@ -285,6 +285,10 @@ class RosNavigator:
         #: begin by driving to somewhere the caller ahead of it has since made
         #: wrong. The bridge holds one of these too, against a second client.
         self._move_mutex = threading.Lock()
+        #: Who has the wheels instead of any move, or None: a person driving with
+        #: the game controller (rover_manual.py). Every move comes through
+        #: `move`, autonomy's included, so this is the one place it is refused.
+        self.held_by: str | None = None
         #: When a move last let the wheels go, as `time.monotonic`. Stamped
         #: rather than left to be sampled off `driving`, because a short move is
         #: over between two samples: the depth camera's rule watched at half a
@@ -975,6 +979,8 @@ class RosNavigator:
         move itself is answered by the last line, and nothing else on this socket
         matters.
         """
+        if self.held_by:
+            return Outcome("busy", 0.0, 0.0, self.held_by)
         if not self._move_mutex.acquire(blocking=False):
             return Outcome("busy", 0.0, 0.0, "a move is already running")
         self._wheels_at = time.monotonic()

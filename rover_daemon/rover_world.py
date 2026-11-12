@@ -419,6 +419,13 @@ class RoverWorld:
         while not self._world_build_stop.wait(0.2):
             try:
                 now = time.monotonic()
+                if self.manual_on():
+                    # Somebody is driving with the game controller, and the
+                    # store records nothing meanwhile: no look and no settling
+                    # (rover_manual.py). The clocks restart when it ends.
+                    self._world_build_at = now
+                    self._world_settle_at = now
+                    continue
                 # Before anything is recorded, because what a look is stamped
                 # with is the map session, and that is what this settles.
                 self._world_follow_map()

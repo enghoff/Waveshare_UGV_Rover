@@ -42,6 +42,7 @@ from test_depth import TESTS as DEPTH_TESTS
 from test_exposure import TESTS as EXPOSURE_TESTS
 from test_harness import FAIL, PASS, SKIP
 from test_holds import TESTS as HOLD_TESTS
+from test_manual import TESTS as MANUAL_TESTS
 from test_map import TESTS as MAP_TESTS
 from test_recall import TESTS as RECALL_TESTS
 from test_recording import TESTS as RECORDING_TESTS
@@ -62,7 +63,7 @@ AIMING_TESTS = (
 
 def main():
     for test in (*BOARD_TESTS, *API_TESTS, *CAMERA_TESTS, *EXPOSURE_TESTS,
-                 *MAP_TESTS, *WIFI_TESTS, *BLUETOOTH_TESTS, *WORLD_TESTS, *SCRIPTING_TESTS,
+                 *MAP_TESTS, *WIFI_TESTS, *BLUETOOTH_TESTS, *MANUAL_TESTS, *WORLD_TESTS, *SCRIPTING_TESTS,
                  *AIMING_TESTS, *ROS_NAV_TESTS, *RECALL_TESTS,
                  *DEPTH_TESTS, *AUTONOMY_TESTS, *AUTONOMY_REGRESSIONS,
                  *INSPECTION_LIMIT_TESTS, *SNAPSHOT_TESTS, *HOLD_TESTS,

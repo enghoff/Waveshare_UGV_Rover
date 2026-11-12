@@ -15,6 +15,7 @@ from rover_bluetooth import RoverBluetooth
 from rover_camera import RoverCamera, VisionLink
 from rover_depth import RoverDepth
 from rover_holds import RoverHolds
+from rover_manual import HELD, RoverManual
 from rover_nav import CAMERA_FOV_DEG, RoverNav
 from rover_recall import RoverRecall
 from rover_recording import CALLER, RoverRecording
@@ -70,7 +71,8 @@ def approach_settle_s(was: float | None, below: float) -> float:
 
 
 class Rover(RoverCamera, RoverWifi, RoverBluetooth, RoverNav, RoverWorld, RoverRecall,
-            RoverDepth, RoverAutonomy, RoverSnapshots, RoverHolds, RoverRecording):
+            RoverDepth, RoverAutonomy, RoverSnapshots, RoverHolds, RoverRecording,
+            RoverManual):
     """The rover's state and everything that may be done to it.
 
     One lock covers the board and the model of where things are pointed. The
@@ -204,6 +206,8 @@ class Rover(RoverCamera, RoverWifi, RoverBluetooth, RoverNav, RoverWorld, RoverR
         # Pairing: a scan held on its own thread, one pairing at a time, and
         # what the last of them came to. See rover_bluetooth.py.
         self._bt_init()
+        # A game controller, when one is connected: see rover_manual.py.
+        self._manual_init()
 
     # --- the board ----------------------------------------------------------
 
@@ -419,6 +423,11 @@ class Rover(RoverCamera, RoverWifi, RoverBluetooth, RoverNav, RoverWorld, RoverR
         they are dispatched inside `_tool_autonomy_act`, which is the whole
         reason the two roads exist.
         """
+        if (name in PERSON_MOVES or name == "autonomy_start") and self.manual_on():
+            # The controller has the wheels. Refused here, by name, so that the
+            # console and the voice hear why; the navigator refuses any move
+            # that comes another way (`RosNavigator.held_by`).
+            return {"ok": False, "error": HELD}
         took_over = self.autonomy_notice(name)
         if took_over and name in PERSON_MOVES:
             # The person is in charge now: their move goes ahead once the
@@ -507,6 +516,7 @@ class Rover(RoverCamera, RoverWifi, RoverBluetooth, RoverNav, RoverWorld, RoverR
         # will otherwise go on issuing calls into a daemon that is shutting down.
         if self.scripts is not None:
             self.scripts.close()
+        self.stop_manual()
         # The navigator next, and outside the lock: it stops the wheels and joins
         # its own loop, and nothing else here matters until the rover is still.
         if self.nav is not None:

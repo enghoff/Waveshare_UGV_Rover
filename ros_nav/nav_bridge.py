@@ -102,6 +102,7 @@ from nav_explore import NavExplore
 # finding the rover on it again is its own job, and the two halves of it that are
 # arithmetic -- where the files go, and where the scan fits -- are in `mapstore.py`
 # and `refit.py` beside it.
+from nav_manual import NavManual
 from nav_map import NavMap
 from nav_moves import NavMoves
 # And the map's half of a snapshot: the graph copied out beside the world state,
@@ -119,7 +120,7 @@ HOST = "127.0.0.1"
 PORT = 8773
 
 
-class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, Node):
+class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, NavManual, Node):
     """Everything the daemon needs to know about, kept current by subscription.
 
     The node holds no navigation logic. It caches what arrives -- the map, the
@@ -255,6 +256,9 @@ class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, Node):
         self.create_timer(0.5, self.sample_trail, callback_group=self.group)
         # Last, because it starts a thread that reads everything above it: the
         # map on disk, loaded and kept and fitted to. See nav_map.py.
+        # Manual driving with the game controller: its own publisher and a
+        # lease that ends it if the daemon stops renewing it. See nav_manual.py.
+        self.manual_setup()
         self.map_startup()
         self.get_logger().info("nav bridge ready; serving %s:%d"
                                % (args.bind, args.port))
@@ -489,6 +493,8 @@ class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, Node):
             "map_age_s": None if self.map_at is None
                          else round(now - self.map_at, 1),
             "nav2_ready": self.actions["goto"].server_is_ready(),
+            # A person driving with the game controller (nav_manual.py).
+            "manual": self.manual_on,
             # What map this is, whether it came back from disk, and how the
             # rover was last fitted to it. See nav_map.py.
             **self.map_status(),
@@ -792,6 +798,13 @@ class Handler(socketserver.StreamRequestHandler):
             enabled = request.get("enabled")
             self.write({"kind": "reply", **node.live_layer(
                 None if enabled is None else bool(enabled))})
+        elif op == "manual":
+            # A person driving with the game controller: one command, checked
+            # against the scan, and quick. No mutex: Nav2 goals are refused
+            # while manual mode lasts, which is what keeps the two apart.
+            self.write({"kind": "reply", "ok": True, **node.manual(
+                bool(request.get("on")), _maybe(request.get("linear")) or 0.0,
+                _maybe(request.get("angular")) or 0.0, str(request.get("who") or ""))})
         elif op in ("drive", "turn", "goto", "explore"):
             self.move(node, op, request)
         else:
@@ -805,6 +818,11 @@ class Handler(socketserver.StreamRequestHandler):
         reason: a move that waited its turn would start by driving to somewhere
         the caller ahead of it has since made wrong.
         """
+        if node.manual_on:
+            self.write({"kind": "outcome", "reason": "busy", "travelled_m": 0.0,
+                        "turned_deg": 0.0,
+                        "detail": "somebody is driving with the game controller"})
+            return
         if not node.move_mutex.acquire(blocking=False):
             self.write({"kind": "outcome", "reason": "busy", "travelled_m": 0.0,
                         "turned_deg": 0.0,

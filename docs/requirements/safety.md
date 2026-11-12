@@ -308,3 +308,25 @@ stands, so the fault cannot be written into the next boot's map.
 Proposed rather than settled: no fault has happened since the rule was
 deployed. Replayed over the 21,528 readings the base has logged, it refuses all
 339 taken during the three faults, and one other.
+
+<a id="r-safe-18"></a>
+### R-SAFE-18 — Driven by hand, the rover will not drive into what is within 20 cm of it
+
+- **State:** proposed
+- **Proposed in:** [rover_daemon/README.md](../../rover_daemon/README.md#driving-by-hand-with-a-game-controller), 2026-11-12
+
+While a game controller drives the rover, a command that would carry it towards
+anything the lidar sees within 20 cm of the body, in the rover's own width, in
+the direction it is driving, is not sent: forward is cut for something ahead,
+reverse for something behind, and turning on the spot never, so a stopped rover
+can always be turned or backed away. The line is drawn short of 20 cm by the
+distance the rover covers in 0.3 s at its speed, never taken as less than the
+chassis' slowest 0.33 m/s, and a scan older than half a second, or none, stops
+driving altogether. `ros_nav/manual_gate.py` is the rule; navigation's bridge
+applies it to every manual command, next to the scan. What would make this false
+is the rover touching something it was driving towards.
+
+Proposed rather than settled: it has not been driven at anything on the rover,
+and the body's front and rear edges are taken as 0.20 m from the lidar, which
+has never been measured, so the rover stops early by however much shorter the
+chassis really is.

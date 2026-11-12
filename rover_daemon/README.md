@@ -562,6 +562,43 @@ through nothing. The store, the model boundary and the sidecar are
 inspection is not a reason for a second process to open it -- and
 [`rover_recall.py`](rover_recall.py), which is the model's half.
 
+## Driving by hand with a game controller
+
+A connected game controller is manual mode ([`rover_manual.py`](rover_manual.py)).
+When a joystick appears under `/dev/input` -- a controller paired from the
+console's bluetooth card and switched on, or one on USB -- the daemon stops
+whatever was moving (through `stop_driving`, so an autonomous run ends as a
+person ends it) and drives from the controller until it goes away:
+
+| control | does |
+|---|---|
+| RT / LT | forward / backward, proportional, up to 0.5 m/s |
+| left stick | turn left or right, up to 80 deg/s |
+| right stick | pan and tilt the camera, unless face tracking has it |
+| Y | headlights on or off |
+| B | face tracking on or off |
+| X | counted in `nav_status.manual.voice`; the console starts or ends the conversation |
+
+Twenty times a second the command goes to navigation's bridge as `op: manual`,
+which checks it against the newest scan
+([R-SAFE-18](../docs/requirements/safety.md#r-safe-18): nothing within 20 cm in
+the way it is driving) and publishes what survives on `/cmd_vel`, so the
+measured drive curves and the half-second timeouts apply as for any other
+driving. With navigation down the stick drives nothing. Meanwhile every move,
+exploration and `autonomy_start` is refused with "somebody is driving with the
+game controller" -- by name in `call`, and at `RosNavigator.move` for anything
+that comes another way -- and the world store records nothing: the looking loop
+here skips, and the bridge's latched `/manual_mode` pauses the mapper, the
+change watch and the world model's scan log. Localization goes on, so the rover
+still knows where it is afterwards. `nav_status.manual` says which controller,
+what the lidar cut and why, and the last button's effect.
+
+The joystick is read through the kernel's `js` interface, which `jetson` can
+read without the `input` group; which axis is the right stick and which are the
+triggers is read off the device, since the generic HID driver and `xpad` differ.
+The buttons are the generic HID driver's for an Xbox controller over Bluetooth
+(A, B, X, Y as BTN_A, BTN_B, BTN_X, BTN_Y).
+
 ## Recording sessions for Perception
 
 Perception, the owner's perception research, records the rover's streams on one

@@ -11,6 +11,11 @@ what arrived since the last write to `DIR/<first stamp>-<last stamp>.npz`;
 files older than KEEP_S are removed. The job reads the files that cover the
 half hour it needs (`job.lidar`).
 
+Nothing is kept while somebody drives with the game controller
+(`/manual_mode`, latched, from navigation's nav_manual.py): the world store
+records nothing in manual mode, and these scans are what the job would judge
+things gone by.
+
 A SIGTERM ends it, after what it holds is written, and so does ROS stopping
 under it, so that run_job.sh starts another. **rclpy's own handlers are off**:
 they took a SIGTERM as "shut ROS down" and left the process running, so every
@@ -36,8 +41,10 @@ class Listener:
     def __init__(self):
         import rclpy
         from rclpy.qos import qos_profile_sensor_data
+        from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
         from rclpy.signals import SignalHandlerOptions
         from sensor_msgs.msg import LaserScan
+        from std_msgs.msg import Bool
         from tf2_msgs.msg import TFMessage
         self.rclpy = rclpy
         self.lock = threading.Lock()
@@ -46,6 +53,10 @@ class Listener:
         self.node = rclpy.create_node("visit_model_scan_log")
         self.node.create_subscription(LaserScan, "/scan", self._scan, qos_profile_sensor_data)
         self.node.create_subscription(TFMessage, "/tf", self._tf, 100)
+        self.manual = False
+        latched = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=QoSReliabilityPolicy.RELIABLE)
+        self.node.create_subscription(Bool, "/manual_mode", self._manual, latched)
         self.thread = threading.Thread(target=self._spin, daemon=True)
         self.thread.start()
 
@@ -83,8 +94,11 @@ class Listener:
     def _yaw(q):
         return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
+    def _manual(self, msg):
+        self.manual = bool(msg.data)
+
     def _scan(self, msg):
-        if self._stamp(msg.header) < self.CLOCK_SET_AFTER:
+        if self._stamp(msg.header) < self.CLOCK_SET_AFTER or self.manual:
             return
         with self.lock:
             self.scans.append(np.asarray(msg.ranges, dtype=np.float32))

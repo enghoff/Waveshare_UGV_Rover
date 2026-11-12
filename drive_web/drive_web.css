@@ -609,6 +609,14 @@
     background: var(--sunken); border: 1px solid var(--bad); font-size: 13px;
     color: var(--bad);
   }
+  /* A game controller has the wheels: the same line as the fault's, in the
+     accent while it drives and the warning colour while the lidar holds it. */
+  #manual {
+    margin: 0 12px 8px; padding: 6px 10px; border-radius: 6px;
+    background: var(--sunken); border: 1px solid var(--accent); font-size: 13px;
+    color: var(--accent);
+  }
+  #manual.blocked { border-color: var(--warn); color: var(--warn); }
   #notice.good { color: var(--good); }
   #notice.bad { color: var(--bad); }
   #notice.quiet { color: var(--dim); }

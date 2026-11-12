@@ -633,7 +633,11 @@ class RoverNav:
             # The open autonomous run, or None: what the console's run button
             # is drawn from, so that it shows a run an agent started too.
             "autonomy": self.autonomy_brief(),
-            "autonomy_ended": self.autonomy_ended_brief()}
+            "autonomy_ended": self.autonomy_ended_brief(),
+            # A game controller driving the rover, or not (rover_manual.py):
+            # the console draws its line from this and takes the conversation
+            # button off `voice`. After `status`, whose `manual` is the bridge's.
+            "manual": self.manual_status()}
 
     def _tool_nav_grid(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """The occupancy map as numbers. A control call, not a model tool.

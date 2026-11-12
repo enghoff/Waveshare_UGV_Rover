@@ -115,6 +115,8 @@ class SessionShow:
             rows.append([label, fmt(value), bool(alarm)])
         self.status_rows = rows
         self.rotation_fault = str(body.get("rotation_fault") or "")
+        manual = body.get("manual")
+        self.show_manual(manual if isinstance(manual, dict) else {})
         pose = body.get("pose") or {}
         self.heading_deg = float(pose.get("heading_deg", 0.0))
         self.pose_text = "x {:+.2f}  y {:+.2f}  {:+.1f} deg".format(
@@ -346,6 +348,39 @@ class SessionShow:
             return
         self.depth.update({"supported": True,
                            "power": str(body.get("power") or ""), "note": ""})
+
+    def show_manual(self, manual: dict[str, Any]) -> None:
+        """A game controller driving the rover, and its X button.
+
+        The line says which controller has the wheels and, when the lidar has
+        cut a command, how close the thing it stopped for is. X is counted on
+        the rover; each new press toggles the conversation, and the first count
+        a console sees is history rather than a press.
+        """
+        voice = manual.get("voice")
+        if isinstance(voice, int):
+            if (self.manual_voice_seen is not None and voice > self.manual_voice_seen
+                    and self.voice_toggle is not None):
+                self.say(self.voice_toggle(), "quiet")
+            self.manual_voice_seen = voice
+        if not manual.get("on"):
+            self.manual = {"on": False, "text": "", "blocked": False}
+            return
+        parts = [f"manual: {manual.get('controller') or 'game controller'}"]
+        blocked = str(manual.get("blocked") or "")
+        error = str(manual.get("error") or "")
+        if error:
+            parts.append(error)
+        elif blocked in ("ahead", "behind"):
+            near = manual.get("front_m" if blocked == "ahead" else "rear_m")
+            parts.append(f"stopped, {near * 100:.0f} cm {blocked}"
+                         if isinstance(near, (int, float)) else f"stopped, {blocked}")
+        elif blocked:
+            parts.append(f"stopped, {blocked}")
+        if manual.get("note"):
+            parts.append(str(manual["note"]))
+        self.manual = {"on": True, "text": " -- ".join(parts),
+                       "blocked": bool(blocked or error)}
 
     def show_holds(self, body: dict[str, Any]) -> None:
         """Which agents want the rover kept switched on, as rows for the card.

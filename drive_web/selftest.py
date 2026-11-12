@@ -22,6 +22,7 @@ from test_audio import TESTS as AUDIO_TESTS
 from test_bt_card import TESTS as BT_TESTS
 from test_harness import FAIL, PASS, SKIP
 from test_hold_card import TESTS as HOLD_TESTS
+from test_manual_line import TESTS as MANUAL_TESTS
 from test_network import TESTS as NETWORK_TESTS
 from test_page import TESTS as PAGE_TESTS
 from test_pictures import TESTS as PICTURE_TESTS
@@ -33,7 +34,7 @@ from test_world_panel import TESTS as WORLD_TESTS
 
 def main() -> int:
     for test in (*NETWORK_TESTS, *PICTURE_TESTS, *SESSION_TESTS, *AUDIO_TESTS,
-                 *WORLD_TESTS, *PAGE_TESTS, *HOLD_TESTS, *BT_TESTS, *SOUND_TESTS,
+                 *WORLD_TESTS, *PAGE_TESTS, *HOLD_TESTS, *BT_TESTS, *SOUND_TESTS, *MANUAL_TESTS,
                  *RECORDING_TESTS):
         test()
 

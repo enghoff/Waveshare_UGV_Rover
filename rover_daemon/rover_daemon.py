@@ -267,6 +267,9 @@ def main() -> int | str:
     note = rover.start_depth_rule()
     if note:
         print(note, flush=True)
+    # And a game controller, whenever one is connected: manual driving, which
+    # goes through navigation's bridge and so has nothing to do without it.
+    rover.start_manual(args.ros_nav if rover.nav is not None else None)
 
     rover.scripts = scripting.Runner(
         f"127.0.0.1:{args.port}",

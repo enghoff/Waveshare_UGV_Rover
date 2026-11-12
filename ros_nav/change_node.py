@@ -116,7 +116,12 @@ class ChangeNode(Node):
         if map_id != self.map_id:
             self.switch_map(map_id)
         drift = status.get("map_drift") or {}
-        if not status.get("map_settled"):
+        if status.get("manual"):
+            # A person driving with the game controller: the mapper is paused
+            # and the world store is not recording (nav_manual.py), so nothing
+            # seen now is counted as a change either.
+            self.believed, self.why_paused = False, "manual driving"
+        elif not status.get("map_settled"):
             self.believed, self.why_paused = False, "the map is not settled"
         elif not status.get("position_trusted"):
             self.believed, self.why_paused = False, "the position is not trusted"

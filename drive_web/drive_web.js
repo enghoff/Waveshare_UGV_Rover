@@ -75,6 +75,12 @@ function render(next) {
   $("lidarNote").textContent = next.lidar.note;
   $("fault").textContent = next.rotation_fault;
   $("fault").hidden = !next.rotation_fault;
+  // A game controller driving the rover (rover_daemon/rover_manual.py).
+  if (next.manual) {
+    $("manual").textContent = next.manual.text;
+    $("manual").hidden = !next.manual.on;
+    $("manual").className = next.manual.blocked ? "blocked" : "";
+  }
   $("plan").textContent = next.plan;
 
   if (next.map.gen && next.map.gen !== mapGen) mapArrivedAt = Date.now();

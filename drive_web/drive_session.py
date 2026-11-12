@@ -170,6 +170,13 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         # "". It comes with a boot and stays until the power is cut, so unlike a
         # notice it is drawn for as long as the rover keeps saying it.
         self.rotation_fault = ""
+        # A game controller driving the rover (rover_daemon/rover_manual.py): the
+        # line under the header, and the count of X presses, each of which
+        # toggles the conversation through `voice_toggle` -- set by drive_web to
+        # something that starts or stops it, and None on a console with no voice.
+        self.manual: dict[str, Any] = {"on": False, "text": "", "blocked": False}
+        self.manual_voice_seen: int | None = None
+        self.voice_toggle = None
         self.pose_text = "-"
         self.plan_text = "-"
         self.heading_deg = 0.0
@@ -346,6 +353,7 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
                        "error": self.status_error},
             "lidar": {"offer": self.lidar_live is False, "note": self.lidar_note},
             "rotation_fault": self.rotation_fault,
+            "manual": self.manual,
             "plan": self.plan_text,
             "map": {"gen": self.tag(self.map_gen), "width": self.map_shape[0],
                     "height": self.map_shape[1], "note": self.map_note,
@@ -436,7 +444,8 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
         a different picture each time. A click waiting for the wheels counts -- it is
         about to be a move, and the panel should not go quiet in between.
         """
-        return self.busy_since is not None or self.pending_target is not None
+        return (self.busy_since is not None or self.pending_target is not None
+                or bool(self.manual.get("on")))
 
     # --- the pump -------------------------------------------------------------
     def run(self) -> None:
