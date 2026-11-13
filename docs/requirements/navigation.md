@@ -345,3 +345,25 @@ or on disk from a place the map does not cover, or from a pose the rover could
 not vouch for after coming back.
 
 Proposed rather than settled: no drive off the map has been made with it.
+
+<a id="r-nav-17"></a>
+### R-NAV-17 — On a kept map, nothing is drawn or recorded until the rover's place on it is confirmed; with no kept map it maps from scratch
+
+- **State:** proposed
+- **Proposed in:** [ros_nav/README.md](../../ros_nav/README.md#driven-by-hand), 2026-11-13
+
+A rover switched on somewhere other than where it was parked comes up on the
+saved map at the parking spot, which is the wrong place. The saved map on disk
+was already safe -- nothing is written while the place is unconfirmed -- but the
+mapper went on drawing what it saw into the map in memory, at the parking spot,
+and the next save after a refit kept it; the world store took pictures meanwhile.
+So while a saved map is back and the rover's place on it is unconfirmed --
+including the seconds before the restore's own check -- the mapper is paused and
+the world store, the change watch and the scan log record nothing, until a refit
+or the check confirms it. That is the same hold as
+[R-NAV-16](#r-nav-16)'s and `ros_nav/off_map.py`'s `hold_reason` is the rule for
+both. **Never for want of a map:** with no saved map, after "clear map", or while
+a saved map is still loading, the rover is drawing from scratch, there is nothing
+to be lost on, and it maps at once. What would make this false is a wall in the
+saved map, or a look in the store, from a time the rover's place on a kept map
+was not confirmed -- or a rover with no kept map that does not map.

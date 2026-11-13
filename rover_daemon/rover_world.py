@@ -424,9 +424,10 @@ class RoverWorld:
             try:
                 now = time.monotonic()
                 if self.manual_on() or self._world_held(now):
-                    # Somebody is driving with the game controller, or drove
-                    # the rover off its map and it is not yet back on it, and
-                    # the store records nothing meanwhile: no look and no
+                    # Somebody is driving with the game controller, or
+                    # navigation holds the map -- off it after a drive by hand,
+                    # or on a kept map it cannot yet vouch for its place on --
+                    # and the store records nothing meanwhile: no look and no
                     # settling (rover_manual.py, ros_nav/off_map.py). The
                     # clocks restart when it ends.
                     self._world_build_at = now
@@ -530,10 +531,12 @@ class RoverWorld:
         return ""
 
     def _world_held(self, now: float) -> bool:
-        """Whether navigation is holding the map because a drive by hand took
-        the rover off it (ros_nav/off_map.py). A look there would be a picture
-        of somewhere the map is not, at a pose that is wheel odometry alone, so
-        none is taken -- not even one without a bearing. Asked once a second."""
+        """Whether navigation is holding the map (ros_nav/off_map.py,
+        `hold_reason`): a drive by hand that took the rover off it, or a kept
+        map the rover's place on is not confirmed -- a rover switched on
+        somewhere else. A look then would be a picture of somewhere the map
+        may not be, at a pose nothing vouches for, so none is taken -- not even
+        one without a bearing. Asked once a second."""
         if now - getattr(self, "_world_held_at", float("-inf")) < 1.0:
             return getattr(self, "_world_held_was", False)
         self._world_held_at = now
@@ -541,7 +544,8 @@ class RoverWorld:
         navigator = getattr(self, "nav", None)
         if navigator is not None:
             try:
-                held = bool(navigator.status().get("off_map"))
+                status = navigator.status()
+                held = bool(status.get("map_held") or status.get("off_map"))
             except Exception:
                 held = False        # no answer is not a hold; the pose check says the rest
         self._world_held_was = held

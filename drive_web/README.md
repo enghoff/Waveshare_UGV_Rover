@@ -153,7 +153,10 @@ follow the rover whoever changed them -- Y, B, the voice model, another console
 map puts "off the map since HH:MM -- map and store paused" on the same line,
 which stays up after the controller has gone and until navigation has the rover
 back on the map ([R-NAV-16](../docs/requirements/navigation.md#r-nav-16)); "refit
-to map" is the way back when it does not find its own. See
+to map" is the way back when it does not find its own. A saved map the rover's
+place on is not confirmed holds them too, and says "position unconfirmed -- map
+and store paused" until a refit ([R-NAV-17](../docs/requirements/navigation.md#r-nav-17)).
+See
 [the daemon](../rover_daemon/README.md#driving-by-hand-with-a-game-controller).
 
 ## World-state popup

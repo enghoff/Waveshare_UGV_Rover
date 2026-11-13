@@ -401,17 +401,27 @@ times a second. The bridge checks it against the newest `/scan`
 publishes what survives on `/cmd_vel`, and answers with how near the nearest
 thing ahead and behind is, from the body's edges, and what it cut. Manual mode
 is a lease of 2 s (`nav_manual.py`): while it lasts, Nav2 goals are refused,
-`status` says `manual`, and the latched `/manual_mode` is true -- which pauses
-the mapper (`localizer_node.py`, which keeps localizing and gives the mapper
-back when the lease ends, unless its guard had stopped it), the change watch,
-and the world model's scan log. A daemon that dies mid-drive leaves the lease to
-lapse.
+`status` says `manual`, and the map is held. A daemon that dies mid-drive leaves
+the lease to lapse.
+
+**The map is held** while `off_map.hold_reason` gives a reason -- a person
+driving, a drive of theirs that left the map (below), or a saved map back from
+disk whose place for the rover is not yet confirmed, which is how a rover
+switched on somewhere else comes up ([R-NAV-17](../docs/requirements/navigation.md#r-nav-17)).
+The latched `/map_hold` is then true, which pauses the mapper
+(`localizer_node.py`, which keeps localizing and gives the mapper back when the
+hold ends, unless its guard had stopped it), the change watch, the world model's
+scan log and the daemon's looking loop; `status` says why in `map_held`. It is
+re-read four times a second, so a restore, the keeper's check or a refit is
+followed at once. **It is never held for want of a map**: with no saved map,
+after "clear map", or while a saved map is still loading, the rover maps from
+scratch at once.
 
 **A drive that leaves the map holds it until the rover is back on it**
 (`off_map.py`, [R-NAV-16](../docs/requirements/navigation.md#r-nav-16)). The
 bridge reads the localizer's steps on `localizer/step`: ten searched scans
 running that it could not place on the map, during a manual drive, is the rover
-off its map, and from then on `/manual_mode` stays true after the lease has
+off its map, and from then on the map stays held after the lease has
 gone, `map_trustworthy` is false -- so the map keeper saves neither the graph nor
 the parked pose, the change watch says "off the map", autonomous runs are
 refused and the daemon's looking loop takes no look at all -- and `status`

@@ -82,5 +82,26 @@ def test_coming_back_is_shown_by_the_wide_search():
           (latch.off, latch.misses, latch.hits, latch.checking), (False, 0, 0, False))
 
 
+def test_the_map_is_held_only_where_there_is_a_map_to_lose():
+    held = o.hold_reason
+    check("a person driving holds it", held(True, False, True, True, False),
+          "manual driving")
+    check("...and so does a drive of theirs that left the map, after it",
+          held(False, True, True, True, False), "off the map")
+    check("a kept map the rover's place on is not confirmed holds it -- a rover "
+          "switched on somewhere else", held(False, False, True, False, False),
+          "position unconfirmed")
+    check("...as do the seconds before a restore has been checked",
+          held(False, False, True, True, True), "position unconfirmed")
+    check("a kept map the rover is confirmed on is not held",
+          held(False, False, True, True, False), "")
+    check("no kept map -- none saved, cleared, or still loading -- is mapped "
+          "from scratch, confirmed or not",
+          [held(False, False, False, settled, unchecked)
+           for settled in (False, True) for unchecked in (False, True)],
+          ["", "", "", ""])
+
+
 TESTS = (test_leaving_is_noticed_only_on_a_drive_by_hand,
-         test_coming_back_is_shown_by_the_wide_search)
+         test_coming_back_is_shown_by_the_wide_search,
+         test_the_map_is_held_only_where_there_is_a_map_to_lose)

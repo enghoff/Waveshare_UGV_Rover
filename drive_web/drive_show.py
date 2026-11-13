@@ -117,7 +117,7 @@ class SessionShow:
         self.rotation_fault = str(body.get("rotation_fault") or "")
         manual = body.get("manual")
         self.show_manual(manual if isinstance(manual, dict) else {})
-        self.show_off_map(body.get("off_map"))
+        self.show_map_hold(body.get("off_map"), body.get("map_held"))
         # The lights and tracking as the rover has them, whoever changed them:
         # the controller's Y and B, the voice model, another console. The level
         # is the whole of the lights panel; tracking's panel has more than a
@@ -395,16 +395,22 @@ class SessionShow:
         self.manual = {"on": True, "text": " -- ".join(parts),
                        "blocked": bool(blocked or error)}
 
-    def show_off_map(self, off: Any) -> None:
-        """A drive by hand that took the rover off its map: navigation holds the
-        map and the store until it is back on it (ros_nav/off_map.py). On the
-        manual line, which stays up for it after the controller has gone."""
-        if not isinstance(off, dict):
+    def show_map_hold(self, off: Any, held: Any) -> None:
+        """Navigation holding the map and the store (ros_nav/off_map.py): a
+        drive by hand that took the rover off its map, until it is back on it,
+        or a kept map the rover's place on is not confirmed -- a rover switched
+        on somewhere else, until a refit. On the manual line, which stays up
+        for it after the controller has gone. Manual driving's own hold is the
+        line itself and needs no words."""
+        if isinstance(off, dict):
+            since = off.get("since")
+            when = (time.strftime("%H:%M", time.localtime(since))
+                    if isinstance(since, (int, float)) else "?")
+            part = f"off the map since {when} -- map and store paused"
+        elif held and held != "manual driving":
+            part = f"{held} -- map and store paused"
+        else:
             return
-        since = off.get("since")
-        when = (time.strftime("%H:%M", time.localtime(since))
-                if isinstance(since, (int, float)) else "?")
-        part = f"off the map since {when} -- map and store paused"
         if self.manual.get("on"):
             self.manual = {"on": True, "text": f"{self.manual['text']} -- {part}",
                            "blocked": True}

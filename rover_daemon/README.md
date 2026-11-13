@@ -591,7 +591,7 @@ driving. With navigation down the stick drives nothing. Meanwhile every move,
 exploration and `autonomy_start` is refused with "somebody is driving with the
 game controller" -- by name in `call`, and at `RosNavigator.move` for anything
 that comes another way -- and the world store records nothing: the looking loop
-here skips, and the bridge's latched `/manual_mode` pauses the mapper, the
+here skips, and the bridge's latched `/map_hold` pauses the mapper, the
 change watch and the world model's scan log. Localization goes on, so the rover
 still knows where it is afterwards. `nav_status.manual` says which controller,
 what the lidar cut and why, and the last button's effect; `nav_status.lights`
@@ -601,9 +601,11 @@ on, so a console follows what Y and B (or the voice model) changed.
 A drive that takes the rover off its map leaves the map held after the
 controller has gone, until the rover is shown to be back on it
 ([R-NAV-16](../docs/requirements/navigation.md#r-nav-16), `ros_nav/off_map.py`):
-`nav_status.off_map` says since when, the looking loop takes no look while it is
-set (`_world_held`, asked once a second), and a position read for the store in
-the meantime has no bearing because the map is not settled.
+`nav_status.off_map` says since when. The looking loop takes no look while
+navigation holds the map for any reason (`nav_status.map_held`, asked once a
+second by `_world_held`) -- including a saved map the rover's place on is not
+yet confirmed, which is how a rover switched on somewhere else comes up
+([R-NAV-17](../docs/requirements/navigation.md#r-nav-17)).
 
 The joystick is read through the kernel's `js` interface, which `jetson` can
 read without the `input` group; which axis is the right stick and which are the

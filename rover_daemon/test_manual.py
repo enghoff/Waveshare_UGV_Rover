@@ -238,13 +238,14 @@ def test_the_store_waits_while_navigation_holds_the_map():
         def __init__(self):
             super().__init__()
             self.off_map = {"since": 1.0, "left_at": None}
+            self.map_held = ""
             self.asked = 0
 
         def status(self):
             self.asked += 1
             if self.off_map == "broken":
                 raise OSError("no bridge")
-            return {"off_map": self.off_map}
+            return {"off_map": self.off_map, "map_held": self.map_held}
 
     rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
     rover.nav = nav = Holding()
@@ -257,8 +258,12 @@ def test_the_store_waits_while_navigation_holds_the_map():
     nav.off_map = "broken"
     check("a navigation that does not answer is not a hold",
           rover._world_held(12.2), False)
+    nav.off_map = None
+    nav.map_held = "position unconfirmed"
+    check("a kept map the rover's place on is not confirmed stops it too",
+          rover._world_held(12.2 + 1.1), True)
     rover.nav = None
-    check("...nor is a rover with none", rover._world_held(13.3), False)
+    check("...nor is a rover with none", rover._world_held(14.5), False)
 
 
 TESTS = (

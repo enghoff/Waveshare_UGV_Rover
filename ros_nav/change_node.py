@@ -125,6 +125,10 @@ class ChangeNode(Node):
             # Driven off the map by hand and not yet shown to be back on it
             # (off_map.py); the map is held meanwhile.
             self.believed, self.why_paused = False, "off the map"
+        elif status.get("map_held"):
+            # Held for another reason -- a kept map the rover's place on is not
+            # yet confirmed, including the seconds before a restore is checked.
+            self.believed, self.why_paused = False, "map held: %s" % status["map_held"]
         elif not status.get("map_settled"):
             self.believed, self.why_paused = False, "the map is not settled"
         elif not status.get("position_trusted"):

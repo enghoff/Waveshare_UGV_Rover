@@ -8,20 +8,25 @@ and its half-second timeout like everything else that drives this rover.
 
 **Manual mode is a lease.** It lasts MANUAL_LEASE_S past the daemon's last word,
 so a daemon that dies or loses this connection does not leave the rover in it.
-While it lasts, `/manual_mode` (latched) says so, which is what pauses the
-mapper (`localizer_node.py`), the change watch (`change_node.py`) and the world
-model's scan log (`world_state/visit_model/scan_log.py`); and Nav2 goals are
-refused, so nothing but the person drives.
+While it lasts Nav2 goals are refused, so nothing but the person drives, and the
+map is held.
 
-**A drive that leaves the map holds it until the rover is back** (`off_map.py`).
-`/manual_mode` then stays true after the lease has gone -- the controller asleep
-on a balcony is not the rover back in the flat -- and the map is not
-trustworthy (`nav_map.map_trustworthy`), so nothing is saved, the world store
-records nothing and autonomous runs are refused. It ends when the localizer has
-matched well for a while and the drift check's wide search agrees the rover is
-where it believes; a refit from the console meanwhile searches that wide window.
-Moves the console asks for are not refused: a person may need them to bring the
-rover back.
+**The map is held** -- `/map_hold` (latched) true, which pauses the mapper
+(`localizer_node.py`), the change watch (`change_node.py`), the world model's
+scan log (`world_state/visit_model/scan_log.py`) and the daemon's looking loop --
+for as long as `off_map.hold_reason` gives a reason: a person driving, a drive
+of theirs that left the map, or a kept map the rover's place on is not
+confirmed. Re-read four times a second, so a restore, a refit or the keeper's
+check is followed within that. With no kept map it is never held.
+
+**A drive that leaves the map holds it until the rover is back** (`off_map.py`),
+after the lease has gone -- the controller asleep on a balcony is not the rover
+back in the flat -- and the map is not trustworthy meanwhile
+(`nav_map.map_trustworthy`), so nothing is saved and autonomous runs are
+refused. It ends when the localizer has matched well for a while and the drift
+check's wide search agrees the rover is where it believes; a refit from the
+console meanwhile searches that wide window. Moves the console asks for are not
+refused: a person may need them to bring the rover back.
 """
 
 import json
@@ -35,7 +40,7 @@ from std_msgs.msg import Bool, String
 
 from manual_gate import clearance, gate
 from nav_map import DRIFT_DEG, DRIFT_M, DRIFT_WINDOW_DEG, DRIFT_WINDOW_M
-from off_map import LEAVE_STEPS, OffMap
+from off_map import LEAVE_STEPS, OffMap, hold_reason
 
 #: How long manual mode outlives the daemon's last word.
 MANUAL_LEASE_S = 2.0
@@ -51,17 +56,18 @@ class NavManual:
     def manual_setup(self):
         latched = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=QoSReliabilityPolicy.RELIABLE)
-        self.manual_pub = self.create_publisher(Bool, "manual_mode", latched)
+        self.hold_pub = self.create_publisher(Bool, "map_hold", latched)
         self.manual_on = False
         self.manual_until = 0.0
         self.manual_who = ""
         self.manual_moving = False
         self.off_map = OffMap()
-        # What `/manual_mode` last said: the lease, or the map held after it.
-        self.manual_held = False
-        # Said once at start-up: a bridge restarted under a manual drive must
-        # not leave the mapper believing it is still paused for one.
-        self.manual_pub.publish(Bool(data=False))
+        # Why `/map_hold` last said the map is held, or "".
+        self.held_for = ""
+        # Said once at start-up: a bridge restarted under a hold must not leave
+        # the mapper believing it is still paused for one. Before the saved map
+        # is back, which is the time a fresh session starts drawing.
+        self.hold_pub.publish(Bool(data=False))
         self.create_subscription(String, "localizer/step", self.on_localizer_step, 50,
                                  callback_group=self.group)
         self.create_timer(0.25, self.manual_lapse, callback_group=self.group)
@@ -115,17 +121,29 @@ class NavManual:
             self.manual_send(0.0, 0.0)
             self.get_logger().warn("manual driving lapsed: the daemon stopped "
                                    "renewing it for %.0f s" % MANUAL_LEASE_S)
-            self.manual_hold()
+        # Every tick, not only on a lapse: the map's own state -- a restore, the
+        # keeper's check, a refit, a cleared map -- moves the hold too.
+        self.manual_hold()
+
+    def map_hold_reason(self):
+        """Why the map is held now, or "" (off_map.hold_reason)."""
+        with self._lock:
+            manual, off = self.manual_on, self.off_map.off
+        return hold_reason(manual, off, getattr(self, "map_restored", False),
+                           getattr(self, "map_settled", False),
+                           getattr(self, "_restore_unchecked", False))
 
     def manual_hold(self):
-        """Say on `/manual_mode` whether the map is held: while a person drives,
-        and after, for as long as the rover is off its map."""
+        """Say on `/map_hold` whether the map is held, when that changes."""
+        reason = self.map_hold_reason()
         with self._lock:
-            held = self.manual_on or self.off_map.off
-            if held == self.manual_held:
+            if bool(reason) == bool(self.held_for):
+                self.held_for = reason
                 return
-            self.manual_held = held
-        self.manual_pub.publish(Bool(data=held))
+            self.held_for = reason
+        self.hold_pub.publish(Bool(data=bool(reason)))
+        self.get_logger().info("the map is held: %s" % reason if reason
+                               else "the map is given back")
 
     # --- off the map and back ---------------------------------------------------
 

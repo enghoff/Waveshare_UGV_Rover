@@ -498,6 +498,9 @@ class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, NavManual, Node):
             # the map and the world store until it is back (off_map.py).
             "manual": self.manual_on,
             "off_map": self.off_map_status(),
+            # Why the map is held -- nothing drawn, saved or recorded -- or "".
+            # See nav_manual.py.
+            "map_held": self.map_hold_reason(),
             # What map this is, whether it came back from disk, and how the
             # rover was last fitted to it. See nav_map.py.
             **self.map_status(),

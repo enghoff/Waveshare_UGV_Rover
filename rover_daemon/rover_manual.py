@@ -16,8 +16,10 @@ the controller goes away. Nothing else changes while there is no controller.
 start, and one running is stopped; the mapper stops drawing, the change watch
 stops counting and the world store records nothing: the daemon's own looking
 loop here, and the mapper, the change watch and the world model's scan log
-through navigation's `/manual_mode` (ros_nav/nav_manual.py). Localization goes
-on, so the rover still knows where it is when the controller goes away.
+through navigation's `/map_hold` (ros_nav/nav_manual.py). Localization goes
+on, so the rover still knows where it is when the controller goes away -- and
+if a drive took it off its map, navigation goes on holding the map until it is
+back on it (ros_nav/off_map.py).
 
 **The wheels are driven through navigation, not around it.** Each tick the
 command goes to the bridge as `op: manual`, which checks it against the newest

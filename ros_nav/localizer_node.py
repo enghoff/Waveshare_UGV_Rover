@@ -28,10 +28,12 @@ measurements, because every scan it then adds is a wall in the wrong place. It
 stays paused until navigation is restarted, which re-anchors it from the saved
 map and costs the rover nothing, since its position is this node's.
 
-**And it is stopped from drawing while a person drives with the game
-controller** (`/manual_mode`, from nav_manual.py), then given it back: this node
-keeps tracking the whole time, so the rover still knows where it is, and the
-mapper resumes from that pose. A mapper the guard has paused stays paused.
+**And it is stopped from drawing while navigation holds the map** (`/map_hold`,
+from nav_manual.py: a person driving with the game controller, a drive of theirs
+that left the map, or a kept map the rover's place on is not confirmed), then
+given it back: this node keeps tracking the whole time, so the rover still knows
+where it is, and the mapper resumes from that pose. A mapper the guard has
+paused stays paused.
 
 **What it takes from outside is a pose on `initialpose`**, from the map keeper's
 restore or from a person's refit, in the `map` frame; that is the only way the
@@ -108,10 +110,10 @@ class LocalizerNode(Node):
         self.map_info = None
         self.guard_since = None
         self.mapper_paused = False
-        # Paused for manual driving, which -- unlike the guard's pause -- is
-        # given back when the driving ends. See `reconcile_mapper`.
-        self.manual = False
-        self.manual_paused = False
+        # Paused while navigation holds the map, which -- unlike the guard's
+        # pause -- is given back when the hold ends. See `reconcile_mapper`.
+        self.held = False
+        self.hold_paused = False
         self.mapper_off = None
         self.counts = {"steps": 0, "matched": 0, "kept": 0}
 
@@ -135,7 +137,7 @@ class LocalizerNode(Node):
                                  latched, callback_group=group)
         self.create_subscription(PoseWithCovarianceStamped, args.slam_pose_topic,
                                  self.on_slam_pose, 10, callback_group=group)
-        self.create_subscription(Bool, "manual_mode", self.on_manual, latched,
+        self.create_subscription(Bool, "map_hold", self.on_hold, latched,
                                  callback_group=group)
         self.pause_client = self.create_client(Pause, "/slam_toolbox/pause_new_measurements")
         self.create_timer(1.0, self.reconcile_mapper)
@@ -219,7 +221,7 @@ class LocalizerNode(Node):
         if odom is None:
             return
         with self.lock:
-            if not self.started or self.manual or self.manual_paused:
+            if not self.started or self.held or self.hold_paused:
                 # A paused mapper's estimate stands still while the rover
                 # drives, so comparing it with ours would only fire the guard.
                 self.guard_since = None
@@ -238,14 +240,14 @@ class LocalizerNode(Node):
             self.pause_mapper("its own estimate is %.0f cm and %.0f degrees from the tracked "
                               "pose" % (100 * off_m, off_deg))
 
-    def on_manual(self, msg):
+    def on_hold(self, msg):
         with self.lock:
-            self.manual = bool(msg.data)
+            self.held = bool(msg.data)
             self.guard_since = None
         self.reconcile_mapper()
 
     def reconcile_mapper(self):
-        """Pause the mapper for manual driving, and give it back afterwards.
+        """Pause the mapper while the map is held, and give it back afterwards.
 
         slam_toolbox's pause is a toggle, so this keeps its own account of
         whether it pressed it, and never presses it for a mapper the guard has
@@ -253,16 +255,17 @@ class LocalizerNode(Node):
         yet when the driving began is caught up with.
         """
         with self.lock:
-            want = self.manual and not self.mapper_paused
-            if want == self.manual_paused:
+            want = self.held and not self.mapper_paused
+            if want == self.hold_paused:
                 return
         if not self.pause_client.service_is_ready():
             return
         self.pause_client.call_async(Pause.Request())
         with self.lock:
-            self.manual_paused = want
-        self.get_logger().info("localizer: the mapper %s for manual driving"
-                               % ("is paused" if want else "is drawing again"))
+            self.hold_paused = want
+        self.get_logger().info("localizer: the mapper %s"
+                               % ("is paused while the map is held" if want
+                                  else "is drawing again: the map is no longer held"))
 
     def pause_mapper(self, why):
         if not self.pause_client.service_is_ready():
@@ -344,7 +347,7 @@ class LocalizerNode(Node):
             out = {"started": self.started, "map": self.map_info, "last": step,
                    "counts": dict(self.counts), "mapper_off": self.mapper_off,
                    "mapper_paused": self.mapper_paused,
-                   "mapper_paused_for_manual": self.manual_paused}
+                   "mapper_paused_for_hold": self.hold_paused}
         self.status_pub.publish(String(data=json.dumps(out)))
 
 

@@ -131,3 +131,30 @@ class OffMap(object):
                     "heading_deg": round(where[2], 1)},
                 "matched_running": self.hits, "checks": self.checks,
                 "checking": self.checking}
+
+
+def hold_reason(manual, off_map, restored, settled, unchecked):
+    """Why the map is held now, or "" when it is not -- what navigation's latched
+    `/map_hold` says, and what pauses the mapper (localizer_node.py), the
+    change watch, the world model's scan log and the daemon's looking loop.
+
+    **Held while the rover cannot vouch for where it is on a map it kept.** A
+    person driving; a drive of theirs that left the map (`OffMap`); and a saved
+    map loaded back whose place for the rover nothing has confirmed -- `restored`
+    with `settled` false, or not yet checked (`unchecked`, the seconds between a
+    restore and the keeper's first look at it). A rover switched on somewhere
+    else comes up in that last state, and would otherwise draw where it is onto
+    the map of where it was parked.
+
+    **Never held for want of a map.** With no saved map, after the map was
+    cleared, or while a saved one is still loading, `restored` is false: the
+    rover is drawing a map from scratch and there is nothing to be lost on, so
+    it maps as it always has.
+    """
+    if manual:
+        return "manual driving"
+    if off_map:
+        return "off the map"
+    if restored and (not settled or unchecked):
+        return "position unconfirmed"
+    return ""

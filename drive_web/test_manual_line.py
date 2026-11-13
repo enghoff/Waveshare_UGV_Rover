@@ -117,8 +117,19 @@ def test_off_the_map_stays_on_the_line() -> None:
     check("...without keeping the pictures at a moving rover's pace",
           session.moving(), False)
     session.show_status({"ok": True, "manual": {"on": False, "voice": 0},
-                         "off_map": None})
+                         "off_map": None, "map_held": ""})
     check("back on the map, the line goes", session.manual["on"], False)
+    session.show_status({"ok": True, "manual": {"on": False, "voice": 0},
+                         "off_map": None, "map_held": "position unconfirmed"})
+    check("a kept map the rover is not confirmed on -- switched on somewhere "
+          "else -- holds it too, and says so",
+          (session.manual["on"], session.manual["text"]),
+          (True, "position unconfirmed -- map and store paused"))
+    session.show_status({"ok": True, "manual": {"on": True, "controller": "pad",
+                                                "voice": 0},
+                         "off_map": None, "map_held": "manual driving"})
+    check("...while driving by hand the line is enough on its own",
+          session.manual["text"], "manual: pad")
 
 
 TESTS = (test_the_manual_line_and_the_talk_button,

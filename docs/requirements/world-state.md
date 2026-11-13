@@ -493,6 +493,13 @@ marked as belonging to the map that has gone rather than left looking current.
   every picture kept, three of them keeping a measured distance, and no bearing
   put back afterwards
 
+**Since 2026-11-13 an unconfirmed place takes no look at all** where the map
+was kept from an earlier session: navigation holds the map until the rover is
+confirmed on it ([R-NAV-17](navigation.md#r-nav-17)), and the looking loop waits
+with it, so the pictures this requirement used to keep without a direction are
+not taken. A map this session is drawing from scratch is not held, and its
+looks get their directions as before.
+
 **A changed room confirms the place but not the heading.** Since 2026-10-12, a
 check whose search fits nowhere still gives a look the navigator's heading when
 the scan's returns beyond 1.5 m alone put the rover where it believes. Moved
