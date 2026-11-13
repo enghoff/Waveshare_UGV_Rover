@@ -1,0 +1,29 @@
+{
+ "not_occluded": [
+  64710,
+  78603,
+  106196
+ ],
+ "edge_or_oblique": [
+  64710,
+  67171,
+  78603,
+  100673,
+  106196,
+  108863
+ ],
+ "occluder_across_middle": [
+  67050,
+  67171,
+  71444,
+  71542,
+  71902,
+  73767,
+  73994,
+  75311,
+  76111,
+  78969,
+  80688
+ ],
+ "note": "analyst labels, blind to record; every other picture has chair backs (or the ladder) across the painting's lower edge"
+}
