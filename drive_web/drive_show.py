@@ -579,12 +579,24 @@ class SessionShow:
         join = body.get("last_join")
         if isinstance(join, dict):
             got = join.get("ssid")
-            where.append(f"joined {got}" if join.get("ok")
-                         else f"could not join {got}")
+            if join.get("ok"):
+                where.append(f"joined {got}")
+            elif join.get("added"):
+                # Typed in and refused: the helper kept nothing.
+                where.append(f"could not join {got} -- not stored")
+            else:
+                where.append(f"could not join {got}")
 
         networks = []
         for entry in body.get("networks") or []:
             in_use, configured = bool(entry.get("in_use")), bool(entry.get("configured"))
+            startup = bool(entry.get("startup"))
+            # What the network asks for, as nmcli says it: nothing is an open
+            # network, which the rover does not join; 802.1X wants a user name
+            # and WEP is not offered either (rover_wifi._wifi_key_mgmt).
+            security = str(entry.get("security") or "").upper().split()
+            addable = (not configured and bool(security)
+                       and "802.1X" not in security and "WEP" not in security)
             networks.append({
                 "ssid": str(entry.get("ssid", "?")),
                 "signal": entry.get("signal", "-"),
@@ -592,8 +604,12 @@ class SessionShow:
                 "in_use": in_use, "configured": configured,
                 # Joinable means configured and not already the one in use.
                 "joinable": configured and not in_use,
-                "note": "on it" if in_use else ("" if configured
-                                                else "no passphrase")})
+                # A passphrase box: a secured network with none stored.
+                "addable": addable,
+                # Not the one in use, nor the one the rover comes up on.
+                "forgettable": configured and not in_use and not startup,
+                "note": ("on it" if in_use else "" if configured or addable
+                         else "open" if not security else "not supported")})
         self.set_networks(networks)
         self.wifi.update({"supported": True, "text": text, "verdict": verdict,
                           "where": ", ".join(where), "scanning": False})

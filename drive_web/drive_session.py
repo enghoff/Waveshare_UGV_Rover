@@ -955,6 +955,9 @@ class Session(SessionActions, SessionShow, SessionWorld, SessionSnapshots):
             self.bt_outstanding = False
             self.show_bt(body)
             return
+        if name in ("wifi_add", "wifi_forget"):
+            self.wifi_answered(name, body)
+            return
         if name in ("bt_scan", "bt_pair", "bt_unpair"):
             self.bt_answered(name, body)
             return

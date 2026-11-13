@@ -75,7 +75,11 @@ LOCAL_ONLY = ("run_script", "start_script", "script_stop", "list_api",
               "snapshot_save", "snapshot_restore", "snapshot_delete",
               "snapshot_rename",
               # Moves a thing's record and its looks; see world_state/relocate.py.
-              "world_state_relocate")
+              "world_state_relocate",
+              # Store a network with its passphrase, or delete one: the console
+              # on the rover is the only caller, so a passphrase never crosses
+              # the network to the daemon. See rover_wifi.py.
+              "wifi_add", "wifi_forget")
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
 

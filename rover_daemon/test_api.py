@@ -78,6 +78,9 @@ def test_schemas():
                # cutting the wire its own conversation arrives on, and no wording
                # of a description makes that a good idea.
                "wifi_status", "wifi_join",
+               # Storing a network with its passphrase, and deleting one: the
+               # console's, on loopback only (LOCAL_ONLY in rover_daemon.py).
+               "wifi_add", "wifi_forget",
                # And Bluetooth, for the network's reason turned round: what the
                # rover is paired with is decided by the person holding the
                # controller or the headset, which a model cannot see.

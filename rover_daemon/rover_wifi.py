@@ -44,6 +44,15 @@ WIFI_MAX_AGE_S = 20.0
 # caller holding a socket that the switch is about to break.
 WIFI_SCAN_TIMEOUT_S = 20.0
 WIFI_JOIN_TIMEOUT_S = 60.0
+# An add is a join that may fail and then has to bring the old network back up:
+# two of the helper's 25 s waits, and the profile written and loaded besides.
+WIFI_ADD_TIMEOUT_S = 90.0
+# Forgetting deletes profiles and touches no link.
+WIFI_FORGET_TIMEOUT_S = 30.0
+# A WPA passphrase: 8 to 63 printable ASCII characters, or 64 hex digits. The
+# helper checks the same before it writes anything; checked here as well so that
+# a typo is refused before the rover leaves the network it is on.
+WIFI_PSK_MIN, WIFI_PSK_MAX = 8, 63
 # And how long the list of networks this rover holds a passphrase for is served
 # for. Minutes, not seconds, because it changes only when somebody installs a new
 # passphrase -- while asking costs another 2.6 s of nmcli, which was being spent on
@@ -306,19 +315,22 @@ def _iface_address(iface: str | None = None) -> str | None:
         return None
 
 
-def _wifi_ctl(action: str, *args: str, timeout: float) -> tuple[bool, str]:
+def _wifi_ctl(action: str, *args: str, timeout: float,
+              stdin: bytes | None = None) -> tuple[bool, str]:
     """Run the wifi helper. Returns whether it succeeded and what it said.
 
-    `sudo` for the two actions that need root and not for the one that does not,
-    so that a rover whose sudoers rule was never installed can still say which
+    `sudo` for the actions that need root and not for the ones that do not, so
+    that a rover whose sudoers rule was never installed can still say which
     network it is on -- the panel that matters most is the one that only reads.
+    `stdin` is how a passphrase reaches it: never an argument, which every
+    account on the machine can read in `ps`.
     """
     argv = [WIFI_CTL, action, *args]
-    if action in ("scan", "join"):
+    if action in ("scan", "join", "add", "forget"):
         argv = ["sudo", "-n", *argv]
     try:
-        done = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              timeout=timeout)
+        done = subprocess.run(argv, input=stdin, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=timeout)
     except FileNotFoundError:
         return False, (f"{WIFI_CTL} is not installed on this rover; "
                        f"run wifi_roam/install.sh")
@@ -372,6 +384,42 @@ def _wifi_networks(rows: str, configured: set[str]) -> list[dict[str, Any]]:
                   key=lambda n: (not n["configured"], -n["signal"], n["ssid"]))
 
 
+def _wifi_psk_problem(password: Any) -> str:
+    """Why `password` is not a WPA passphrase, or "" when it is one."""
+    if not isinstance(password, str):
+        return "a passphrase is needed"
+    if len(password) == 64 and all(c in "0123456789abcdefABCDEF" for c in password):
+        return ""
+    if not WIFI_PSK_MIN <= len(password) <= WIFI_PSK_MAX:
+        return f"a passphrase is {WIFI_PSK_MIN} to {WIFI_PSK_MAX} characters"
+    if any(not " " <= c <= "~" for c in password):
+        return "a passphrase is plain ASCII"
+    return ""
+
+
+def _wifi_key_mgmt(security: str | None) -> tuple[str, str]:
+    """How to join a network that advertises `security`, as nmcli reports it:
+    `(key management, "")`, or `("", why it is not joined)`.
+
+    A network not in the last list is taken to be WPA2, which is what nearly
+    every one is. An open network is refused rather than joined: on one, anyone
+    in range could reach this rover's daemon, and it lets anyone who can reach
+    it drive.
+    """
+    if security is None:
+        return "wpa-psk", ""
+    words = security.upper().split()
+    if not words:
+        return "", "an open network: not joined"
+    if "802.1X" in words:
+        return "", "a network that wants a user name as well: not supported"
+    if "WEP" in words:
+        return "", "WEP: not supported"
+    if "WPA3" in words and not ({"WPA1", "WPA2", "WPA"} & set(words)):
+        return "sae", ""
+    return "wpa-psk", ""
+
+
 class RoverWifi:
     """Scan and join, mixed into Rover. Not offered to the model."""
 
@@ -406,6 +454,12 @@ class RoverWifi:
             self._wifi_profiles = {line.strip() for line in said.splitlines()
                                    if line.strip()}
             self._wifi_profiles_at = now
+            # And which of them the rover joins at a boot, which changes as
+            # rarely: a console leaves `forget` off that one.
+            ok, said = _wifi_ctl("startup", timeout=WIFI_SCAN_TIMEOUT_S)
+            if ok:
+                self._wifi_startup = {line.strip() for line in said.splitlines()
+                                      if line.strip()}
         return self._wifi_profiles
 
     def _tool_wifi_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -453,6 +507,8 @@ class RoverWifi:
             networks = list(self._wifi or [])
             age = now - self._wifi_at
 
+        startup = set(getattr(self, "_wifi_startup", None) or ())
+        networks = [{**n, "startup": n["ssid"] in startup} for n in networks]
         connected = next((n["ssid"] for n in networks if n["in_use"]), None)
         # Found once and passed down, so that the signal and the address are
         # certainly about the same radio even if the routing table changes
@@ -466,6 +522,7 @@ class RoverWifi:
             "address": _iface_address(iface),
             "networks": networks,
             "configured": [n["ssid"] for n in networks if n["configured"]],
+            "startup": sorted(startup),
             "scanned": scan,
             "list_age_s": round(age, 1),
         }
@@ -517,3 +574,77 @@ class RoverWifi:
                 "note": (f"joining {ssid}. Every connection to this rover is about "
                          f"to drop, including this one; reconnect in a few seconds "
                          f"and wifi_status will say how it went.")}
+
+    def _tool_wifi_add(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Store a network the rover has no passphrase for, and join it.
+
+        **Answers before it has done it**, for `wifi_join`'s reason: the join
+        takes the link down. What came of it is the next `wifi_status`'s
+        `last_join`. The helper takes the passphrase on stdin and keeps it in a
+        root-only profile; a join that fails deletes that profile, so a typo is
+        not kept, and puts the rover back on the network it was on.
+
+        Loopback only (rover_daemon.LOCAL_ONLY): the console on the rover is
+        the one caller, so the passphrase never crosses the network to here, and
+        nobody else on the LAN can change what the rover joins. Never offered to
+        a model. Neither the passphrase nor anything derived from it is in the
+        answer or in `last_join`.
+        """
+        ssid = arguments.get("ssid")
+        if not isinstance(ssid, str) or not ssid.strip():
+            return {"ok": False, "error": "wifi_add wants an ssid"}
+        ssid = ssid.strip()
+        password = arguments.get("password")
+        problem = _wifi_psk_problem(password)
+        if problem:
+            return {"ok": False, "error": problem}
+        now = time.monotonic()
+        if ssid in self._wifi_configured(now):
+            return {"ok": False, "error": f"{ssid} is already stored: join it"}
+        # What the network advertises decides how it is joined, and whether it is
+        # at all. The list is forgotten after every join, so it is read again
+        # (from what was last heard, not a scan) when it does not have this one.
+        with self._wifi_lock:
+            heard = next((n for n in self._wifi or [] if n["ssid"] == ssid), None)
+        if heard is None:
+            listed = self._tool_wifi_status({}).get("networks") or []
+            heard = next((n for n in listed if n.get("ssid") == ssid), None)
+        mgmt, refusal = _wifi_key_mgmt(None if heard is None
+                                       else str(heard.get("security") or ""))
+        if refusal:
+            return {"ok": False, "error": refusal}
+        secret = (password + "\n").encode()
+
+        def add() -> None:
+            began = time.time()
+            ok, said = _wifi_ctl("add", ssid, mgmt, timeout=WIFI_ADD_TIMEOUT_S,
+                                 stdin=secret)
+            with self._wifi_lock:
+                self._wifi = None
+                self._wifi_profiles = None      # one more stored, or none
+                self._wifi_join = {"ssid": ssid, "ok": ok, "added": True,
+                                   "at": round(began, 1),
+                                   "seconds": round(time.time() - began, 1),
+                                   "said": said.strip()[:200]}
+
+        threading.Thread(target=add, daemon=True, name="wifi-add").start()
+        return {"ok": True, "joining": ssid,
+                "note": (f"storing and joining {ssid}. Every connection to this "
+                         f"rover is about to drop; reconnect in a few seconds and "
+                         f"wifi_status will say how it went.")}
+
+    def _tool_wifi_forget(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Delete a stored network. Refused -- by the helper, which can see --
+        for the network in use and for the one the rover joins at a boot.
+        Touches no link, so it answers when it is done. Loopback only."""
+        ssid = arguments.get("ssid")
+        if not isinstance(ssid, str) or not ssid.strip():
+            return {"ok": False, "error": "wifi_forget wants an ssid"}
+        ssid = ssid.strip()
+        ok, said = _wifi_ctl("forget", ssid, timeout=WIFI_FORGET_TIMEOUT_S)
+        with self._wifi_lock:
+            self._wifi = None
+            self._wifi_profiles = None
+        if not ok:
+            return {"ok": False, "error": said.strip()[:200]}
+        return {"ok": True, "forgot": ssid}

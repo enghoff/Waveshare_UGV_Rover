@@ -7,6 +7,7 @@ case: a missing signal column is a moment in time, not a verdict about a network
 from __future__ import annotations
 
 import os
+import time
 
 from test_fakes import FakeLink
 from test_harness import check
@@ -247,7 +248,107 @@ def test_reading_the_network():
               "install" in asked["error"], True)
 
 
+def test_a_network_is_added_with_its_passphrase_and_forgotten():
+    """The console's password box and forget button, through a fake helper.
+
+    What matters: the passphrase reaches the helper on stdin and nowhere else --
+    not an argument, not an answer, not `last_join` -- the right key management
+    is chosen from what the network advertises, a typo or an open network is
+    refused before the rover leaves the one it is on, and both calls are served
+    on loopback only.
+    """
+    import rover_daemon
+    import rover_wifi
+
+    calls = []
+    profiles = {"TheGreatViking", "TheGreatLord"}
+
+    def helper(action, *args, timeout, stdin=None):
+        calls.append((action, args, stdin))
+        if action == "profiles":
+            return True, "".join(f"{name}\n" for name in sorted(profiles))
+        if action == "startup":
+            return True, "TheGreatViking\n"
+        if action == "list":
+            return True, ("*:TheGreatViking:88:WPA2\n"
+                          " :Beach House:60:WPA1 WPA2\n"
+                          " :Modern Flat:55:WPA3\n"
+                          " :Free Cafe:70:\n"
+                          " :Office:40:WPA2 802.1X\n")
+        if action == "add":
+            profiles.add(args[0])
+            return True, ""
+        if action == "forget":
+            if args[0] == "TheGreatViking":
+                return False, "TheGreatViking is the network in use"
+            profiles.discard(args[0])
+            return True, ""
+        return False, "unexpected"
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    real = rover_wifi._wifi_ctl
+    rover_wifi._wifi_ctl = helper
+    try:
+        status = rover.call("wifi_status", {})
+        check("the network the rover comes up on is marked, for the console",
+              ({n["ssid"]: n["startup"] for n in status["networks"]}["TheGreatViking"],
+               status["startup"]), (True, ["TheGreatViking"]))
+
+        asked = rover.call("wifi_add", {"ssid": "Beach House",
+                                        "password": "sand and sea"})
+        check("a network is stored and joined, answering before the link drops",
+              (asked.get("ok"), asked.get("joining")), (True, "Beach House"))
+        deadline = time.monotonic() + 3.0
+        while rover._wifi_join is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        added = [c for c in calls if c[0] == "add"]
+        check("...the helper is given the network and WPA2's key management",
+              added[0][1], ("Beach House", "wpa-psk"))
+        check("...and the passphrase on stdin, and only there",
+              (added[0][2], "sand and sea" in repr(added[0][1])),
+              (b"sand and sea\n", False))
+        check("...and it is in neither the answer nor what the next status says",
+              "sand" in repr(asked) + repr(rover.call("wifi_status", {})), False)
+        check("...which says how it went",
+              {k: rover._wifi_join[k] for k in ("ssid", "ok", "added")},
+              {"ssid": "Beach House", "ok": True, "added": True})
+
+        rover.call("wifi_status", {"scan": True})
+        rover.call("wifi_add", {"ssid": "Modern Flat", "password": "eightchr"})
+        deadline = time.monotonic() + 3.0
+        while (len([c for c in calls if c[0] == "add"]) < 2
+               and time.monotonic() < deadline):
+            time.sleep(0.02)
+        check("a WPA3-only network is joined with SAE",
+              [c for c in calls if c[0] == "add"][-1][1], ("Modern Flat", "sae"))
+
+        before = len(calls)
+        for ssid, password, wanted in (
+                ("Beach House", "whatever1", "already stored"),
+                ("Elsewhere", "short", "8 to 63 characters"),
+                ("Free Cafe", "whatever1", "open network"),
+                ("Office", "whatever1", "user name"),
+                ("", "whatever1", "wants an ssid")):
+            got = rover.call("wifi_add", {"ssid": ssid, "password": password})
+            check(f"refused before the link drops: {wanted}",
+                  (got.get("ok"), wanted in str(got.get("error"))), (False, True))
+        check("...and none of them reached the helper",
+              [c for c in calls[before:] if c[0] == "add"], [])
+
+        check("a stored network is forgotten",
+              rover.call("wifi_forget", {"ssid": "TheGreatLord"}),
+              {"ok": True, "forgot": "TheGreatLord"})
+        check("...and the helper's refusal is said as it was given",
+              rover.call("wifi_forget", {"ssid": "TheGreatViking"}),
+              {"ok": False, "error": "TheGreatViking is the network in use"})
+    finally:
+        rover_wifi._wifi_ctl = real
+    check("both are served to the rover itself only",
+          {"wifi_add", "wifi_forget"} <= set(rover_daemon.LOCAL_ONLY), True)
+
+
 TESTS = (
+    test_a_network_is_added_with_its_passphrase_and_forgotten,
     test_the_radio_is_found_and_not_assumed_to_be_wlan0,
     test_wifi_status_without_the_helper_still_reports_the_link,
     test_an_unfilled_signal_column_is_a_moment_not_an_answer,

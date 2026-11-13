@@ -583,6 +583,9 @@
   #wifiList tr.here td { color: var(--accent); }
   #wifiList tr.stranger td { color: var(--dim); }
   #wifiList button { padding: 2px 10px; font-size: 12px; }
+  #wifiList button + button { margin-left: 4px; }
+  #wifiList input.passphrase { width: 9em; margin-right: 4px; font-size: 12px;
+                               padding: 2px 6px; }
   /* The folded network list is a list like any other once open; only the line
      that opens it reads as a hint. */
   #wifiFold { color: inherit; font-size: inherit; }

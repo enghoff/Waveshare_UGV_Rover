@@ -109,23 +109,69 @@ def test_the_network_panel() -> None:
                        "list_age_s": 0.0,
                        "networks": [
                            {"ssid": "TheGreatViking", "signal": 84,
-                            "in_use": True, "configured": True},
+                            "in_use": True, "configured": True, "startup": True,
+                            "security": "WPA2"},
                            {"ssid": "TheGreatLord", "signal": 50,
-                            "in_use": False, "configured": True},
+                            "in_use": False, "configured": True,
+                            "security": "WPA2"},
                            {"ssid": "Alister", "signal": 40,
-                            "in_use": False, "configured": False}]})
+                            "in_use": False, "configured": False,
+                            "security": "WPA1 WPA2"},
+                           {"ssid": "Free Cafe", "signal": 30,
+                            "in_use": False, "configured": False, "security": ""},
+                           {"ssid": "Office", "signal": 20, "in_use": False,
+                            "configured": False, "security": "WPA2 802.1X"}]})
     check("the reading is the network the rover is on",
           session.wifi["text"].startswith("TheGreatViking"), True)
     check("...and the address to reach it at",
           "192.168.1.80" in session.wifi["where"], True)
     # The other two house networks are the ones a person may choose; the
     # neighbour's is shown so the list is honest and is not offered.
+    rows = {n["ssid"]: n for n in session.wifi_networks}
     offered = [n["ssid"] for n in session.wifi_networks if n["joinable"]]
-    check("the house networks it is not on are the ones offered",
+    check("the stored networks it is not on are the ones offered a join",
           offered, ["TheGreatLord"])
-    check("...and a network with no passphrase says why it is not",
-          [n["note"] for n in session.wifi_networks if n["ssid"] == "Alister"],
-          ["no passphrase"])
+    check("a secured network with nothing stored gets a passphrase box",
+          [s for s, n in rows.items() if n["addable"]], ["Alister"])
+    check("...an open one does not, and says it is open",
+          (rows["Free Cafe"]["addable"], rows["Free Cafe"]["note"]), (False, "open"))
+    check("...nor one that wants a user name too",
+          (rows["Office"]["addable"], rows["Office"]["note"]),
+          (False, "not supported"))
+    check("forget is offered on a stored network that is neither in use nor the "
+          "one the rover comes up on",
+          [s for s, n in rows.items() if n["forgettable"]], ["TheGreatLord"])
+
+    session.watch = object()
+    sent: list[tuple] = []
+    session.watch_call = lambda name, args: sent.append((name, args))
+    session.wifi_add("Alister", "kettle on the hob")
+    check("a typed passphrase goes to the rover with the join",
+          sent[0], ("wifi_add", {"ssid": "Alister", "password": "kettle on the hob"}))
+    check("...which the panel treats as a join: the rover is about to go away",
+          (session.wifi["joining"], session.rejoin_at > 0.0), ("Alister", True))
+    check("...and nothing the page is sent holds the passphrase",
+          "kettle" in repr(session.snapshot()), False)
+    session.wifi_answered("wifi_add", {"ok": False,
+                                       "error": "a passphrase is 8 to 63 characters"})
+    check("a refused add cancels the wait, since the link was never touched",
+          (session.wifi["joining"], session.rejoin_at), (None, 0.0))
+    check("...and says why", session.wifi["note"],
+          "not joined: a passphrase is 8 to 63 characters")
+    session.wifi_forget("TheGreatLord")
+    check("forget is sent", sent[-1], ("wifi_forget", {"ssid": "TheGreatLord"}))
+    session.wifi_answered("wifi_forget", {"ok": True, "forgot": "TheGreatLord"})
+    check("...and said, and the list asked for again",
+          (session.wifi["note"], session.wifi_at), ("forgot TheGreatLord", 0.0))
+    session.wifi_answered("wifi_forget",
+                          {"ok": False, "error": "TheGreatViking is the network in use"})
+    check("a refused forget says why",
+          session.wifi["note"], "not forgotten: TheGreatViking is the network in use")
+    session.show_wifi({"ok": True, "connected": "TheGreatViking", "list_age_s": 0.0,
+                       "networks": [], "last_join": {"ssid": "Alister", "ok": False,
+                                                     "added": True}})
+    check("a typed join that failed says nothing was kept",
+          "could not join Alister -- not stored" in session.wifi["where"], True)
 
     session.watch = object()
     calls: list[tuple] = []

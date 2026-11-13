@@ -697,8 +697,8 @@ function drawWifi(wifi) {
   // A join in flight greys every join button, and that can change without the list
   // changing, so it is applied on every state rather than only when the rows are
   // rebuilt.
-  for (const button of $("wifiList").querySelectorAll("button")) {
-    button.disabled = !!wifi.joining;
+  for (const control of $("wifiList").querySelectorAll("button, input")) {
+    control.disabled = !!wifi.joining;
   }
 
   // The rows themselves are fetched rather than pushed -- three and a half kB that
@@ -734,9 +734,50 @@ function drawNetworks() {
       join.onclick = () => post({do: "wifi_join", ssid: network.ssid});
       join.disabled = !!joining;
       action.append(join);
+    } else if (network.addable) {
+      // A secured network with no passphrase on the rover: typed here, sent once
+      // with the join, and the box emptied -- the page keeps no copy.
+      const key = document.createElement("input");
+      key.type = "password";
+      key.autocomplete = "off";
+      key.placeholder = "passphrase";
+      key.className = "passphrase";
+      key.disabled = !!joining;
+      const join = document.createElement("button");
+      join.textContent = "join";
+      join.disabled = !!joining;
+      const send = () => {
+        if (!key.value) return;
+        post({do: "wifi_add", ssid: network.ssid, password: key.value});
+        key.value = "";
+      };
+      join.onclick = send;
+      // Enter joins. A space is part of a passphrase -- see keys() -- and
+      // Escape still stops the rover from in here.
+      key.onkeydown = (event) => { if (event.key === "Enter") send(); };
+      action.append(key, join);
     } else {
       action.textContent = network.note;
       action.className = "wrap";
+    }
+    if (network.forgettable) {
+      // Pressed twice, like clearing the map: the first press arms it for a
+      // few seconds.
+      const forget = document.createElement("button");
+      forget.textContent = "forget";
+      forget.disabled = !!joining;
+      let armed = 0;
+      forget.onclick = () => {
+        if (armed) {
+          clearTimeout(armed); armed = 0;
+          forget.textContent = "forget";
+          post({do: "wifi_forget", ssid: network.ssid});
+          return;
+        }
+        forget.textContent = "forget?";
+        armed = setTimeout(() => { armed = 0; forget.textContent = "forget"; }, 4000);
+      };
+      action.append(forget);
     }
     row.append(name, signal, action);
     list.append(row);
@@ -831,11 +872,13 @@ function keys() {
   addEventListener("keydown", (event) => {
     // Stop is the one key that works while a distance is being typed. Nothing
     // else does: without that guard, typing 0.5 sends an arrow to the motors on
-    // the way to the decimal point. The box that takes a phrase to look for, and
-    // a snapshot's name, are the exception for space alone: a space there is part
-    // of what is being typed, and Escape still stops the rover from inside them.
+    // the way to the decimal point. The box that takes a phrase to look for, a
+    // snapshot's name and a network's passphrase are the exception for space
+    // alone: a space there is part of what is being typed, and Escape still
+    // stops the rover from inside them.
     const phrase = event.target.id === "wSearchBox"
-        || event.target.classList.contains("snap-name");
+        || event.target.classList.contains("snap-name")
+        || event.target.classList.contains("passphrase");
     if ((event.key === " " && !phrase) || event.key === "Escape") {
       event.preventDefault();
       post({do: "stop"});

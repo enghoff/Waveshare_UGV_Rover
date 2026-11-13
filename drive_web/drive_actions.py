@@ -98,6 +98,10 @@ class SessionActions:
             self.wifi_scan()
         elif what == "wifi_join":
             self.wifi_join(str(action.get("ssid") or ""))
+        elif what == "wifi_add":
+            self.wifi_add(str(action.get("ssid") or ""), action.get("password"))
+        elif what == "wifi_forget":
+            self.wifi_forget(str(action.get("ssid") or ""))
         elif what == "bt_scan":
             self.bt["scanning"] = True
             self.watch_call("bt_scan")
@@ -423,6 +427,50 @@ class SessionActions:
                              f"for a few seconds")
         self.watch_call("wifi_join", {"ssid": ssid})
         self.rejoin_at = time.monotonic() + WIFI_REJOIN_S
+
+    def wifi_add(self, ssid: str, password: Any) -> None:
+        """Store a network with the passphrase typed for it, and join it.
+
+        The link goes down as for `wifi_join`. The passphrase goes to the
+        daemon in this one call, on the rover's own loopback, and is kept
+        nowhere in this console: not in the panel, not in the notice line.
+        """
+        if not ssid or not isinstance(password, str) or self.watch is None:
+            return
+        self.wifi["joining"] = ssid
+        self.wifi_joining = ssid
+        self.wifi["note"] = (f"joining {ssid}; the rover will be unreachable "
+                             f"for a few seconds")
+        self.watch_call("wifi_add", {"ssid": ssid, "password": password})
+        self.rejoin_at = time.monotonic() + WIFI_REJOIN_S
+
+    def wifi_forget(self, ssid: str) -> None:
+        """Delete a stored network. Touches no link."""
+        if not ssid or self.watch is None:
+            return
+        self.wifi["note"] = f"forgetting {ssid}"
+        self.watch_call("wifi_forget", {"ssid": ssid})
+
+    def wifi_answered(self, name: str, body: dict[str, Any]) -> None:
+        """An add's or a forget's answer, said in the network card.
+
+        An add that was refused was refused before the link was touched -- a
+        typo, an open network, one already stored -- so there is no reconnect
+        to wait for. One that was accepted is reported by `wifi_status` after
+        the reconnect, as a join is.
+        """
+        if name == "wifi_add":
+            if not body.get("ok"):
+                self.wifi_joining = None
+                self.wifi["joining"] = None
+                self.rejoin_at = 0.0
+                self.wifi["note"] = f"not joined: {body.get('error') or 'no answer'}"
+            return
+        if body.get("ok"):
+            self.wifi["note"] = f"forgot {body.get('forgot')}"
+        else:
+            self.wifi["note"] = f"not forgotten: {body.get('error') or 'no answer'}"
+        self.wifi_at = 0.0          # and the list again now, without it
 
     def bt_answered(self, name: str, body: dict[str, Any]) -> None:
         """A Bluetooth button's answer, said in its own card.

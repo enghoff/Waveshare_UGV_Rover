@@ -120,6 +120,24 @@ A chosen network is held until somebody chooses another or the rover reboots.
 There is no cooldown and no reconsidering, because nothing is doing any
 considering -- **a reboot always comes back to `TheGreatViking`.**
 
+**A network the rover has no passphrase for can be added from the console**:
+the passphrase typed beside it goes to the daemon (`wifi_add`, loopback only)
+and on to `wifi_ctl.sh add` on stdin -- never as an argument, which `ps` would
+show -- and is written into a root-only keyfile the way `install-profiles.sh`
+writes the house networks, which NetworkManager then files under netplan. The
+profile is pinned to the onboard radio, keeps trying for ever and does not
+autoconnect, so the one-network-at-boot rule above still holds. WPA2 and mixed
+networks get `wpa-psk`, WPA3-only ones `sae`; open networks are not joined,
+since anyone on one could reach the daemon, and 802.1X and WEP are not offered.
+A join that fails deletes the new profile, so a typo is not kept, and brings the
+previous network back up.
+
+**A stored network can be forgotten** (`wifi_forget`, loopback only, `wifi_ctl.sh
+forget`), every profile for it, except the one in use -- that would cut the link
+the request came over -- and the one the rover comes up on, which would leave a
+rover that joins nothing after its next power cycle with no cable to reach it
+by. `wifi_ctl.sh startup` names that one so the console can leave the button off.
+
 ```bash
 ssh orin 'sudo -n /usr/local/sbin/wifi_ctl.sh profiles'   # what it can join
 ssh orin '/usr/local/sbin/wifi_ctl.sh status'             # every radio, one line each

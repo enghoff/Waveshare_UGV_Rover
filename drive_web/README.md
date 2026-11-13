@@ -124,7 +124,14 @@ lasts until the power is cut.
 
 The network card shows the access point, its strength and the address; the list
 of networks and "look for networks" are folded under a line giving their count,
-closed on every load.
+closed on every load. A stored network the rover is not on has **join**; a
+secured network with nothing stored has a passphrase box and **join**, which
+stores it and joins it in one go (the passphrase goes to the daemon on the
+rover's own loopback and the box is emptied; a failed join keeps nothing and
+puts the rover back where it was). A stored network that is neither the one in
+use nor the one the rover comes up on has **forget**, pressed twice like
+"clear map". Open networks and ones wanting a user name are listed and not
+offered. See [`wifi_roam/README.md`](../wifi_roam/README.md#choosing-a-network-by-hand).
 
 Under it, **bluetooth** lists what the rover is paired with -- game controllers,
 speakers and headsets -- and, after "look for devices", any of those a 30-second

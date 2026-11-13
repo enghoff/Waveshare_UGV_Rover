@@ -5,8 +5,27 @@
 #     wifi_ctl.sh scan [iface]        # ...after asking the radio to look again
 #     wifi_ctl.sh join <ssid> [iface] # move the rover onto a configured network
 #     wifi_ctl.sh profiles [iface]    # the networks with a passphrase on this rover
+#     wifi_ctl.sh startup             # ...and which of them it joins at a boot
 #     wifi_ctl.sh status              # every radio, one line each
 #     wifi_ctl.sh radio-on            # undo a wifi switch somebody turned off
+#     wifi_ctl.sh add <ssid> <wpa-psk|sae> [iface]   # store a network and join it;
+#                                     # the passphrase is the first line of stdin
+#     wifi_ctl.sh forget <ssid> [iface]               # delete a stored network
+#
+# **`add` takes the passphrase on stdin and nowhere else.** An argument is
+# readable in `ps` by every account on the machine. It is written into a
+# root-only keyfile, the way install-profiles.sh writes the house networks, and
+# NetworkManager files it away from there. A network added here is pinned to
+# the onboard radio, keeps trying for ever, and does not autoconnect: it is
+# joined now, and again whenever somebody asks, and the rover still comes up on
+# the home network at a boot. If the join fails -- a wrong passphrase, a network
+# gone out of range -- the new profile is deleted, so a typo is not kept, and
+# the network the rover was on is brought back up.
+#
+# **`forget` refuses the network in use and the one the rover joins at a boot.**
+# Forgetting the first cuts the link it was asked over; forgetting the second
+# leaves a rover that comes up on nothing after its next power cycle, and the
+# only other way in is a cable the rover does not have.
 #
 # **`join` takes the link down and brings another up**, so every connection to
 # the rover dies, including the one that asked. That is what a join costs on a
@@ -155,8 +174,41 @@ iface_dbm() {
 NAMED=0
 case ${1:-} in
     list|scan|profiles) [ -n "${2:-}" ] && { IFACE=$2; NAMED=1; } ;;
-    join)               [ -n "${3:-}" ] && { IFACE=$3; NAMED=1; } ;;
+    join|forget)        [ -n "${3:-}" ] && { IFACE=$3; NAMED=1; } ;;
+    add)                [ -n "${4:-}" ] && { IFACE=$4; NAMED=1; } ;;
 esac
+
+# A network name this script will write into a keyfile: one to 32 bytes, no
+# control characters, and none of the three things a keyfile value would read
+# differently from how they were typed -- a backslash, a semicolon (a list of
+# bytes to NetworkManager) and a space at either end (trimmed).
+ssid_ok() {
+    case $1 in
+        ''|' '*|*' '|*[[:cntrl:]]*|*';'*|*'\'*) return 1 ;;
+    esac
+    [ "$(printf '%s' "$1" | wc -c)" -le 32 ]
+}
+
+# A WPA passphrase: 8 to 63 printable ASCII characters, or 64 hex digits.
+psk_ok() {
+    n=$(printf '%s' "$1" | wc -c)
+    case $1 in
+        *[![:print:]]*) return 1 ;;
+    esac
+    if [ "$n" -eq 64 ]; then
+        case $1 in *[!0-9a-fA-F]*) return 1 ;; esac
+        return 0
+    fi
+    [ "$n" -ge 8 ] && [ "$n" -le 63 ]
+}
+
+# The profile names holding a network, one to a line.
+profiles_for_ssid() {
+    wifi_profile_names | while IFS= read -r name; do
+        ssid=$(nmcli -g 802-11-wireless.ssid con show "$name" 2>/dev/null)
+        [ "${ssid:-$name}" = "$1" ] && printf '%s\n' "$name"
+    done
+}
 
 case ${1:-} in
     status)
@@ -201,6 +253,17 @@ case ${1:-} in
     profiles)
         profiles
         ;;
+    startup)
+        # Unprivileged, like `profiles`: which stored networks autoconnect, so a
+        # console can leave `forget` off the one the rover comes up on.
+        command -v nmcli >/dev/null 2>&1 || exit 0
+        wifi_profile_names | while IFS= read -r name; do
+            [ "$(nmcli -g connection.autoconnect con show "$name" 2>/dev/null)" = yes ] ||
+                continue
+            ssid=$(nmcli -g 802-11-wireless.ssid con show "$name" 2>/dev/null)
+            printf '%s\n' "${ssid:-$name}"
+        done
+        ;;
     radio-on)
         # **Nothing in this repository ever turns that switch off**, and
         # NetworkManager restores it across a reboot from a state file of its
@@ -238,9 +301,127 @@ case ${1:-} in
             nmcli -w "$JOIN_WAIT" con up "$profile" ifname "$IFACE"
         fi
         ;;
+    add)
+        ssid=${2:-}
+        mgmt=${3:-}
+        export LC_ALL=C
+        if ! ssid_ok "$ssid"; then
+            echo "not a network name this rover can store" >&2
+            exit 2
+        fi
+        case $mgmt in
+            wpa-psk|sae) ;;
+            *) echo "add needs wpa-psk or sae" >&2; exit 2 ;;
+        esac
+        IFS= read -r psk || true
+        if ! psk_ok "$psk"; then
+            echo "a passphrase is 8 to 63 characters, or 64 hex digits" >&2
+            exit 2
+        fi
+        if [ -n "$(profiles_for_ssid "$ssid")" ]; then
+            echo "$ssid is already stored on this rover" >&2
+            exit 3
+        fi
+        uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || true)
+        [ -n "$uuid" ] || uuid=$(uuidgen 2>/dev/null || true)
+        # Sixteen random bytes in a UUID's shape, where neither exists -- the
+        # self-test's machine, in practice.
+        [ -n "$uuid" ] || uuid=$(od -An -N16 -tx1 /dev/urandom 2>/dev/null |
+            tr -d ' \n' |
+            sed 's/^\(.\{8\}\)\(.\{4\}\)\(.\{4\}\)\(.\{4\}\)\(.\{12\}\)$/\1-\2-\3-\4-\5/')
+        [ -n "$uuid" ] || { echo "no uuid to name the profile by" >&2; exit 5; }
+        # The keyfile escapes for a value: a backslash doubled, and every space
+        # spelled \s, since a trailing one would otherwise be trimmed off the
+        # passphrase. printf and the here-document are shell builtins, so the
+        # passphrase is on no command line on the way in either.
+        key=$(printf '%s' "$psk" | sed -e 's/\\/\\\\/g' -e 's/ /\\s/g')
+        file=${NM_DIR:-/etc/NetworkManager/system-connections}/$uuid.nmconnection
+        (
+            umask 077
+            cat > "$file" <<PROFILE
+[connection]
+id=$ssid
+uuid=$uuid
+type=wifi
+interface-name=$IFACE
+autoconnect=false
+autoconnect-retries=0
+
+[wifi]
+mode=infrastructure
+ssid=$ssid
+
+[wifi-security]
+key-mgmt=$mgmt
+psk=$key
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+PROFILE
+        )
+        chmod 600 "$file"
+        before=$(nmcli -g GENERAL.CONNECTION dev show "$IFACE" 2>/dev/null)
+        if ! nmcli con load "$file" > /dev/null 2>&1; then
+            rm -f "$file"
+            echo "NetworkManager would not load a profile for $ssid" >&2
+            exit 5
+        fi
+        if said=$(nmcli -w "$JOIN_WAIT" con up "$uuid" 2>&1); then
+            exit 0
+        fi
+        # Not kept: a wrong passphrase stored is a network the console offers to
+        # join that can never be joined.
+        nmcli con delete "$uuid" > /dev/null 2>&1 || true
+        rm -f "$file"
+        back=""
+        if [ -n "$before" ] && nmcli -w "$JOIN_WAIT" con up "$before" > /dev/null 2>&1
+        then
+            back="; back on $before"
+        fi
+        echo "could not join $ssid, and it was not stored$back: $(echo "$said" | tail -1)" >&2
+        exit 4
+        ;;
+    forget)
+        ssid=${2:-}
+        if [ -z "$ssid" ]; then
+            echo "forget needs an SSID" >&2
+            exit 2
+        fi
+        names=$(profiles_for_ssid "$ssid")
+        if [ -z "$names" ]; then
+            echo "no stored network called $ssid on this rover" >&2
+            exit 3
+        fi
+        if [ "$(current_ssid "$IFACE")" = "$ssid" ]; then
+            echo "$ssid is the network in use" >&2
+            exit 6
+        fi
+        # Read the names a line at a time from a here-document rather than a
+        # pipe, so that a name with a space in it stays one name and the exit
+        # below leaves the script rather than a subshell.
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            if [ "$(nmcli -g connection.autoconnect con show "$name" 2>/dev/null)" = yes ]
+            then
+                echo "$ssid is the network the rover joins at start-up" >&2
+                exit 6
+            fi
+        done <<NAMES
+$names
+NAMES
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            nmcli con delete "$name" > /dev/null || exit 5
+        done <<NAMES
+$names
+NAMES
+        ;;
     *)
-        echo "usage: wifi_ctl.sh list|scan|profiles|status|radio-on [iface] |" \
-             "join <ssid> [iface]" >&2
+        echo "usage: wifi_ctl.sh list|scan|profiles|startup|status|radio-on [iface] |" \
+             "join|forget <ssid> [iface] | add <ssid> <wpa-psk|sae> [iface]" >&2
         exit 2
         ;;
 esac
