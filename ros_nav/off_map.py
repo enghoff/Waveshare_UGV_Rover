@@ -13,9 +13,13 @@ draw onto the flat and the store a pose nobody can vouch for to file its looks
 against.
 
 **Leaving is noticed and latched.** LEAVE_STEPS searched scans running that the
-localizer could not place on the map, during a manual drive, is the rover off
-its map. Scans it did not search -- standing still, turning too fast -- say
-nothing either way. From then on the map is held, with the controller or
+localizer could not place on the map -- under LEAVE_SCORE, its own bar for
+believing a match -- during a manual drive, is the rover off its map. Scans it
+did not search -- turning too fast, too few returns -- say nothing either way.
+**The score decides, not whether a correction was taken**: a parked rover's
+searched scans come back "standing still and the map agrees", not accepted,
+at 82-87% (on the rover, 2026-11-13), and counting those as misses latched a
+rover that had only stopped. From then on the map is held, with the controller or
 without it: the mapper paused, nothing saved, the world store recording
 nothing, the change watch and autonomous runs refused (nav_manual.py says how).
 
@@ -34,6 +38,9 @@ wheel odometry alone can come back more than a refit's usual metre out.
 #: two seconds at the localizer's 5 Hz. A person walking past the lidar does
 #: not hide the room for that long; a doorway into the unmapped does.
 LEAVE_STEPS = 10
+#: Under this share of the scan on the map's walls, a scan is not placed: the
+#: localizer's own MIN_SCORE, under which it keeps odometry's prediction.
+LEAVE_SCORE = 0.55
 #: Matched scans running, at this share of the scan on the map's walls or
 #: better, before the wide search is asked whether the rover is back.
 BACK_STEPS = 10
@@ -62,7 +69,7 @@ class OffMap(object):
     def off(self):
         return self.since is not None
 
-    def step(self, manual, searched, accepted, score, pose, now, wall):
+    def step(self, manual, searched, score, pose, now, wall):
         """One localizer step. Says "left" when the rover has just been found
         off its map, "check" when it may be back and the wide search should be
         asked, and "" otherwise. `now` is monotonic, for the check gap; `wall`
@@ -70,7 +77,7 @@ class OffMap(object):
         if not searched:
             return ""
         if self.since is None:
-            if accepted:
+            if score >= LEAVE_SCORE:
                 self.misses = 0
                 self.left_at = pose
                 return ""
@@ -86,7 +93,7 @@ class OffMap(object):
             self.checked_at = None
             self.since = wall
             return "left"
-        if not (accepted and score >= BACK_SCORE):
+        if score < BACK_SCORE:
             self.hits = 0
             return ""
         self.hits += 1

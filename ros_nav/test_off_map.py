@@ -12,18 +12,21 @@ HOME = (1.0, 2.0, 90.0)
 
 
 def feed(latch, steps, manual=True, start=0.0):
-    """Feed `steps` as (searched, accepted, score); return what was said."""
+    """Feed `steps` as (searched, score); return what was said."""
     said = []
-    for i, (searched, accepted, score) in enumerate(steps):
+    for i, (searched, score) in enumerate(steps):
         now = start + 0.2 * i
-        said.append(latch.step(manual, searched, accepted, score, HOME, now,
+        said.append(latch.step(manual, searched, score, HOME, now,
                                1700000000.0 + now))
     return [s for s in said if s]
 
 
-MATCHED = (True, True, 0.9)
-LOST = (True, False, 0.2)
-STILL = (False, True, 0.0)
+MATCHED = (True, 0.9)
+LOST = (True, 0.2)
+SKIPPED = (False, 0.0)
+#: What a parked rover's searched scans say: not accepted -- no correction was
+#: taken -- and the map agrees at 82-87% (the rover, 2026-11-13).
+PARKED = (True, 0.86)
 
 
 def test_leaving_is_noticed_only_on_a_drive_by_hand():
@@ -34,9 +37,12 @@ def test_leaving_is_noticed_only_on_a_drive_by_hand():
     check("a moment of clutter is not leaving",
           (feed(latch, [LOST] * (o.LEAVE_STEPS - 1) + [MATCHED]), latch.off),
           ([], False))
-    check("scans not searched -- standing still, turning fast -- say nothing",
-          (feed(latch, [LOST] * 5 + [STILL] * 30 + [LOST] * 4), latch.off),
+    check("scans not searched -- turning fast, too few returns -- say nothing",
+          (feed(latch, [LOST] * 5 + [SKIPPED] * 30 + [LOST] * 4), latch.off),
           ([], False))
+    check("a rover stopped under the controller, which the map agrees with, "
+          "is on its map however long it stands",
+          (feed(latch, [PARKED] * 60), latch.off), ([], False))
     auto = o.OffMap()
     check("a drive the rover makes itself is not held: it maps as it goes",
           (feed(auto, [LOST] * 30, manual=False), auto.off), ([], False))
@@ -53,7 +59,7 @@ def test_coming_back_is_shown_by_the_wide_search():
     latch = o.OffMap()
     feed(latch, [LOST] * o.LEAVE_STEPS)
     check("matching again, but only just, earns nothing",
-          feed(latch, [(True, True, o.BACK_SCORE - 0.05)] * 30), [])
+          feed(latch, [(True, o.BACK_SCORE - 0.05)] * 30), [])
     check("a run of good matches earns one wide search",
           feed(latch, [MATCHED] * (o.BACK_STEPS + 5), start=100.0), ["check"])
     check("...and is still off the map until it answers", latch.off, True)

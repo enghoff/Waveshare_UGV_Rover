@@ -135,12 +135,11 @@ class NavManual:
             step = json.loads(msg.data)
             x, y, heading = step["map_base"]
             pose = (float(x), float(y), math.degrees(float(heading)))
-            searched, accepted = bool(step["searched"]), bool(step["accepted"])
-            score = float(step["score"])
+            searched, score = bool(step["searched"]), float(step["score"])
         except (ValueError, KeyError, TypeError):
             return
         with self._lock:
-            said = self.off_map.step(self.manual_on, searched, accepted, score, pose,
+            said = self.off_map.step(self.manual_on, searched, score, pose,
                                      time.monotonic(), time.time())
             left_at = self.off_map.left_at
         if said == "left":
