@@ -105,6 +105,17 @@ class OffMap(object):
         self.checked_at = now
         return "check"
 
+    def carried(self, wall):
+        """The rover was turned with neither track moving (base_node.recover):
+        in somebody's hands, or its gyro is wrong. Either way nothing vouches
+        for where it is, so it is off its map from now until the scan shows it
+        back, by the same test as after a drive by hand -- which a rover only
+        turned where it stood passes within seconds of being set down."""
+        if self.since is None:
+            self.since = wall
+            self.checked_at = None
+        self.misses = self.hits = 0
+
     def checked(self, back):
         """The wide search's verdict on a "check": back on the map, or not."""
         self.checking = False
@@ -131,6 +142,21 @@ class OffMap(object):
                     "heading_deg": round(where[2], 1)},
                 "matched_running": self.hits, "checks": self.checks,
                 "checking": self.checking}
+
+
+def gyro_refusal(op, base):
+    """Why the move `op` is refused under the base's gyro fault, or "".
+
+    Everything that turns: a turn on the spot, and a drive to a point or an
+    exploration, which steer by the heading. With the heading held none of them
+    can tell when it has turned far enough -- a turn spins until its time runs
+    out. A straight `drive` goes by the tracks' count and is not refused.
+    `base` is the base's state as the bridge last heard it, or None.
+    """
+    fault = (base or {}).get("gyro_fault")
+    if not fault or op == "drive":
+        return ""
+    return "the rover cannot measure its own turning: %s" % fault
 
 
 def hold_reason(manual, off_map, restored, settled, unchecked):

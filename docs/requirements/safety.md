@@ -305,9 +305,21 @@ faulty after 3 s of a turn no track shows, or 2 s of the gyro reporting exactly
 nothing. It then holds the heading, and the map is not saved while the fault
 stands, so the fault cannot be written into the next boot's map.
 
-Proposed rather than settled: no fault has happened since the rule was
-deployed. Replayed over the 21,528 readings the base has logged, it refuses all
-339 taken during the three faults, and one other.
+Since 2026-11-14 the first of those verdicts ends by itself once the gyro has
+read still for 5 s with the tracks still, because a rover picked up and turned
+looks the same for as long as it is in the air and a faulty gyro has never
+come back to rest
+([2026-11-14](../progress/2026-11-14-a-carried-rover-taken-for-a-faulty-gyro.md)).
+While either verdict stands navigation also refuses a turn, a drive to a point
+and an exploration from anybody, since none of them could tell when it had
+turned far enough. What would make this false is a turn dispatched while the
+base reports a fault, or a fault still standing ten seconds after a carried
+rover was set down.
+
+Proposed rather than settled: the base's verdict has fired twice on the rover,
+both times on a rover in the owner's hands, and never yet on a faulty gyro.
+Replayed over the 21,528 readings the base has logged, the bias rule refuses
+all 339 taken during the three faults, and one other.
 
 <a id="r-safe-18"></a>
 ### R-SAFE-18 — Driven by hand, the rover will not drive into what is within 20 cm of it

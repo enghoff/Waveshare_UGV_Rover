@@ -521,7 +521,8 @@ class NavMap:
         2026-10-14 the gyro came up reading 210 deg/s with the rover parked, and
         the live map became a disc of free floor drawn across the walls; only the
         restore being unsettled kept that off the disk. The base says so in
-        `gyro_fault`, latched until it restarts (base_node.GYRO_FAULT_S).
+        `gyro_fault`, for as long as the gyro is not believed
+        (base_node.GYRO_FAULT_S).
         """
         base = getattr(self, "base_state", None) or {}
         if base.get("gyro_fault"):

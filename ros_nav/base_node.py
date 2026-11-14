@@ -97,11 +97,20 @@ SPINNING_DPS = 3.0
 # parked and nothing moving, which turned the believed heading round and round
 # and smeared the live map into a disc of free floor across the walls.
 TRACK_WAIT_S = 1.5
-# And this long of it is a faulty gyro rather than a rover lifted and turned by
-# hand. Latched for the life of this node, because every fault on record lasted
-# until the power was cut (docs/progress/2026-10-06-a-rover-that-cannot-feel-
-# itself-turn.md): the heading is held, and the map keeper stops saving.
+# And this long of it is a gyro not to be believed for now: the heading is held,
+# and the map keeper stops saving. A faulty gyro, or a rover lifted and turned by
+# hand -- which of the two is told by what the gyro does next (GYRO_REST_S).
 GYRO_FAULT_S = 3.0
+# A gyro that then reads still for this long, with the tracks still, was telling
+# the truth, and the fault ends by itself. Every faulty gyro on record read a
+# large constant rate until the power was cut (+150, -2,063 and +210.6 deg/s;
+# docs/progress/2026-10-06-a-rover-that-cannot-feel-itself-turn.md) and none
+# came back to its offset; a rover carried across the room does as soon as it is
+# set down. Until 2026-11-14 the fault lasted for the life of this node, and
+# twice that evening the owner picking the rover up left it unable to finish a
+# turn until navigation was restarted
+# (docs/progress/2026-11-14-a-carried-rover-taken-for-a-faulty-gyro.md).
+GYRO_REST_S = 5.0
 # A gyro reporting exactly nothing. Healthy, its integral moves on nearly every
 # sample -- the offset alone is about 7 LSB -- and the longest run of unchanged
 # samples in a still minute on 2026-10-14 was 0.11 s. Frozen on 2026-10-05, it did
@@ -316,8 +325,16 @@ class BaseNode(Node):
         self._unwitnessed_for = 0.0
         self._unwitnessed = 0.0
         self._frozen_for = 0.0
-        # Why the gyro cannot be believed, or "". Latched: see GYRO_FAULT_S.
+        # Why the gyro cannot be believed, or "". See GYRO_FAULT_S.
         self.gyro_fault = ""
+        # How many times it has been called faulty, for whoever must not miss
+        # one that came and went between two looks (nav_bridge.on_base_state).
+        self.gyro_faults = 0
+        # Whether the standing fault ends when the gyro reads still again, how
+        # long it has, and what the gyro has turned meanwhile. See `recover`.
+        self._fault_clears = False
+        self._rest_for = 0.0
+        self._carried = 0.0
 
         self.turn_points = self.calibration["turn_pwm_points"]
         self.drive_points = self.calibration["drive_pwm_points"]
@@ -397,6 +414,7 @@ class BaseNode(Node):
             # Why the gyro is not to be believed, or "". The console shows it and
             # the map keeper stops saving on it (nav_map.map_trustworthy).
             "gyro_fault": self.gyro_fault,
+            "gyro_faults": self.gyro_faults,
         }
         self.state_pub.publish(
             String(data=json.dumps(state, separators=(",", ":"))))
@@ -615,8 +633,10 @@ class BaseNode(Node):
         another way -- is no longer noticed, and since 2026-10-14 not however fast
         it is turned either, once the tracks can be read (`witnessed`), because a
         gyro that reports a turn no track shows has been a faulty gyro far more
-        often than a rover in somebody's hands. Dead reckoning never measured that
-        rover's *position* either, since the encoders see nothing, so this takes
+        often than a rover in somebody's hands. (Three seconds of it or more is
+        noticed again since 2026-11-14: called a fault while it lasts, and taken
+        into the heading once the rover is set down -- `recover`.) Dead
+        reckoning never measured that rover's *position* either, since the encoders see nothing, so this takes
         away half of a measurement that was already missing rather than a
         working one. Being moved while switched on is what the refit is for.
 
@@ -628,8 +648,8 @@ class BaseNode(Node):
         if not dt or dt <= 0:
             return d_yaw
         if self.gyro_fault:
-            # A gyro known to be wrong turns nothing. See `witnessed`.
-            return 0.0
+            # A gyro not believed turns nothing. See `witnessed` and `recover`.
+            return self.recover(d_yaw, dt, ticks, tracks)
         rate = d_yaw / dt
         moving = (self._cmd_at > 0.0
                   and time.monotonic() - self._cmd_at <= CMD_TIMEOUT_S)
@@ -681,10 +701,66 @@ class BaseNode(Node):
         self._unwitnessed += turned
         self._held = self._held + turned if self._unwitnessed_for <= TRACK_WAIT_S else 0.0
         if self._unwitnessed_for >= GYRO_FAULT_S:
+            self._carried = self._unwitnessed
             self.fault("the gyro reported the rover turning at %+.0f deg/s for %.0f s "
-                       "while neither track moved"
+                       "while neither track moved -- carried, or a faulty gyro: the "
+                       "heading is held and the map is not saved until the gyro has "
+                       "read still for %.0f s. A gyro that never does has needed a "
+                       "full power cycle"
                        % (math.degrees(self._unwitnessed / self._unwitnessed_for),
-                          self._unwitnessed_for))
+                          self._unwitnessed_for, GYRO_REST_S), clears=True)
+        return 0.0
+
+    def recover(self, d_yaw, dt, ticks, tracks):
+        """Under a fault: nothing is integrated, and a gyro that reads still again
+        ends the fault it was given for a turn no track showed.
+
+        **A rover in somebody's hands and a faulty gyro look the same for three
+        seconds and never afterwards.** The faulty ones on record read one large
+        rate until the power was cut; a carried rover is set down, and its gyro
+        is back at its offset with neither track moving. GYRO_REST_S of that --
+        nothing commanded, the tracks' counts standing, the rate within
+        SPINNING_DPS of the offset -- and the gyro was telling the truth all
+        along. So the fault ends, and the heading takes everything the gyro
+        turned since the turn began: a rover turned a quarter round in the air
+        would otherwise believe a heading a refit's 45-degree window cannot
+        reach from. *Where* it was set down the gyro cannot say, and nothing
+        here pretends to: the bridge holds the map from the moment of the fault
+        until the scan shows the rover on it (nav_bridge.on_base_state).
+
+        A frozen gyro is not ended this way. It reads exactly nothing, which is
+        inside any band around the offset, and `fault` lets its verdict replace
+        this one.
+        """
+        if not self._fault_clears:
+            return 0.0
+        offset = self._bias if self._bias is not None else 0.0
+        turned = d_yaw - offset * dt
+        moving = (self._cmd_at > 0.0
+                  and time.monotonic() - self._cmd_at <= CMD_TIMEOUT_S)
+        if ticks is not None and self._last_ticks is not None:
+            moving = moving or abs(ticks - self._last_ticks) > STILL_TICKS
+        still = (not moving and tracks is False
+                 and abs(math.degrees(turned / dt)) <= SPINNING_DPS)
+        if not still:
+            self._carried += turned
+            self._rest_for = 0.0
+            return 0.0
+        self._rest_for += dt
+        if self._rest_for < GYRO_REST_S:
+            return 0.0
+        carried = self._carried
+        self.gyro_fault = ""
+        self._fault_clears = False
+        self._held = self._unwitnessed_for = self._unwitnessed = 0.0
+        self._rest_for = self._carried = self._still_for = 0.0
+        self.yaw = (self.yaw + carried + math.pi) % (2 * math.pi) - math.pi
+        self.get_logger().warn(
+            "the gyro has read still for %.0f s, so it is not faulty: the rover "
+            "was turned %+.0f degrees with neither track moving -- carried, or "
+            "turned by hand. The heading takes that turn; where the rover stands "
+            "is for the scan or a refit to say"
+            % (GYRO_REST_S, math.degrees(carried)))
         return 0.0
 
     def watch_frozen(self, raw, dt):
@@ -697,13 +773,24 @@ class BaseNode(Node):
             self.fault("the gyro has reported exactly nothing for %.0f s, which is a "
                        "sensor that has stopped updating" % self._frozen_for)
 
-    def fault(self, why):
-        """Stop believing the gyro until this node starts again. See GYRO_FAULT_S."""
-        if self.gyro_fault:
+    def fault(self, why, clears=False):
+        """Stop believing the gyro. See GYRO_FAULT_S.
+
+        Until this node starts again, unless `clears`: then until the gyro reads
+        still (`recover`), and `why` says so itself. A fault that does not clear
+        replaces one that does -- a gyro that froze while it was doubted has
+        stopped updating, whatever it was doing before.
+        """
+        if self.gyro_fault and (clears or not self._fault_clears):
             return
-        self.gyro_fault = (why + ", so the rover cannot measure its own turning: its "
-                           "heading is held and the map is not saved. A full power "
-                           "cycle has cleared this before")
+        if not self.gyro_fault:
+            self.gyro_faults += 1
+        self.gyro_fault = why if clears else (
+            why + ", so the rover cannot measure its own turning: its heading is "
+            "held and the map is not saved. A full power cycle has cleared this "
+            "before")
+        self._fault_clears = clears
+        self._rest_for = 0.0
         self._held = 0.0
         self.get_logger().error("gyro fault: %s" % self.gyro_fault)
 

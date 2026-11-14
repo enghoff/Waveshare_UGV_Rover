@@ -207,7 +207,11 @@ class _Debiasing:
         self._held = self._unwitnessed_for = self._unwitnessed = 0.0
         self._frozen_for = 0.0
         self.gyro_fault = ""
+        self.gyro_faults = 0
+        self._fault_clears = False
+        self._rest_for = self._carried = 0.0
         self.faults_logged = []
+        self.warned = []
 
     def witnessed(self, *args):
         from base_node import BaseNode
@@ -217,13 +221,18 @@ class _Debiasing:
         from base_node import BaseNode
         return BaseNode.watch_frozen(self, *args)
 
-    def fault(self, why):
+    def fault(self, why, clears=False):
         from base_node import BaseNode
-        return BaseNode.fault(self, why)
+        return BaseNode.fault(self, why, clears)
+
+    def recover(self, *args):
+        from base_node import BaseNode
+        return BaseNode.recover(self, *args)
 
     def get_logger(self):
-        logged = self.faults_logged
-        return type("Logger", (), {"error": lambda _self, text: logged.append(text)})()
+        logged, warned = self.faults_logged, self.warned
+        return type("Logger", (), {"error": lambda _self, text: logged.append(text),
+                                   "warn": lambda _self, text: warned.append(text)})()
 
 
 def test_a_spin_nobody_commanded_here_is_still_a_spin():
@@ -464,9 +473,66 @@ def test_a_gyro_turning_with_no_track_moving():
     check("...said once in the log", len(node.faults_logged), 1)
     check("...and the heading still has not moved",
           _turned(node, stuck[int(3.5 * 17):]), 0.0, tolerance=0.01)
+    check("...and a minute of it on, the fault stands: such a gyro never reads still",
+          (bool(node.gyro_fault), node.gyro_faults), (True, 1))
     node._cmd_at = time.monotonic()
     check("once faulty, even a commanded turn is not taken from it",
           _turned(node, _after(stuck, 2.0, 60.0, step=1)), 0.0, tolerance=0.01)
+
+
+def test_a_carried_rover_is_not_a_faulty_gyro():
+    """**2026-11-14: picked up and turned, and unable to turn afterwards.** At
+    19:34 and again at 19:42 the owner lifted the parked rover and turned it for
+    more than three seconds. The gyro said so (-39 and -31 deg/s), neither track
+    moved, and the fault that followed lasted until navigation was restarted: the
+    heading was held, so a 90-degree turn asked for next spun for its whole eight
+    seconds. The gyro read its ordinary 0.39 deg/s at rest throughout."""
+    section("a rover carried for more than three seconds (2026-11-14)")
+    parked = _board(30.0, 0.36)
+    node = _Integrating()
+    _replay(node, parked)
+    learned = node._bias
+    lifted = _after(parked, 4.0, -31.0 + 0.36)
+    check("turned by hand for four seconds at -31 deg/s, the heading is held",
+          _turned(node, lifted), 0.0, tolerance=0.01)
+    check("...and the gyro is not believed, as the rover said that evening",
+          ("-31 deg/s for 3 s while neither track moved" in node.gyro_fault,
+           node.gyro_faults), (True, 1))
+    down = _after(lifted, 4.5, 0.36)
+    check("set down, it is still not believed four and a half seconds on",
+          (_turned(node, down), bool(node.gyro_fault)), (0.0, True))
+    rest = _after(down, 1.0, 0.36)
+    turned = _turned(node, rest)
+    check("...and a second later it is: the fault ends by itself",
+          (node.gyro_fault, node.gyro_faults, len(node.warned)), ("", 1, 1))
+    check("...and the heading takes the turn the gyro measured, about -124 degrees",
+          turned, -124.0, tolerance=3.0)
+    check("...which teaches the offset nothing",
+          math.degrees(node._bias), math.degrees(learned), tolerance=0.01)
+    node._cmd_at = time.monotonic()
+    check("a 90-degree turn asked for next reads as one",
+          _turned(node, _after(rest, 2.0, 45.0 + 0.36, step=1)), 90.0, tolerance=3.0)
+
+    node = _Integrating()
+    _replay(node, parked)
+    paused = _after(lifted, 3.0, 0.36)
+    again = _after(paused, 2.0, 20.0 + 0.36)
+    check("held still for three seconds and turned again, it is still doubted",
+          (_turned(node, lifted + paused + again), bool(node.gyro_fault)), (0.0, True))
+    check("...and set down for good it takes both turns, -124 and +40",
+          _turned(node, _after(again, 6.0, 0.36)), -84.0, tolerance=3.0)
+    check("...and is believed again", node.gyro_fault, "")
+
+    node = _Integrating()
+    _replay(node, parked)
+    _replay(node, lifted)
+    frozen = _after(lifted, 6.0, 0.0)
+    _replay(node, frozen)
+    check("a gyro that stops updating while it is doubted is a faulty one",
+          "stopped updating" in node.gyro_fault, True)
+    check("...which no amount of reading still afterwards ends",
+          (_turned(node, _after(frozen, 20.0, 0.36)), bool(node.gyro_fault),
+           node.gyro_faults), (0.0, True, 1))
 
 
 def test_a_turn_the_tracks_show_is_kept():
@@ -511,6 +577,7 @@ def test_the_gyro_recorded_at_rest_and_frozen():
 
 TESTS = (
     test_a_gyro_turning_with_no_track_moving,
+    test_a_carried_rover_is_not_a_faulty_gyro,
     test_a_turn_the_tracks_show_is_kept,
     test_the_gyro_recorded_at_rest_and_frozen,
     test_a_daemon_restart_is_not_a_turn,

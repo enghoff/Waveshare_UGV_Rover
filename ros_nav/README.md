@@ -140,13 +140,25 @@ none does within `TRACK_WAIT_S` (`base_node.witnessed`). A gyro reporting a turn
 that no track shows has been a faulty gyro: on 2026-10-14 it came up reading
 210 deg/s with the rover parked, turned the believed heading round for twelve
 minutes and smeared the live map into a disc of free floor across the walls.
-Three seconds of that, or two of the gyro reporting exactly nothing, latches
-`gyro_fault` in the base's state until base_node restarts. The heading is then
-held, `nav_status` carries the reason and the drive console shows it, autonomy
-will not drive ([R-SAFE-17](../docs/requirements/safety.md#r-safe-17)), the
-world state takes no bearings, and the map keeper saves nothing
-(`nav_map.map_trustworthy`). A full power cycle has cleared every such fault so
-far.
+Three seconds of that, or two of the gyro reporting exactly nothing, sets
+`gyro_fault` in the base's state. The heading is then held, `nav_status` carries
+the reason and the drive console shows it, autonomy will not drive
+([R-SAFE-17](../docs/requirements/safety.md#r-safe-17)), the world state takes
+no bearings, the map keeper saves nothing (`nav_map.map_trustworthy`), and the
+bridge refuses a turn, a drive to a point and an exploration, which could not
+tell when they had turned far enough (`off_map.gyro_refusal`); a straight drive
+still goes.
+
+A rover picked up and turned for three seconds looks the same, and did twice on
+2026-11-14. What tells them apart is what the gyro does next
+(`base_node.recover`). Every faulty gyro on record read one large rate until
+the power was cut. A carried rover is set down, and five seconds of its gyro
+back at its offset with the tracks still (`GYRO_REST_S`) ends the fault: the
+heading takes the whole turn the gyro measured, and the bridge, which has held
+the map as off it since the fault began (`off_map.OffMap.carried`), gives it
+back when the scan shows the rover on it, or after a refit where it does not.
+A gyro that stops updating stays faulty until base_node restarts, and a full
+power cycle has cleared every real fault so far.
 
 The same search is offered read-only, as the bridge's `measure` op
 (`nav_map.measure_pose`): half a metre and 45 degrees around where the rover

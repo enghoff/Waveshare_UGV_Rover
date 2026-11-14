@@ -105,6 +105,7 @@ from nav_explore import NavExplore
 from nav_manual import NavManual
 from nav_map import NavMap
 from nav_moves import NavMoves
+from off_map import gyro_refusal
 # And the map's half of a snapshot: the graph copied out beside the world state,
 # and a kept one loaded back. See nav_snapshot.py.
 from nav_snapshot import NavSnapshot
@@ -231,6 +232,7 @@ class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, NavManual, Node):
         self.plan_at = None
         self.surroundings = None
         self.base_state = None
+        self._gyro_faults_seen = 0
         self.trail = Trail()
 
         # --- what a move is doing
@@ -299,8 +301,27 @@ class NavBridge(NavMoves, NavExplore, NavMap, NavSnapshot, NavManual, Node):
             payload = json.loads(msg.data)
         except ValueError:
             return
+        # A gyro fault is a rover that may be in somebody's hands, so the map is
+        # held from here until the scan shows the rover on it (off_map.carried).
+        # By the base's count rather than its word, so that a fault that came
+        # and went between two of these is not missed.
+        try:
+            faults = int(payload.get("gyro_faults") or 0)
+        except (TypeError, ValueError):
+            faults = 0
         with self._lock:
             self.base_state = payload
+            fresh = faults > self._gyro_faults_seen
+            self._gyro_faults_seen = faults
+            fresh = fresh and getattr(self, "off_map", None) is not None
+            if fresh:
+                self.off_map.carried(time.time())
+        if fresh:
+            self.get_logger().warn(
+                "the gyro is not believed (%s); the map and the world store are "
+                "held until the scan shows the rover on the map"
+                % (payload.get("gyro_fault") or "it has since read still"))
+            self.manual_hold()
 
     # --- where the rover is ---------------------------------------------------
     def dead_reckoned(self):
@@ -828,6 +849,16 @@ class Handler(socketserver.StreamRequestHandler):
             self.write({"kind": "outcome", "reason": "busy", "travelled_m": 0.0,
                         "turned_deg": 0.0,
                         "detail": "somebody is driving with the game controller"})
+            return
+        # A turn ends when the gyro says it has turned far enough, and under a
+        # gyro fault the heading is held: on 2026-11-14 a 90-degree turn asked
+        # for then spun the rover for its whole eight seconds. Refused, with
+        # the base's reason. A straight drive measures itself by the tracks and
+        # is let through, so a rover with a broken gyro can still be nudged.
+        fault = gyro_refusal(op, node.base_state)
+        if fault:
+            self.write({"kind": "outcome", "reason": "refused", "travelled_m": 0.0,
+                        "turned_deg": 0.0, "detail": fault})
             return
         if not node.move_mutex.acquire(blocking=False):
             self.write({"kind": "outcome", "reason": "busy", "travelled_m": 0.0,
